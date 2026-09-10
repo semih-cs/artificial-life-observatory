@@ -23,6 +23,12 @@ export interface SweepSpec {
   seeds: number[];
   maxTicks: number;
   metricsSampleInterval?: number;
+  /**
+   * Enforce the §14.29 test-only runaway cap (default true). Set false only to
+   * reproduce a historical run that predates the cap; see the provenance-repair
+   * note in docs/Phase 0B Pilot Report.md.
+   */
+  runawayCapEnabled?: boolean;
 }
 
 export interface SweepConfiguration {
@@ -95,9 +101,18 @@ export function generateSweepConfigurations(spec: SweepSpec): SweepConfiguration
 
 export function runSweep(
   spec: SweepSpec,
-  options: ExperimentRunOptions = {}
+  options: ExperimentRunOptions = {},
+  /**
+   * Optional filter on configuration index, for chunked execution. The index is
+   * the one embedded in each configId, so a chunked run produces exactly the
+   * same per-configuration outputs as a single run would.
+   */
+  configFilter?: (config: SweepConfiguration, index: number) => boolean
 ): SweepResult {
-  const configurations = generateSweepConfigurations(spec);
+  const allConfigurations = generateSweepConfigurations(spec);
+  const configurations = configFilter
+    ? allConfigurations.filter((c, i) => configFilter(c, i))
+    : allConfigurations;
   const results: ExperimentResult[] = [];
 
   let globalIdx = 0;
@@ -122,6 +137,7 @@ export function runSweep(
       maxTicks: spec.maxTicks,
       metricsSampleInterval: spec.metricsSampleInterval ?? 100,
       stopOnExtinction: true,
+      runawayCapEnabled: spec.runawayCapEnabled ?? true,
     };
 
     const result = runExperiment(experimentSpec, {

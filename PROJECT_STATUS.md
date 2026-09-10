@@ -31,7 +31,6 @@ Most recent work is the §16.9 movement-policy diagnostic. `git log -1` is
 authoritative; recent history:
 
 ```text
-1fa6de6 Diagnostic A2 (§16.9): results, calibration-v2 recommendation, provenance finding
 2c7c56c Diagnostic A2 (§16.9): test-only fixed movement policies — implementation and precommitment
 4b91794 docs: record the Phase 0B checkpoint commit hash in PROJECT_STATUS.md
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
@@ -49,8 +48,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   168 / 168 passed
-experiment-harness tests: 66 / 66  passed
-workspace total:         234 / 234 passed
+experiment-harness tests: 68 / 68  passed
+workspace total:         236 / 236 passed
 workspace build:         PASS (tsc -p tsconfig.json in both packages)
 Phase 0A golden hash:    seed 20260910, 10000 ticks -> 6a6576bd49e86b27  CONFIRMED
 ```
@@ -129,6 +128,10 @@ npm run experiment -- movement-policy
 npm run experiment -- mutation-2x2
 npm run experiment -- calibration-sweep
 npm run experiment -- calibration-report      # read-only
+
+# options: --seed-set, --max-ticks, --output,
+#          --sweep-configs a-b|a,b,c  (chunked sweep execution)
+#          --no-runaway-cap           (historical reproduction ONLY)
 ```
 
 ### Functional neural probes (§11.37–§11.41, §14.31) — IMPLEMENTED
@@ -231,6 +234,29 @@ Provenance on every replicate: `simulationVersion 0A.1.0`,
 
 **When console or chat output disagrees with these files, the files win.**
 
+**Provenance repair (this session).** The four experiments whose results
+predated the stale-`dist` fix were re-run on the current verified build, through
+the corrected script, with the same pilot seeds and configurations, into
+parallel `reverified-*` directories; the originals are preserved for comparison.
+186 replicates: 117 bit-identical, **183 identical on every observable
+outcome**, and every condition summary identical except three sweep
+`medianExtinctionTick` values (all driven by seed 147514, shifts of −11, +3,
++3 ticks). `passesCriteria` unchanged for all 12 configurations and the
+§14.29/§16.35 reclassification identical row for row. **No conclusion changed.**
+Prefer the `reverified-*` directories when citing these four experiments. Full
+account in `docs/Phase 0B Pilot Report.md` §9.
+
+| Original | Provenance-clean re-run |
+|---|---|
+| `results/diagnostic-reproduction-control/` | `results/reverified-diagnostic-reproduction-control/` |
+| `results/diagnostic-full-evolutionary/` | `results/reverified-diagnostic-full-evolutionary/` |
+| `results/mutation-2x2/` | `results/reverified-mutation-2x2/` |
+| `results/calibration-v1/` | `results/reverified-calibration-v1/` |
+
+The re-runs used `--no-runaway-cap` so their termination behaviour matches the
+originals (the cap did not exist then); outcome classification is unaffected
+because it works from peak population, not from how a run ended.
+
 ### Diagnostic A2 — movement policies (15 pilot seeds x 5 conditions)
 
 `results/diagnostic-movement-policy/`. 75 replicates, 20,000 max ticks, run on
@@ -325,8 +351,8 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
 | File | State |
 |---|---|
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
-| `docs/Phase 0B Experiment Guide.md` | CREATED — how to run and read every Phase 0B experiment |
-| `docs/Phase 0B Pilot Report.md` | CREATED — persisted-results-only pilot report and calibration decision |
+| `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7 movement-policy diagnostic, §9 provenance hazard and repair |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
 
@@ -336,9 +362,10 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
 
 1. **Ecology is not calibrated.** Every tested configuration is bimodal between
    early extinction and runaway growth. This is the open Phase 0B problem.
-2. **Persisted results predate cap enforcement.** They are classified post hoc
-   from sampled timeseries, so recovered peaks — and therefore runaway counts —
-   are lower bounds.
+2. **Original result folders predate cap enforcement.** In those, runaway
+   counts are recovered post hoc from sampled timeseries and are therefore lower
+   bounds. The `reverified-*` folders record `peakPopulation` natively, so their
+   classification is exact.
 3. ~~Test-only fixed-speed movement policies (§16.9) are not implemented.~~
    **RESOLVED.** Implemented and run; the energy model is verified correct and
    Diagnostic A's lifetimes are a controller effect. See the movement-policy
@@ -352,22 +379,22 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
    `node_modules` may need the platform-specific rollup/esbuild optional
    dependency reinstalled before vitest will start. This is an npm optional-
    dependency issue, not a repository defect.
-8. **One persisted replicate does not reproduce.** Diagnostic A seed 147514 is
-   recorded at extinction tick 1145 / hash `3adf024649660af4`; the current build
-   gives 1150 / `93e832500468f40f` from an identical `configHash`. The other 14
-   Diagnostic A replicates and all 15 Diagnostic B replicates re-verify bit for
-   bit, the current tree is deterministic, and the pre-checkpoint harness
-   reproduces 1150 as well — so this is not current-code non-determinism and not
-   a Phase 0A defect. The mechanism is provenance: the `experiment` script used
-   to compile only the harness and import `simulation-core` from a prebuilt
-   `dist`, so a run could consume a stale core build while recording the current
-   commit. **The script now builds `simulation-core` first.** Diagnostic A's
-   median (1066), min (485) and max (1662) are unchanged, so no conclusion moves.
-   Diagnostics C and D, the 2×2 and the sweep were written from even older
-   builds and have **not** been re-verified; treat them as provenance-uncertain
-   at replicate level. Full account in pilot report §9.
-
----
+8. ~~One persisted replicate does not reproduce.~~ **REPAIRED.** The stale-
+   `dist` hazard is fixed (the `experiment` script now builds `simulation-core`
+   first) and the four affected experiments were re-run on the current build
+   into `reverified-*` directories. 183 of 186 replicates are identical on every
+   observable outcome and every condition summary matches except three sweep
+   `medianExtinctionTick` values; no conclusion changed. Diagnostics A and B
+   were already re-verified (29 of 30 bit-identical). What remains open, and is
+   not a defect: seed 147514's trajectory is the one that shifts between builds
+   — by 5 ticks in Diagnostic A and by −11/+3/+3 ticks in three sweep
+   configurations — and the exact numerical delta between the old and current
+   core builds cannot be recovered because the older `dist` no longer exists.
+   The current build reproduces that seed consistently.
+9. **`gitCommit` provenance is still weak.** It records `git rev-parse HEAD`
+   and says nothing about uncommitted changes. Results generated from a dirty
+   worktree cannot be attributed to a specific tree state. Recording a dirty
+   flag or a source hash would close this; not done.
 
 ## Scientific caution
 

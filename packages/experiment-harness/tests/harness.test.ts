@@ -17,7 +17,7 @@ import {
 } from '../src/experiments/definitions.js';
 import { computeTimeseriesRow, meanAndVariance, median } from '../src/metrics/compute.js';
 import { detectDegeneracy, passesCalibrationCriteria, DEFAULT_DEGENERACY_CRITERIA, DEFAULT_CALIBRATION_CRITERIA } from '../src/analysis/degeneracy.js';
-import { generateSweepConfigurations } from '../src/runner/sweep.js';
+import { generateSweepConfigurations, runSweep } from '../src/runner/sweep.js';
 import type { ConditionSummary } from '../src/types.js';
 
 const SMALL_SEEDS = [42, 43, 44];
@@ -325,5 +325,75 @@ describe('diagnostic interventions and config validation', () => {
     expect(() => validateConfig(config)).not.toThrow();
     const cloned = cloneConfig(config);
     expect(cloned.energy.reproductionEnergyThreshold).toBe(101);
+  });
+});
+
+describe('chunked sweep execution and summary rebuild', () => {
+  it('a config filter runs only the requested configurations, with unchanged config ids', () => {
+    const spec = {
+      sweepId: 'test', description: 'test',
+      parameters: [
+        { path: 'food.regenAttemptsPerTick', values: [1, 2, 3] },
+        { path: 'energy.foodEnergyValue', values: [20, 30] },
+      ],
+      seeds: [42], maxTicks: 20,
+    };
+    const all = generateSweepConfigurations(spec);
+    expect(all.length).toBe(6);
+
+    const wanted = [1, 3];
+    const result = runSweep(spec, {}, (config) => wanted.includes(Number(config.configId.split('_')[1])));
+
+    expect(result.configurations.length).toBe(2);
+    // Config ids (and therefore output directory names) are identical to the
+    // ones a single unchunked run would produce.
+    expect(result.configurations.map(c => c.configId))
+      .toEqual(wanted.map(i => all[i]!.configId));
+    expect(result.results.length).toBe(2);
+  });
+
+  it('rebuilds sweep-summary.json from the configuration directories on disk', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { writeSweepSummaryFromDisk } = await import('../src/output/writer.js');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alo-sweep-'));
+    const mkConfig = (name: string, meanFinalPopulation: number) => {
+      fs.mkdirSync(path.join(dir, name), { recursive: true });
+      fs.writeFileSync(path.join(dir, name, 'condition-summary.json'), JSON.stringify([{
+        experimentId: 'x', conditionId: name, replicateCount: 8,
+        extinctionCount: 4, extinctionRate: 0.5, runawayCount: 1,
+        viableCompletionCount: 3, viableCompletionRate: 0.375,
+        medianExtinctionTick: 3000, meanFinalPopulation, medianFinalPopulation: 0,
+        totalBirths: 100, totalDeaths: 90, maxGenerationDepth: 5,
+        meanMaxGenerationDepth: 3, meanActiveLineageCount: 1,
+        meanMorphSizeVariance: 0, meanNeuralParamVariance: 0, meanReproductiveFraction: 0.2,
+      }]));
+    };
+    // Written out of order, and with a two-digit index, to check ordering.
+    mkConfig('sweep_10_regenAttemptsPerTick=6_foodEnergyValue=40', 480);
+    mkConfig('sweep_2_regenAttemptsPerTick=2_foodEnergyValue=40', 230);
+
+    const count = writeSweepSummaryFromDisk(dir, (s) => s.meanFinalPopulation <= 400);
+    expect(count).toBe(2);
+
+    const summary = JSON.parse(fs.readFileSync(path.join(dir, 'sweep-summary.json'), 'utf-8'));
+    expect(summary.map((r: { configId: string }) => r.configId))
+      .toEqual([
+        'sweep_2_regenAttemptsPerTick=2_foodEnergyValue=40',
+        'sweep_10_regenAttemptsPerTick=6_foodEnergyValue=40',
+      ]);
+    // Parameter values are recovered from the directory name.
+    expect(summary[0].regenAttemptsPerTick).toBe(2);
+    expect(summary[0].foodEnergyValue).toBe(40);
+    expect(summary[1].regenAttemptsPerTick).toBe(6);
+    // The pass predicate is applied per configuration.
+    expect(summary[0].passesCriteria).toBe(true);
+    expect(summary[1].passesCriteria).toBe(false);
+    // Condition-summary fields are carried through.
+    expect(summary[0].viableCompletionRate).toBe(0.375);
+
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

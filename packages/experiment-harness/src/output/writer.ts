@@ -114,3 +114,43 @@ function writeTimeseriesCSV(replicates: ReplicateResult[], filePath: string): vo
   }
   fs.writeFileSync(filePath, lines.join('\n') + '\n');
 }
+
+/**
+ * Rebuild a sweep's `sweep-summary.json` from the per-configuration directories
+ * already on disk.
+ *
+ * A sweep can be executed in chunks (see the CLI's --sweep-configs), so the
+ * summary must be derivable from whatever has been written rather than only
+ * from one in-memory run. Parameter values are recovered from the directory
+ * name, which `generateSweepConfigurations` builds as
+ * `sweep_<index>_<param>=<value>_...`.
+ */
+export function writeSweepSummaryFromDisk(
+  outputDir: string,
+  passes: (summary: ConditionSummary) => boolean
+): number {
+  const entries = fs.readdirSync(outputDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name.startsWith('sweep_'))
+    .map((e) => e.name)
+    .sort((a, b) => Number(a.split('_')[1]) - Number(b.split('_')[1]));
+
+  const rows: Record<string, unknown>[] = [];
+  for (const name of entries) {
+    const summaryPath = path.join(outputDir, name, 'condition-summary.json');
+    if (!fs.existsSync(summaryPath)) continue;
+    const summaries = JSON.parse(fs.readFileSync(summaryPath, 'utf-8')) as ConditionSummary[];
+    const summary = summaries[0];
+    if (!summary) continue;
+
+    const parameterValues: Record<string, number> = {};
+    for (const part of name.split('_').slice(2)) {
+      const eq = part.indexOf('=');
+      if (eq > 0) parameterValues[part.slice(0, eq)] = Number(part.slice(eq + 1));
+    }
+
+    rows.push({ configId: name, ...parameterValues, ...summary, passesCriteria: passes(summary) });
+  }
+
+  fs.writeFileSync(path.join(outputDir, 'sweep-summary.json'), JSON.stringify(rows, null, 2));
+  return rows.length;
+}

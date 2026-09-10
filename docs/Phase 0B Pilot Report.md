@@ -619,71 +619,137 @@ validation.
 
 ---
 
-## 9. A reproducibility finding in the persisted results
+## 9. Provenance: the hazard, and the repair
+
+### 9.1 The hazard
 
 While cross-checking the §7 reference cell against Diagnostic A, one persisted
-replicate was found not to reproduce under the current build.
+replicate was found not to reproduce under the current build: Diagnostic A seed
+147514 was recorded at extinction tick 1145 / hash `3adf024649660af4`, while the
+current tree produced 1150 / `93e832500468f40f` from an identical `configHash`.
 
-Re-running all 15 persisted Diagnostic A replicates against the committed tree:
-**14 of 15 final state hashes match bit for bit**. Seed 147514 does not — the
-persisted record has extinction at tick 1145 with hash `3adf024649660af4`, and
-the current tree produces tick 1150 with hash `93e832500468f40f`. The recorded
-`configHash` is identical (`ed046e733f83bcd1`), so the two runs used the same
-configuration. Diagnostic B re-runs 15 of 15 identical.
+Ruled out at the time: current-code non-determinism (repeated runs are
+identical, and the Phase 0A golden hash still reproduces); the Phase 0B
+checkpoint's harness changes (the pre-checkpoint harness, rebuilt from a
+snapshot, also produces 1150); simulation-core source drift (byte-identical);
+and float sensitivity (perturbing one organism's energy or heading by 1 ULP,
+1e-15, 1e-12, 1e-9 or 1e-6 moves the extinction tick by zero ticks — a 5-tick
+shift needs a perturbation around 0.2 energy, nine orders of magnitude larger).
 
-What was ruled out:
+The mechanism was the build pipeline. The harness's `experiment` script compiled
+only the harness and imported `@alo/simulation-core` from its **prebuilt
+`dist`**, so a run could silently consume a stale core build while its
+provenance recorded the current git commit. The `simulation-core/dist` in the
+pre-edit snapshot — byte-identical to today's — was built at 19:41:08, thirty-
+three seconds *after* the 19:40:35 results were written.
 
-- **Not the current code being non-deterministic.** Repeated runs on the
-  committed tree give identical hashes, and the Phase 0A golden hash still
-  reproduces.
-- **Not the Phase 0B checkpoint's harness changes.** The pre-checkpoint harness,
-  extracted from a snapshot taken before any edits and built here, also produces
-  1150 for that seed.
-- **Not simulation-core source drift.** The core sources in that snapshot are
-  byte-identical to the committed ones.
-- **Not float sensitivity.** Perturbing one organism's energy or heading at
-  bootstrap by 1 ULP, 1e-15, 1e-12, 1e-9 and 1e-6 moves the extinction tick by
-  zero ticks on this and other seeds. A 5-tick shift needs a perturbation around
-  0.2 energy, which is nine orders of magnitude larger.
+The script now builds `simulation-core` before the harness, so this cannot
+recur.
 
-What the evidence does show: the persisted results were written at 19:40:35, and
-the `simulation-core/dist` present in the pre-edit snapshot — byte-identical to
-today's — was built at **19:41:08**, half a minute *after* those results. The
-harness's `experiment` script compiled only the harness and imported
-`@alo/simulation-core` from its prebuilt `dist`, so a run could silently consume
-a stale core build while its provenance recorded the current git commit. That is
-the mechanism by which a persisted result can fail to correspond to the source
-it claims; whether it is what happened for this particular seed cannot be proven
-after the fact, because the older `dist` no longer exists.
+### 9.2 The repair
 
-Consequences, stated conservatively:
+The four experiments whose persisted results predated that fix were re-run on
+the current verified build, through the corrected script, with the same pilot
+seeds and the same configurations, into parallel `reverified-*` directories. The
+originals were preserved for comparison. **No biological parameter was changed
+and no validation seed was used.**
 
-- **No conclusion in this report changes.** The affected value moves 1145 → 1150
-  in a 15-value set whose median (1066), minimum (485) and maximum (1662) are
-  all unchanged. The §7 diagnostic was run entirely on the current build.
-- **The calibration verdict is unaffected**: it rests on extinction and runaway
-  counts with wide margins, not on individual tick values.
-- **The other persisted experiments have not been re-verified.** Diagnostics C
-  and D, the 2×2 and the sweep were written earlier still, from builds that no
-  longer exist. They were not re-run, per the standing instruction not to repeat
-  completed expensive experiments; their aggregate conclusions are robust to
-  tick-level differences of this size, but they should be regarded as
-  provenance-uncertain at replicate level.
-- **The hazard is fixed going forward.** The harness `experiment` script now
-  builds `simulation-core` before the harness, so a run cannot consume a stale
-  core build.
+One execution setting had to be matched deliberately: the §14.29 runaway cap did
+not exist when the originals were produced, and enforcing it now would terminate
+runaway replicates early, producing differences that had nothing to do with the
+build question. The re-runs therefore used `--no-runaway-cap`, reproducing the
+original termination behaviour. Outcome classification is unaffected by this,
+because `classifyRunOutcome` works from peak population rather than from how a
+run ended — so the extinct/runaway/viable counts remain directly comparable.
+(New science should always run with the cap enforced; the flag exists only for
+historical reproduction.)
 
-This is recorded as a provenance and tooling finding. It is **not** evidence of
-a Phase 0A defect: no locked invariant is implicated, the core is deterministic
-within a build, and Phase 0A was not reopened.
+### 9.3 What the comparison shows
 
----
+| Experiment | Replicates | Bit-identical (incl. `finalStateHash`) | Identical on every observable outcome | Condition summary |
+|---|---:|---:|---:|---|
+| `diagnostic-reproduction-control` | 15 | 11 | 15 | identical |
+| `diagnostic-full-evolutionary` | 15 | 10 | 15 | identical |
+| `mutation-2x2` | 60 | 40 | 60 | identical, all four conditions |
+| `calibration-v1` | 96 | 56 | 93 | 9 of 12 identical |
+| **total** | **186** | **117** | **183** | — |
+
+"Observable outcome" means `terminationReason`, `extinctionTick`, `endTick`,
+`endingPopulation`, `totalBirths`, `totalDeaths`, `endingFoodCount`,
+`maxGenerationDepth`, `activeLineageCount` and `configHash`.
+
+**Replicate-level differences.** In 69 of 186 replicates the `finalStateHash`
+differs. In 66 of those 69, *every* observable outcome is nevertheless
+identical — the runs end at the same tick with the same population, the same
+births and deaths, and the same generation depth, differing only in continuous
+state such as positions and energies. The differing replicates are concentrated
+in long runs that survive to the 10,000-tick horizon.
+
+The remaining 3 differ in one observable field, `extinctionTick` (and hence
+`endTick`), and all three are **the same seed, 147514** — the seed that
+surfaced in §9.1:
+
+| Configuration | Old | Reverified | Shift |
+|---|---:|---:|---:|
+| `sweep_2` (regen 2, food 40, cost 35) | 3136 | 3125 | −11 |
+| `sweep_10` (regen 6, food 40, cost 35) | 3087 | 3090 | +3 |
+| `sweep_11` (regen 6, food 40, cost 45) | 3087 | 3090 | +3 |
+
+**Condition-summary differences.** Diagnostics C and D and all four 2×2
+conditions are identical in every field. Of the 12 sweep configurations, 9 are
+identical in every field and 3 differ in exactly one: `medianExtinctionTick`
+(3136 → 3125, 3087 → 3090, 3056.5 → 3058), each driven by the same seed 147514.
+Every other field — extinction rate, mean and median final population, births,
+deaths, generation depth, lineage counts, morphology and neural variance,
+reproductive fraction — is unchanged.
+
+**The current build is deterministic.** Re-running a differing replicate
+(seed 115838, reproduction-control) three times in succession gives an identical
+hash, end tick, population and birth count each time.
+
+### 9.4 Does any conclusion change?
+
+**No.**
+
+- `passesCalibrationCriteria` is unchanged for all 12 configurations: 11 pass in
+  both, with the same single failure (`regen 4, food 40, cost 35`, mean final
+  population 548.6).
+- The §14.29 / §16.35 reclassification is identical row for row — the same
+  extinct, runaway and viable counts, the same viable rates (0% in 8 of 12
+  configurations, 37.5% at best), and the same verdict: no configuration meets
+  the ~70% gate.
+- The 2×2 condition summaries are unchanged, so §3's reading is unchanged: the
+  distributions remain bimodal and the condition with the largest mean final
+  population still has the lowest viable rate.
+- §5's calibration decision stands: no defensible candidate baseline, nothing
+  frozen, validation seeds untouched.
+
+None of the observed differences is a biological result. A shift of 3 to 11
+ticks in one seed's extinction time, and continuous-state differences in
+long-running replicates, are **build-provenance artefacts, not evidence about
+adaptation, mutation or selection.** They must not be read as such.
+
+### 9.5 What remains unresolved
+
+The exact numerical delta between the old and current core builds cannot be
+recovered, because the older `dist` no longer exists. What can be said is that
+the two builds agree on every aggregate and on 183 of 186 observable replicate
+outcomes, and disagree in continuous state on long runs plus one seed's death
+timing by a few ticks.
+
+Seed 147514 is now the third independent appearance of the same seed as the
+sensitive one — Diagnostic A in §9.1 and three sweep configurations here. That
+is a property of that world's trajectory, not a defect: nothing in the results
+suggests an invalid state, and the current build reproduces it consistently.
+
+The `reverified-*` directories are now the provenance-clean record for these
+four experiments. The originals are retained alongside them for comparison.
 
 ## 10. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|
-| The substrate runs deterministically within a build | Yes | identical repeated replicate hashes; golden hash `6a6576bd49e86b27`; 29 of 30 persisted replicates from the latest batch re-verified (§9) |
+| The substrate runs deterministically within a build | Yes | identical repeated replicate hashes; golden hash `6a6576bd49e86b27`; 183 of 186 re-run replicates identical on every observable outcome, all condition summaries identical (§9) |
 | The energy model is implemented as specified | **Yes** | §7: measured/predicted drain in [0.99947, 1.00016] across 60 replicates at four fixed speeds |
 | Diagnostic A's long lifetimes are a controller effect, not an energy defect | **Yes** | §7: founders measured at 65.7% of maxSpeed; §16.8's band corresponds to v = 1.0 |
 | The founder controllers are good at finding food | Not tested | §7 ran with food off; it measures expenditure only |

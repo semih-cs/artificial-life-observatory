@@ -18,6 +18,10 @@
  *   --seed-set <pilot|validation>   Seed set to use (default: pilot)
  *   --max-ticks <N>                 Maximum ticks per replicate
  *   --output <dir>                  Output directory (default: results/<experiment-id>)
+ *   --sweep-configs <a-b|a,b,c>     Run only these sweep configuration indices (chunked execution)
+ *   --no-runaway-cap                Disable the §14.29 runaway cap. Use ONLY to reproduce
+ *                                   a historical run that predates the cap — new science
+ *                                   should always run with the cap enforced.
  */
 
 import {
@@ -37,7 +41,7 @@ import { runExperiment } from '../runner/experiment.js';
 import { DEFAULT_SIMULATION_CONFIG } from '@alo/simulation-core';
 import { runSweep, SweepSpec } from '../runner/sweep.js';
 import { loadPilotSeeds, loadValidationSeeds } from '../runner/seeds.js';
-import { writeExperimentResults } from '../output/writer.js';
+import { writeExperimentResults, writeSweepSummaryFromDisk } from '../output/writer.js';
 import { detectDegeneracy, passesCalibrationCriteria, DEFAULT_CALIBRATION_CRITERIA } from '../analysis/degeneracy.js';
 import { readPersistedSweep } from '../analysis/persistedResults.js';
 import { BASELINE_MIN_VIABLE_COMPLETION_RATE } from '../analysis/outcome.js';
@@ -55,12 +59,17 @@ function getGitCommit(): string | null {
 
 const gitCommit = getGitCommit();
 
-function parseArgs(): { experiment: string; seedSet: string; maxTicks?: number; outputDir?: string } {
+function parseArgs(): {
+  experiment: string; seedSet: string; maxTicks?: number; outputDir?: string;
+  runawayCapEnabled: boolean; sweepConfigs?: number[];
+} {
   const args = process.argv.slice(2);
   let experiment = '';
   let seedSet = 'pilot';
   let maxTicks: number | undefined;
   let outputDir: string | undefined;
+  let runawayCapEnabled = true;
+  let sweepConfigs: number[] | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -70,12 +79,32 @@ function parseArgs(): { experiment: string; seedSet: string; maxTicks?: number; 
       maxTicks = parseInt(args[++i]!, 10);
     } else if (arg === '--output' && args[i + 1]) {
       outputDir = args[++i]!;
+    } else if (arg === '--sweep-configs' && args[i + 1]) {
+      sweepConfigs = parseIndexList(args[++i]!);
+    } else if (arg === '--no-runaway-cap') {
+      runawayCapEnabled = false;
     } else if (!arg.startsWith('--')) {
       experiment = arg;
     }
   }
 
-  return { experiment, seedSet, maxTicks, outputDir };
+  return { experiment, seedSet, maxTicks, outputDir, runawayCapEnabled, sweepConfigs };
+}
+
+/** Parse "0-3" or "4,5,6" (or a mix) into an explicit index list. */
+function parseIndexList(spec: string): number[] {
+  const out = new Set<number>();
+  for (const part of spec.split(',')) {
+    const range = part.split('-');
+    if (range.length === 2) {
+      const from = parseInt(range[0]!, 10);
+      const to = parseInt(range[1]!, 10);
+      for (let i = from; i <= to; i++) out.add(i);
+    } else {
+      out.add(parseInt(part, 10));
+    }
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 function loadSeeds(seedSet: string): number[] {
@@ -250,7 +279,7 @@ function printMovementPolicyReport(result: ExperimentResult): void {
 }
 
 async function main(): Promise<void> {
-  const { experiment, seedSet, maxTicks, outputDir } = parseArgs();
+  const { experiment, seedSet, maxTicks, outputDir, runawayCapEnabled, sweepConfigs } = parseArgs();
 
   if (!experiment) {
     console.log('Usage: npm run experiment -- <experiment-name> [--seed-set pilot|validation] [--max-ticks N]');
@@ -298,7 +327,7 @@ async function main(): Promise<void> {
   }
 
   if (isSweep) {
-    console.log('\nRunning calibration sweep...');
+    console.log(`\nRunning calibration sweep... (§14.29 runaway cap: ${runawayCapEnabled ? 'ENFORCED' : 'DISABLED (historical reproduction)'})`);
     const sweepSpec: SweepSpec = {
       sweepId: 'calibration-v1',
       description: 'Stage 1 energy/resource coarse sweep',
@@ -310,12 +339,18 @@ async function main(): Promise<void> {
       seeds: seeds.slice(0, 8), // Use subset for coarse sweep
       maxTicks: maxTicks ?? 10000,
       metricsSampleInterval: 200,
+      runawayCapEnabled,
     };
 
-    const sweepResult = runSweep(sweepSpec, {
-      gitCommit,
-      onReplicateComplete: printProgress,
-    });
+    if (sweepConfigs) {
+      console.log(`Chunked execution: running only configuration indices ${sweepConfigs.join(', ')}`);
+    }
+
+    const sweepResult = runSweep(
+      sweepSpec,
+      { gitCommit, onReplicateComplete: printProgress },
+      sweepConfigs ? (config) => sweepConfigs.includes(Number(config.configId.split('_')[1])) : undefined
+    );
 
     const outDir = outputDir ?? `results/${sweepSpec.sweepId}`;
     fs.mkdirSync(outDir, { recursive: true });
@@ -342,24 +377,23 @@ async function main(): Promise<void> {
       writeExperimentResults(r, `${outDir}/${cfg.configId}`);
     }
 
-    // Write summary
-    const summaryData = sweepResult.results.map((r, i) => ({
-      configId: sweepResult.configurations[i]!.configId,
-      ...sweepResult.configurations[i]!.parameterValues,
-      ...r.conditions[0]!,
-      passesCriteria: passesCalibrationCriteria(r.conditions[0]!),
-    }));
-    fs.writeFileSync(`${outDir}/sweep-summary.json`, JSON.stringify(summaryData, null, 2));
+    // Rebuild the summary from every configuration directory present on disk,
+    // so a sweep executed in chunks still produces one complete summary.
+    const summarized = writeSweepSummaryFromDisk(outDir, (s) => passesCalibrationCriteria(s));
+    console.log(`\nsweep-summary.json written from ${summarized} configuration directories on disk.`);
     return;
   }
 
   if (!spec) return;
 
+  spec.runawayCapEnabled = runawayCapEnabled;
+
   console.log(`\nRunning: ${spec.experimentId}`);
   console.log(`  conditions: ${spec.conditions.length}`);
   console.log(`  seeds: ${spec.seeds.length}`);
   console.log(`  max ticks: ${spec.maxTicks}`);
-  console.log(`  total replicates: ${spec.conditions.length * spec.seeds.length}\n`);
+  console.log(`  total replicates: ${spec.conditions.length * spec.seeds.length}`);
+  console.log(`  §14.29 runaway cap: ${runawayCapEnabled ? 'ENFORCED' : 'DISABLED (historical reproduction)'}\n`);
 
   const result = runExperiment(spec, {
     gitCommit,

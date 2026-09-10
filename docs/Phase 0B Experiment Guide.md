@@ -54,9 +54,22 @@ Options:
 | `--seed-set pilot\|validation` | which seed file to use (default `pilot`) |
 | `--max-ticks N` | override the experiment's default horizon |
 | `--output DIR` | override the output directory (also the input directory for `calibration-report`) |
+| `--sweep-configs a-b\|a,b,c` | run only these sweep configuration indices, so a long sweep can be executed in chunks |
+| `--no-runaway-cap` | disable the §14.29 cap — **only** for reproducing a historical run that predates it |
 
 `calibration-report` is read-only: it re-reads an already-persisted sweep from
 disk, classifies every replicate, and runs no simulation and consumes no seeds.
+
+`--sweep-configs` runs a subset of a sweep's configurations. Each configuration
+writes its own directory, and `sweep-summary.json` is rebuilt from every
+configuration directory present on disk afterwards, so a sweep split across
+several invocations produces exactly the same output as a single run.
+
+`--no-runaway-cap` exists for one purpose: reproducing results generated before
+the cap existed, where enforcing it would change when runs terminate and
+confound the comparison. Outcome classification is unaffected either way, since
+it works from peak population rather than from how a run ended. **New science
+always runs with the cap enforced** — the CLI prints which mode is in force.
 
 ---
 
@@ -376,14 +389,27 @@ Every replicate carries provenance: `experimentId`, `conditionId`,
 `configHash`, `maxTicks`, `gitCommit`, `timestamp`, plus the run's own
 `finalStateHash` (§16.3–§16.4).
 
-**Provenance caveat.** `gitCommit` is `git rev-parse HEAD`, which says nothing
-about uncommitted changes, and until recently the `experiment` script compiled
-only the harness and imported `simulation-core` from its prebuilt `dist` — so a
-run could consume a stale core build while recording the current commit. The
-script now builds `simulation-core` first. One persisted replicate predating
-that fix does not reproduce; see `docs/Phase 0B Pilot Report.md` §9. When a
-persisted result matters, re-verify it against the current build rather than
-trusting the recorded commit alone.
+**Provenance.** `gitCommit` is `git rev-parse HEAD`, which says nothing about
+uncommitted changes, and the `experiment` script used to compile only the
+harness and import `simulation-core` from its prebuilt `dist` — so a run could
+consume a stale core build while recording the current commit. The script now
+builds `simulation-core` first, and that hazard cannot recur.
+
+The four experiments whose results predated the fix were re-run on the current
+build into parallel `reverified-*` directories, with the originals preserved:
+
+| Original | Provenance-clean re-run |
+|---|---|
+| `results/diagnostic-reproduction-control/` | `results/reverified-diagnostic-reproduction-control/` |
+| `results/diagnostic-full-evolutionary/` | `results/reverified-diagnostic-full-evolutionary/` |
+| `results/mutation-2x2/` | `results/reverified-mutation-2x2/` |
+| `results/calibration-v1/` | `results/reverified-calibration-v1/` |
+
+All condition summaries matched except three sweep `medianExtinctionTick`
+values, and no conclusion changed. **Prefer the `reverified-*` directories when
+citing these four experiments.** Full account in
+`docs/Phase 0B Pilot Report.md` §9. When a persisted result matters, re-verify
+it against the current build rather than trusting the recorded commit alone.
 
 `results/` is gitignored. **The persisted files are the authoritative record of
 a run** — not console output, not chat transcripts. Do not rerun an expensive
