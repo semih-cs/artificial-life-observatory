@@ -27,10 +27,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the §16.9 movement-policy diagnostic. `git log -1` is
+Most recent work is the Phase 0B provenance repair. `git log -1` is
 authoritative; recent history:
 
 ```text
+9ba415c docs: repair the git-state history block in PROJECT_STATUS.md
+700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
+5271387 docs: record the Diagnostic A2 commit hash in PROJECT_STATUS.md
+1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
 2c7c56c Diagnostic A2 (§16.9): test-only fixed movement policies — implementation and precommitment
 4b91794 docs: record the Phase 0B checkpoint commit hash in PROJECT_STATUS.md
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
