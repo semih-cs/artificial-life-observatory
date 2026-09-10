@@ -1,12 +1,25 @@
-# Artificial Life Observatory — Phase 0A
+# Artificial Life Observatory — Phase 0A core + Phase 0B harness
 
-A headless, deterministic artificial-life simulation core. Organisms with a
+A headless, deterministic artificial-life simulation core, plus the
+experiment harness that calibrates and validates it. Organisms with a
 five-gene morphology and a fixed-topology neural controller live, move, eat,
 reproduce, mutate and die in a bounded 2D world with a static seeded fertility
 field. No UI, no server, no database — those are later phases.
 
-**Status: Phase 0A complete.** The simulation is technically correct enough to
-calibrate. It is *not* scientifically validated; validation is Phase 0B.
+Two workspace packages:
+
+| Package | Phase | Purpose |
+|---|---|---|
+| `packages/simulation-core` | 0A | the deterministic headless biological simulation |
+| `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
+
+**Status: Phase 0A complete and frozen.** The simulation is technically correct
+enough to calibrate. It is *not* scientifically validated.
+
+**Status: Phase 0B in progress.** The harness runs; the diagnostics, the 2×2
+mutation factorial and the first calibration sweep have been executed on pilot
+seeds. **No baseline configuration has been frozen yet, and the held-out
+validation seeds are untouched.** See `docs/Phase 0B Pilot Report.md`.
 
 ---
 
@@ -50,20 +63,41 @@ Consequences that follow from this, and that you should not "fix":
 │   │                                AUTHORITATIVE specification
 │   ├── Phase 0A Implementation Report.md
 │   │                                what actually exists in code, post-correction
+│   ├── Phase 0B Experiment Guide.md how to run and read the Phase 0B experiments
+│   ├── Phase 0B Pilot Report.md     what the persisted pilot results actually show
 │   └── reference/                   historical material — see Document hierarchy
+├── AGENTS.md                        operating contract for any agent on this repo
+├── PROJECT_STATUS.md                live handoff state — read with AGENTS.md
 └── packages/
-    └── simulation-core/             the entire Phase 0A implementation
+    ├── simulation-core/             the entire Phase 0A implementation
+    │   ├── package.json
+    │   ├── tsconfig.json
+    │   ├── vitest.config.ts
+    │   ├── src/
+    │   └── tests/
+    └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
         ├── vitest.config.ts
+        ├── seeds/                   pilot.json (15) and validation.json (25, held out)
         ├── src/
-        └── tests/
+        │   ├── runner/              replicate runner, experiment runner, sweeps, seeds
+        │   ├── metrics/             timeseries and summary metrics
+        │   ├── probes/              probe set, probe evaluation, behavior fingerprint
+        │   ├── analysis/            degeneracy, run outcomes, persisted-result reader
+        │   ├── experiments/         diagnostic and factorial definitions
+        │   ├── output/              CSV/JSON writers
+        │   └── cli/
+        ├── tests/
+        └── results/                 generated experiment output (gitignored)
 ```
 
-`packages/simulation-core` is the only package. It has zero UI, server,
-database, or networking dependencies — its sole runtime dependency surface is
-the JavaScript standard library. (`typescript`, `vitest` and `@types/node` are
-dev-only.)
+`packages/simulation-core` has zero UI, server, database, or networking
+dependencies — its sole runtime dependency surface is the JavaScript standard
+library. (`typescript`, `vitest` and `@types/node` are dev-only.)
+
+`packages/experiment-harness` depends only on `simulation-core`. It observes
+the simulation; it never becomes part of biological selection.
 
 ---
 
@@ -88,6 +122,15 @@ subsections are:
 | §18.70   | the concrete PRNG, seeding and stream design                 |
 | §20.72   | canonical tick semantics, food competition, birth ordering   |
 
+Its most load-bearing Phase 0B subsections are:
+
+| Section        | Defines                                                        |
+|----------------|----------------------------------------------------------------|
+| §11.37–§11.41  | functional probe evaluation, probe sets, functional distance, behavior fingerprints |
+| §12.58         | the four diagnostic conditions A–D                              |
+| §14.21–§14.33  | mechanism verification, ecological calibration, pilot vs confirmatory validation, the runaway cap, metrics |
+| §16.3–§16.36   | run identity, configuration freeze, calibration stages, the paired 2×2 design, viable-completion rate |
+
 ### Reference / history — `docs/reference/`
 
 - `Artificial Life Observatory - Spec v2 (Implementation-Ready).docx`
@@ -110,6 +153,12 @@ subsections are:
 - **`docs/Phase 0A Implementation Report.md`** — what is implemented, which
   baseline values are in force, what was tested, and the known Phase 0A
   limitations.
+- **`docs/Phase 0B Experiment Guide.md`** — how to run each Phase 0B
+  experiment, what it isolates, and how to read its persisted output.
+- **`docs/Phase 0B Pilot Report.md`** — what the persisted pilot results
+  actually show, and what they do not yet support.
+- **`AGENTS.md`** and **`PROJECT_STATUS.md`** — the operating contract and the
+  live handoff state.
 
 ### How to use each document
 
@@ -119,6 +168,9 @@ subsections are:
 | Final Design Closure Report  | rationale behind Phase 0A closure decisions            |
 | Revision Report              | historical traceability only                           |
 | Implementation Report        | what currently exists in code, and its limits          |
+| Phase 0B Experiment Guide    | running and interpreting Phase 0B experiments          |
+| Phase 0B Pilot Report        | the current pilot evidence and its limits              |
+| PROJECT_STATUS.md            | where the work stands right now and the next step      |
 | README                       | practical developer entry point                        |
 
 ---
@@ -129,8 +181,8 @@ Requires Node.js 20+ (developed against Node 22).
 
 ```bash
 npm install     # installs the workspace (reproducible from package-lock.json)
-npm test        # runs the vitest suite
-npm run build   # type-checks and emits packages/simulation-core/dist
+npm test        # runs the vitest suite in both packages
+npm run build   # type-checks and emits dist/ for both packages
 ```
 
 Headless run:
@@ -151,6 +203,37 @@ config.rootSeed = 123;
 const { world, summary } = runSimulation(config, 10_000);
 console.log(summary.finalStateHash, summary.endingPopulation);
 ```
+
+Phase 0B experiments (see `docs/Phase 0B Experiment Guide.md` for what each one
+means and how to read its output):
+
+```bash
+npm run experiment -- starvation             # Diagnostic A
+npm run experiment -- feeding                # Diagnostic B
+npm run experiment -- reproduction-control   # Diagnostic C
+npm run experiment -- full-evolutionary      # Diagnostic D
+npm run experiment -- mutation-2x2           # primary 2x2 mutation factorial
+npm run experiment -- calibration-sweep      # coarse ecological parameter sweep
+npm run experiment -- calibration-report     # re-read persisted sweep results; runs nothing
+```
+
+Results are written under `packages/experiment-harness/results/<experiment-id>/`
+as `manifest.json`, `condition-summary.{json,csv}`, `replicates.{json,csv}` and
+one `timeseries-<condition>.csv` per condition. That directory is gitignored:
+**the persisted files on disk are the authoritative record of a run**, not
+console output and not chat transcripts.
+
+### Pilot and validation seeds
+
+`packages/experiment-harness/seeds/pilot.json` holds 15 pilot seeds and
+`validation.json` holds 25 held-out validation seeds; the two sets are
+disjoint. Every experiment defaults to the pilot set.
+
+Pilot seeds may be used freely for debugging, diagnosis and tuning. Validation
+seeds may only be used **after** a candidate configuration has been explicitly
+frozen, and results from them may never be used to retune (Spec v4 §14.27,
+§16.28). Pass `--seed-set validation` only when that freeze has actually
+happened and is recorded in `PROJECT_STATUS.md`.
 
 ---
 
@@ -352,6 +435,13 @@ npm run test:watch --workspace=packages/simulation-core
 | `determinism.test.ts`   | same-seed initialization and N-tick hashes, restored-state continuation, different seeds differ, telemetry neutrality, no `Math.random()` |
 | `invariants.test.ts`    | no NaN/Infinity, unique IDs, genome immutability during life, bounds, energy limits, container-order neutrality, population accounting |
 
+`packages/experiment-harness/tests`:
+
+| File               | Covers                                                                    |
+|--------------------|---------------------------------------------------------------------------|
+| `harness.test.ts`  | replicate/experiment runners, seed handling, metrics, degeneracy flags, sweep configuration validity, diagnostic interventions (A produces zero food and zero births; B has food and zero births), non-finite config rejection, the Phase 0A golden-hash regression |
+| `probes.test.ts`   | probe-set size/legality and pinned content hash, probe determinism, observational purity (a deeply frozen genome; probing every organism every tick leaves the canonical hash unchanged), fingerprint shape and stability, functional distance, the §14.29 runaway cap and outcome classification, the persisted-result reader |
+
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
 actually is.
@@ -364,6 +454,14 @@ With the shipped defaults, most seeds go extinct within a few thousand ticks.
 Across seeds 1–10 at 10,000 ticks: births 3–91, peak population 26–55, nine of
 ten extinct (earliest ~2,450 ticks), one seed surviving with a population of 10
 and lineages eight generations deep.
+
+The Phase 0B pilot runs sharpen this picture rather than contradicting it. On
+the 15 pilot seeds at 10,000 ticks, the default configuration produces a
+*bimodal* outcome: most replicates go extinct, and most of the survivors climb
+past the §14.29 runaway cap of 200. Applying the §16.35 viable-completion
+measure to the persisted results, no tested configuration — default or swept —
+reaches the [BASELINE] 70% gate. Numbers and their sources are in
+`docs/Phase 0B Pilot Report.md`.
 
 **This is reported, not hidden, and must not be tuned away here.** The energy
 economy is uncalibrated by design: `foodEnergyValue`, `regenAttemptsPerTick`,
@@ -378,12 +476,12 @@ separation.
 
 | Phase   | Scope                                                          |
 |---------|----------------------------------------------------------------|
-| **0A**  | **this repository** — headless deterministic biological simulation core |
-| 0B      | calibration and validation experiments; the 2×2 mutation factorial, paired seeds, functional probes |
+| **0A**  | headless deterministic biological simulation core — complete and frozen |
+| **0B**  | **in progress** — calibration and validation experiments; the 2×2 mutation factorial, paired seeds, functional probes |
 | 0C      | persistence, snapshots, recovery, the canonical continuous world |
 | 0D      | the Observatory UI — realtime stream, rendering, creature inspection |
 
-Phase 0A is complete. **Do not start Phase 0B inside `simulation-core`.**
+Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 
 Specifically, none of the following belongs in this package: React, PixiJS or
 any rendering; WebSocket or any transport; PostgreSQL or any database; cloud
@@ -392,6 +490,41 @@ detection or emergence analytics; recurrent networks, lifetime learning or
 plasticity; signaling, predation, health/damage models; sexual reproduction or
 crossover; procedural morphology rendering; social sensing.
 
-The Phase 0B harness will be a *consumer* of `simulation-core`, in its own
-package. Networking, persistence and visualization are consumers too — never
+The Phase 0B harness is a *consumer* of `simulation-core`, in its own package.
+Networking, persistence and visualization are consumers too — never
 dependencies of the core.
+
+---
+
+## Functional neural probes
+
+`packages/experiment-harness/src/probes` implements the standardized offline
+probe evaluation required by Spec v4 §11.37–§11.41 and §14.31.
+
+`probe-set-v1` is a fixed, versioned list of 250 synthetic §11.58 sensory input
+vectors, produced by deterministic enumeration — no RNG of any kind. Feeding a
+`NeuralGenome` through it yields raw controller outputs, which can be reduced
+to a six-dimension `BehaviorFingerprint` or compared between two genomes with a
+`functionalDistance`.
+
+```ts
+import { fingerprintOfGenome, evaluateProbeSet, functionalDistance } from '@alo/experiment-harness';
+
+const fingerprint = fingerprintOfGenome(organism.genome.neural);
+const distance = functionalDistance(evaluateProbeSet(a), evaluateProbeSet(b));
+```
+
+The framework is observational by construction: it consumes no CanonicalRNG,
+writes nothing to any genome, organism or world, and works on a deeply frozen
+genome. A test steps a world 300 ticks while probing every organism every tick
+and asserts the canonical state hash is identical to the unprobed run.
+
+**A fingerprint is a descriptor, not a score.** It is not fitness, not
+intelligence, and its six dimensions are never combined into a ranking. A
+larger functional distance means two controllers respond differently to the
+same fixed inputs — nothing more. Fingerprints are analytical derivatives and
+are never inherited or selected on (§6.11, §11.41, both [LOCKED]).
+
+If any probe input changes, `probeSetId` must change: fingerprints computed
+under different probe sets are not comparable. A pinned content-hash test
+enforces this.

@@ -1,0 +1,10 @@
+{
+  "description": "Phase 0B pilot seed set — used for initial calibration and parameter exploration. Generated deterministically: seed_i = 100000 + i*7919 (7919 is prime). These seeds may be used freely during calibration.",
+  "generationMethod": "100000 + i * 7919, i = 0..14",
+  "count": 15,
+  "seeds": [
+    100000, 107919, 115838, 123757, 131676,
+    139595, 147514, 155433, 163352, 171271,
+    179190, 187109, 195028, 202947, 210866
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "description": "Phase 0B validation seed set — held out from calibration. Must remain untouched until a candidate configuration is frozen. Generated deterministically: seed_i = 500000 + i*6271 (6271 is prime). Disjoint from pilot seeds by construction.",
+  "generationMethod": "500000 + i * 6271, i = 0..24",
+  "count": 25,
+  "seeds": [
+    500000, 506271, 512542, 518813, 525084,
+    531355, 537626, 543897, 550168, 556439,
+    562710, 568981, 575252, 581523, 587794,
+    594065, 600336, 606607, 612878, 619149,
+    625420, 631691, 637962, 644233, 650504
+  ]
+}

@@ -201,40 +201,51 @@ export interface SimulationConfig {
 export function validateConfig(config: SimulationConfig): void {
   const problems: string[] = [];
 
-  if (config.energy.reproductionCost <= config.energy.birthEnergy) {
+  if (!Number.isFinite(config.energy.reproductionEnergyThreshold) || config.energy.reproductionEnergyThreshold < 0) {
+    problems.push(
+      `energy.reproductionEnergyThreshold (${config.energy.reproductionEnergyThreshold}) must be a non-negative finite number.`
+    );
+  }
+  if (
+    !Number.isFinite(config.energy.reproductionCost) ||
+    !Number.isFinite(config.energy.birthEnergy) ||
+    config.energy.reproductionCost <= config.energy.birthEnergy
+  ) {
     problems.push(
       `energy.reproductionCost (${config.energy.reproductionCost}) must be strictly greater than ` +
         `energy.birthEnergy (${config.energy.birthEnergy}) — reproduction must not create net ecosystem energy (§12.41).`
     );
   }
-  if (config.lifecycle.maxAge <= config.lifecycle.maturityAge) {
+  if (
+    !Number.isFinite(config.lifecycle.maxAge) ||
+    !Number.isFinite(config.lifecycle.maturityAge) ||
+    config.lifecycle.maxAge <= config.lifecycle.maturityAge
+  ) {
     problems.push(
       `lifecycle.maxAge (${config.lifecycle.maxAge}) must exceed lifecycle.maturityAge (${config.lifecycle.maturityAge}), ` +
         'or no organism can ever reach reproductive age.'
     );
   }
-  if (config.food.worldFoodCapacity < config.food.initialFoodCount) {
+  if (
+    !Number.isFinite(config.food.worldFoodCapacity) ||
+    !Number.isFinite(config.food.initialFoodCount) ||
+    config.food.worldFoodCapacity < config.food.initialFoodCount
+  ) {
     problems.push(
       `food.worldFoodCapacity (${config.food.worldFoodCapacity}) must be >= food.initialFoodCount (${config.food.initialFoodCount}).`
     );
   }
-  if (config.mutation.morphologyMutationRate < 0 || config.mutation.morphologyMutationRate > 1) {
+  if (!Number.isFinite(config.mutation.morphologyMutationRate) || config.mutation.morphologyMutationRate < 0 || config.mutation.morphologyMutationRate > 1) {
     problems.push('mutation.morphologyMutationRate must be in [0, 1].');
   }
-  if (config.mutation.neuralMutationRate < 0 || config.mutation.neuralMutationRate > 1) {
+  if (!Number.isFinite(config.mutation.neuralMutationRate) || config.mutation.neuralMutationRate < 0 || config.mutation.neuralMutationRate > 1) {
     problems.push('mutation.neuralMutationRate must be in [0, 1].');
   }
-  if (config.fertility.minFertility < 0 || config.fertility.minFertility > 1) {
+  if (!Number.isFinite(config.fertility.minFertility) || config.fertility.minFertility < 0 || config.fertility.minFertility > 1) {
     problems.push('fertility.minFertility must be in [0, 1].');
   }
-  if (config.fertility.gridResolution < 1) {
+  if (!Number.isFinite(config.fertility.gridResolution) || config.fertility.gridResolution < 1) {
     problems.push('fertility.gridResolution must be >= 1.');
-  }
-  if (config.energy.reproductionEnergyThreshold > config.energy.energyCapacity) {
-    problems.push(
-      `energy.reproductionEnergyThreshold (${config.energy.reproductionEnergyThreshold}) exceeds ` +
-        `energy.energyCapacity (${config.energy.energyCapacity}) — reproduction would be unreachable.`
-    );
   }
 
   if (problems.length > 0) {

@@ -1,0 +1,22 @@
+{
+  "name": "@alo/experiment-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "experiment": "tsc -p tsconfig.json && node dist/cli/main.js"
+  },
+  "dependencies": {
+    "@alo/simulation-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
