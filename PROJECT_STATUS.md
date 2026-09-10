@@ -18,9 +18,13 @@ multi-founder initialization (`0A.1.0` → `0A.2.0`). See
 **Phase 0B:** harness, probes, diagnostics and analysis COMPLETE.
 **The single-founder parameter-sweep calibration cycle is CLOSED and
 UNSUCCESSFUL.** No baseline was frozen, no candidate qualified, validation seeds
-untouched. The model-level question it identified has now been answered by the
-Phase 0A amendment above; a NEW calibration cycle belongs to the amended model
-and has not begun.
+untouched. The model-level question it identified was answered by the Phase 0A
+amendment above.
+**Multi-founder default baseline (`0A.2.0`): RUN — outcome C, NO MEANINGFUL
+IMPROVEMENT.** 1 of 15 viable (6.7%), identical to the single-founder default;
+extinction 9 → 5, runaway 5 → 9. The single-founder bottleneck is not sufficient
+to explain the calibration failure. Nothing frozen; no calibration cycle for
+`0A.2.0` has begun.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -32,11 +36,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the Phase 0A multi-founder amendment. `git log -1` is
+Most recent work is the multi-founder default baseline. `git log -1` is
 authoritative; recent history:
 
 ```text
-(HEAD)  Phase 0A amendment: multi-founder initialization — see `git log -1`
+(HEAD)  multifounder-default-baseline: results — outcome C — see `git log -1`
+d9dfb92 multifounder-default-baseline: minimal CLI support for the precommitted run
+fb1c1b1 multifounder-default-baseline PRECOMMITMENT: protocol, readout, decision rule
+da79527 Phase 0A amendment: multi-founder initialization (0A.1.0 -> 0A.2.0)
 dd9ab38 calibration-v3: no candidate — Phase 0B calibration cycle declared unsuccessful
 fc05ad1 calibration-v3: implement the precommitted sweep
 42e63e7 calibration-v3 PRECOMMITMENT: axes, design, selection rule, terminal rule
@@ -59,8 +66,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests:  78 / 78  passed
-workspace total:          257 / 257 passed
+experiment-harness tests:  83 / 83  passed   (+5: multifounderBaseline.test.ts)
+workspace total:          262 / 262 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -68,7 +75,9 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-The amended hash was reproduced in three independent processes.
+Both hashes re-confirmed after the baseline run: the amended hash via
+`npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
+built core, and both as live tests in the suite.
 
 Commands:
 
@@ -262,7 +271,9 @@ recorded here (§14.27, §16.28).**
 ## Persisted Phase 0B results
 
 Location: `packages/experiment-harness/results/` (gitignored; local artifacts).
-Provenance on every replicate: `simulationVersion 0A.1.0`,
+The one `0A.2.0` result, `results/multifounder-default-baseline/`, is described
+in its own section above and is never pooled with anything below.
+Provenance on every replicate below: `simulationVersion 0A.1.0`,
 `experimentHarnessVersion 0B.1.0`, `gitCommit a568d016...`, pilot seed set.
 
 **When console or chat output disagrees with these files, the files win.**
@@ -464,7 +475,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment and result scoping |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (precommitment, results, determination C) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -473,7 +484,7 @@ implemented as specified. **The model was not modified.**
 
 ## Known gaps and uncertainties
 
-1. **Ecology is not calibrated.** Every tested configuration is bimodal between
+1. **Ecology is not calibrated.** Every tested configuration, in both models, is bimodal between
    early extinction and runaway growth. This is the open Phase 0B problem.
 2. **Original result folders predate cap enforcement.** In those, runaway
    counts are recovered post hoc from sampled timeseries and are therefore lower
@@ -486,7 +497,10 @@ implemented as specified. **The model was not modified.**
 4. **In-world probe sampling (§11.42–§11.43, §14.32) is not implemented.** The
    offline probe framework is complete; periodic sampling of living organisms
    with its own seeded sub-stream is not.
-5. **No probe or fingerprint data has been collected** from any experiment.
+5. **No in-world probe or fingerprint data has been collected** from any
+   experiment. The only probe data collected is the offline founder functional
+   distance of the `0A.2.0` baseline's initial worlds (§14.8), which is
+   observational and describes tick 0 only.
 6. ~~Runs are 10,000 ticks, not the §14.28 [BASELINE] 20,000.~~ **RESOLVED for
    calibration-v2**, which ran at 20,000. The earlier experiments remain at
    10,000; see gap 10.
@@ -513,6 +527,10 @@ implemented as specified. **The model was not modified.**
    not yet runaway and crossed the cap by tick ~12,000 at the gated 20,000-tick
    horizon. Read §4.2 of the pilot report as viability *at 10,000 ticks*. The
    §5 verdict is unaffected.
+11. **The relation between the runaway cap and the ecology is unmeasured.**
+   Standing food was near capacity whenever a population hit the 200 cap, in
+   both models. Whether the default ecology becomes food-limited below or above
+   200 is not known (pilot report §14.10).
 
 ## Scientific caution
 
@@ -561,7 +579,42 @@ modifying the model.
 
 ---
 
-## Multi-founder default baseline — PRECOMMITMENT (recorded before any run)
+## Multi-founder default baseline (`0A.2.0`) — RESULT: outcome C
+
+Precommitted in `fb1c1b1` (summary below, full text pilot report §14); CLI
+support in `d9dfb92`; run from that clean commit. Every replicate and the
+manifest record `gitCommit d9dfb92…`, `gitDirty false`,
+`sourceIdentity 99dac89d1820e080`, `simulationVersion 0A.2.0`. 15 pilot seeds,
+20,000 ticks, runaway cap 200 enforced, all defaults unchanged.
+
+Results: `packages/experiment-harness/results/multifounder-default-baseline/`
+(gitignored local artifacts, including `founder-diversity.json`).
+
+| Model | Extinct | Runaway | Viable | Ext rate | Runaway rate | **Viable rate** | Mean final pop | Median final pop | Total / mean births | Max gen |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0A.1.0` single-founder default (calibration-v3 cell 0, read from disk) | 9 | 5 | 1 | 60.0% | 33.3% | **6.7%** | 69.3 | 0 | 4687 / 312.5 | 19 |
+| `0A.2.0` multi-founder default | 5 | 9 | 1 | 33.3% | 60.0% | **6.7%** | 131.4 | 200 (= cap) | 5727 / 381.8 | 20 |
+
+Paired by seed: 8 unchanged (4 extinct→extinct, 4 runaway→runaway);
+extinct→viable 1 (210866); extinct→runaway 4; runaway→viable 0;
+runaway→extinct 1; viable→other 1 (139595, viable→runaway).
+
+Founder functional diversity (observational only): per-world mean pairwise
+distance 0.304–0.401, min pair 0.224, max 0.539; ranges overlap across outcome
+classes. Not fitness, not a selector, not a decision input.
+
+**Determination (per the precommitted rule): C — NO MEANINGFUL IMPROVEMENT.**
+The amendment moved worlds between the two degeneracies — mostly extinction →
+runaway — without opening a viable middle. No candidate frozen, no sweep, no
+model change, `founderGroupCount` not varied, validation seeds untouched.
+
+Observed in persisted timeseries (not analysed further): in every runaway world
+of both models, standing food was at or near capacity (49–60 of 60) when the
+population hit the cap. Single smallest next scientific question (pilot report
+§14.10): **is the 200-organism runaway cap below the population level at which
+the default ecology becomes food-limited?**
+
+## Multi-founder default baseline — PRECOMMITMENT (historical record — EXECUTED)
 
 Recorded and committed **before** the CLI support for this run was added and
 before the run was executed. Full text: `docs/Phase 0B Pilot Report.md` §14.
@@ -596,12 +649,12 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Execute the precommitted multi-founder default baseline (§14 of the pilot
-report, summary above) exactly as recorded: add only the minimal CLI support,
-commit it, run the 15 pilot seeds from the clean committed tree, compare paired
-against the historical default cell, and apply the fixed decision rule.**
+**Precommit — record and commit, before anything is run — the design of ONE
+diagnostic that answers pilot report §14.10 for the amended default
+configuration: whether, and at what population, the default `0A.2.0` ecology
+becomes food-limited, relative to the 200-organism runaway cap.**
 
-Constraints that still hold: do not touch
-`packages/experiment-harness/seeds/validation.json`; do not define a new
-calibration sweep; do not vary `founderGroupCount`; do not weaken the ~70%
-viability gate; do not begin Phase 0C.
+Design only. Do not run it in the same step. Do not change the cap, the ~70%
+gate, the outcome classification, any default parameter or the model; do not
+vary `founderGroupCount`; do not start a calibration sweep; do not touch
+`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.

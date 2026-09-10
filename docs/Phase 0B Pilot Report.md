@@ -1150,7 +1150,10 @@ condition, it does not make an organism better at anything.
 | Outcome is driven by the founder draw more than by the tested ecology | Yes, at pilot level | 11 of 15 seeds give an identical outcome across all 10 configurations run at the gated horizon (§11.8) |
 | Neural mutation is beneficial | **No** | bimodal distributions; largest mean has lowest viable rate |
 | Morphology mutation is harmful | **No** | differences are inside the within-condition spread |
-| The population adapted / intelligence increased | **No** | no confirmatory design has been run; no probe data collected |
+| The population adapted / intelligence increased | **No** | no confirmatory design has been run; no in-world probe data collected |
+| Multi-founder initialization (`0A.2.0`) produces a viable default regime | **No** | §14: 1 of 15 viable (6.7%), unchanged from `0A.1.0`; extinction 9 → 5, runaway 5 → 9 |
+| The single-founder bottleneck explains the calibration failure | **No** | §14.9: removing it moved worlds between the two degeneracies, not into viability |
+| Multi-founder worlds start with functionally distinct founders | Yes, observational | §14.8: per-world mean pairwise founder distance 0.304–0.401, min pair 0.224 |
 
 ---
 
@@ -1256,4 +1259,123 @@ criterion, and it plays no part in the decision rule above.
 
 ### 14.7 Results
 
-*(empty at precommitment)*
+Run from a clean committed worktree: commit `d9dfb92`, `gitDirty false`,
+`sourceIdentity 99dac89d1820e080`, `simulationVersion 0A.2.0` — identical on all
+15 replicates and in the manifest. 20,000-tick horizon, runaway cap 200
+enforced, the 15 pilot seeds. Results in
+`results/multifounder-default-baseline/`. Every number below was read from the
+persisted `replicates.json` / `condition-summary.csv` of both arms.
+
+| Model | Extinct | Runaway | Viable | Extinction rate | Runaway rate | **Viable rate** | Mean final pop | Median final pop | Total births | Mean births | Max gen |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0A.1.0` single-founder default (calibration-v3 cell 0) | 9 | 5 | 1 | 60.0% | 33.3% | **6.7%** | 69.3 | 0 | 4687 | 312.5 | 19 |
+| `0A.2.0` multi-founder default (this run) | 5 | 9 | 1 | 33.3% | 60.0% | **6.7%** | 131.4 | 200 | 5727 | 381.8 | 20 |
+
+The median final population of 200 in the amended arm is the runaway cap: 9 of
+15 runs were terminated on reaching it. It is not a sustained population.
+
+#### Paired by seed
+
+| Seed | `0A.1.0` | `0A.2.0` |
+|---:|---|---|
+| 100000 | extinct @1062 | extinct @3000 |
+| 107919 | extinct @2931 | runaway @9793 |
+| 115838 | runaway @7022 | runaway @3389 |
+| 123757 | extinct @5694 | runaway @3094 |
+| 131676 | runaway @11648 | extinct @14505 |
+| 139595 | **viable** (end 40, peak 109) | runaway @3037 |
+| 147514 | extinct @3000 | extinct @9092 |
+| 155433 | runaway @12283 | runaway @3597 |
+| 163352 | extinct @3000 | runaway @3782 |
+| 171271 | runaway @3422 | runaway @6444 |
+| 179190 | extinct @3901 | runaway @3587 |
+| 187109 | extinct @1334 | extinct @18374 |
+| 195028 | extinct @4174 | extinct @9235 |
+| 202947 | runaway @15247 | runaway @18876 |
+| 210866 | extinct @3218 | **viable** (end 170, peak 196) |
+
+| Transition | Seeds |
+|---|---:|
+| unchanged | **8** (4 extinct → extinct, 4 runaway → runaway) |
+| extinct → viable | 1 |
+| extinct → runaway | 4 |
+| runaway → viable | 0 |
+| runaway → extinct | 1 |
+| viable → other | 1 (viable → runaway) |
+
+7 of 15 seeds changed class, but the net movement was **extinction → runaway**
+(4 seeds, against 1 in the reverse direction). The viable count is unchanged at
+1 of 15, and the one viable world changed identity: seed 139595 lost it, seed
+210866 gained it. The new viable world ended at 170 with a peak of 196 — four
+organisms short of the cap — so it resembles calibration-v1's "not yet runaway"
+cases (§10.5) more than a clearly bounded population. 14 of 15 worlds remain
+degenerate; the regime is still bimodal.
+
+Descriptive, not a selector: extinction under `0A.2.0` comes later (median
+extinction tick 9235 vs 3000) and after more reproduction — the five extinct
+amended worlds produced 10–119 births, where every extinct single-founder world
+produced at most 36.
+
+Also observed in the persisted timeseries, not analysed further: in **every**
+runaway world of **both** models the standing food count was at or near
+`worldFoodCapacity` (49–60 of 60) at the sample where the population reached the
+cap. Populations reaching 200 were not depleting the standing food supply.
+
+### 14.8 Founder functional diversity (observational)
+
+`results/multifounder-default-baseline/founder-diversity.json`. For each world,
+the 10 pairwise distances between its 5 founders (`probe-set-v1`,
+`mean-absolute-output-difference-v1`):
+
+- per-world mean distance: 0.304 – 0.401 (mean of means 0.351)
+- smallest pair in any world: 0.224; largest: 0.539
+- every world's founders are functionally distinct (min > 0), and every bootstrap
+  organism is functionally nearest to its own group's founder (tested)
+- per-world mean distance ranges overlap across outcome classes (extinct
+  0.306–0.401, runaway 0.304–0.380, viable 0.366)
+
+This confirms the amendment put standing functional variation into every initial
+world. It is not fitness, not a selector, and was not a decision input. Nothing
+here says diversity caused or prevented any outcome.
+
+### 14.9 Determination: C — NO MEANINGFUL IMPROVEMENT
+
+Viable completions: **1 of 15 (6.7%)** — identical to the single-founder
+default, far below the 0.70 gate (A) and below the precommitted ≥ 4 of 15
+threshold for B. Per §14.5 this is **outcome C**.
+
+Removing the single-founder bootstrap bottleneck **changed which degenerate
+outcome a world reaches** — extinction fell from 9 to 5 and runaway rose from
+5 to 9 — but did not open a viable middle. Per §14.5, conversion of extinction
+into runaway is not movement in the intended direction. The single-founder
+bottleneck is therefore **not sufficient to explain the calibration failure**.
+
+No sweep is started, `founderGroupCount` is not varied, the model is not changed,
+the gate is not weakened, and no candidate is frozen. Validation seeds untouched.
+
+Not claimed: that intelligence improved, that adaptation increased, that
+multi-founder initialization is "better" in an evolutionary sense, or that
+founder diversity conferred any advantage. This experiment measures an
+initialization change and its ecological outcome only, on 15 pilot seeds.
+
+### 14.10 The single smallest next scientific question
+
+**Is the §14.29 runaway cap (200 = 8 x the initial population) below the
+population level at which the default ecology becomes food-limited — i.e. are
+"runaway" worlds genuinely unbounded, or are they populations still growing
+toward a resource-set equilibrium that the cap truncates?**
+
+Why this one. Across three single-founder sweeps and now the model amendment,
+every change that helped populations survive (more food, more founder
+variation) converted extinction into runaway rather than into viability. And in
+every runaway world, in both models, standing food was still at or near
+capacity when the population hit 200 — the population was not yet consuming the
+food supply down. If the food-limited equilibrium of the default ecology lies
+above 200, then under the current classification a world can only be "viable"
+if it neither dies out nor reaches its own resource limit within 20,000 ticks,
+and the ~70% gate would be measuring something other than a bounded, sustained
+ecology.
+
+This is a question about the relation between the outcome instrument and the
+ecology. It is not a finding, it does not justify changing the cap or the gate,
+and it does not modify the model.
