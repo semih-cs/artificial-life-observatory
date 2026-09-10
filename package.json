@@ -1,0 +1,14 @@
+{
+  "name": "artificial-life-observatory",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Artificial Life Observatory — Phase 0A headless deterministic simulation core.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=packages/simulation-core",
+    "build": "npm run build --workspace=packages/simulation-core",
+    "simulate": "npm run simulate --workspace=packages/simulation-core --"
+  }
+}

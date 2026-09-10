@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# vitest writes a transient config artifact next to vitest.config.ts
+*.timestamp-*.mjs

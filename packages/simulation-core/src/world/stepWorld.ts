@@ -1,0 +1,210 @@
+import { WorldState, FoodItem } from './types.js';
+import { SimulationConfig } from '../config/types.js';
+import { RngStream, RngStreams } from '../rng/rngStream.js';
+import { Xoshiro128State } from '../rng/xoshiro128starstar.js';
+import { SenseContext } from '../perception/sense.js';
+import { decideAction } from '../actions/decide.js';
+import { ActionIntent } from '../actions/types.js';
+import { resolveMovement, movementEnergyCost } from '../biology/movement.js';
+import { basalEnergyCost, applyEnergyDelta, evaluateDeath } from '../biology/energy.js';
+import { resolveFeeding } from './foodCompetition.js';
+import { isReproductionEligible, applyParentReproductionCost } from '../biology/reproduction.js';
+import { createOffspring } from './offspring.js';
+import { regenerateFood } from './foodRegen.js';
+import { computeTickTelemetry, TickTelemetry } from '../telemetry/types.js';
+import { OrganismRuntimeState, cloneRuntimeState } from '../organism/types.js';
+
+export interface StepResult {
+  world: WorldState;
+  telemetry: TickTelemetry;
+}
+
+function rngStreamFromState(state: Xoshiro128State, purpose: 'bootstrap' | 'canonical'): RngStream {
+  // The seed argument is irrelevant: setState immediately replaces the
+  // generator's internal words with the caller-supplied snapshot.
+  const stream = new RngStream(1, purpose);
+  stream.setState(state);
+  return stream;
+}
+
+function makeRngStreamsFromState(state: WorldState): RngStreams {
+  return {
+    bootstrap: rngStreamFromState(state.rng.bootstrap, 'bootstrap'),
+    canonical: rngStreamFromState(state.rng.canonical, 'canonical'),
+  };
+}
+
+/**
+ * Normative Phase 0A tick function (§20.72, [LOCKED] phase order).
+ *
+ * The twenty specified phases, in order, with the code laid out so the phase
+ * boundaries are visible rather than hidden inside per-organism methods:
+ *
+ *    1 Snapshot                       11 Parent reproduction cost
+ *    2 Sense                          12-15 Child creation / mutation / placement
+ *    3 Decide -> ActionIntent         16 Death resolution (energy + age together)
+ *    4 Movement resolution            17 Births/removals become active
+ *    5 Movement energy expenditure    18 Food regeneration
+ *    6-7 Feeding & food competition   19 Telemetry (read-only)
+ *    8 Energy gain                    20 Advance tick
+ *    9 Reproduction eligibility
+ *   10 Reproduction intent resolution
+ *
+ * Consequences that are specified, not incidental:
+ *   - there is exactly ONE death check per tick (phase 16), after every
+ *     energy-affecting phase, so same-tick feeding can rescue an organism that
+ *     movement cost would otherwise have killed;
+ *   - reproduction eligibility (phase 9) reads post-feeding energy, so a
+ *     rescued organism may also reproduce in that same tick;
+ *   - newborns exist in world state from phase 17 but do not sense, decide or
+ *     act until the next tick — they were not part of S_t;
+ *   - no phase uses container iteration position as conflict priority. All
+ *     ordering is by explicit organism or food ID.
+ */
+export function stepWorld(state: WorldState, config: SimulationConfig): StepResult {
+  const streams = makeRngStreamsFromState(state);
+  const canonical = streams.canonical;
+
+  // ---- Phase 1: Snapshot -------------------------------------------------
+  // S_t is the state as received. Sensing reads only this: food positions, the
+  // world config, and each organism's own pre-resolution state. Phase 0A has
+  // no organism-to-organism sensing (§11.58), so no organism can observe
+  // another's in-progress movement.
+  const senseCtx: SenseContext = {
+    world: state.worldConfig,
+    food: state.food,
+    energyCapacity: config.energy.energyCapacity,
+  };
+
+  // Resolution writes to fresh objects: the caller's WorldState — the S_t this
+  // tick reads from — is never modified, so an earlier world remains a valid,
+  // replayable state after stepping forward from it.
+  const workingOrganisms = state.organisms.map(cloneRuntimeState);
+  const living = workingOrganisms.filter((o) => o.alive);
+
+  // ---- Phases 2-3: Sense, Decide, buffer ActionIntent --------------------
+  // Pure. No world/organism state is mutated here and no RNG is consumed.
+  const intents = new Map<number, ActionIntent>();
+  for (const o of living) {
+    intents.set(o.id, decideAction(o, senseCtx, config.neural, config.neural.hiddenLayerSize));
+  }
+
+  // ---- Phases 4-5: Movement resolution, then movement energy expenditure --
+  // Movement cost uses the ACTUAL resolved displacement returned by
+  // resolveMovement, not the requested speed, so a wall-blocked request is not
+  // charged for distance never covered. Basal metabolism is a separate term.
+  // Age advances here as part of the per-tick physiological update; phase 16
+  // reads the advanced value.
+  for (const o of living) {
+    const intent = intents.get(o.id);
+    if (!intent) continue;
+    const actualVelocity = resolveMovement(o, intent, state.worldConfig);
+    const moveCost = movementEnergyCost(actualVelocity, o.genome.morphology.size, config.energy.movementEnergyCoefficient);
+    const basalCost = basalEnergyCost(o.genome.morphology.metabolism, config.energy.baseMetabolicConstant);
+    applyEnergyDelta(o, -(moveCost + basalCost), config.energy.energyCapacity);
+    o.age += 1;
+  }
+
+  // ---- Phases 6-7: Feeding & food competition ---------------------------
+  // Deterministic and RNG-free: nearest eligible eater wins each food item,
+  // exact-distance ties broken by ascending organism ID, food processed in
+  // ascending food ID order, at most one food item per organism per tick.
+  const feeding = resolveFeeding(living, intents, state.food, config.food.feedingRange);
+  const remainingFood: FoodItem[] = state.food.filter((f) => !feeding.consumedFoodIds.has(f.id));
+
+  // ---- Phase 8: Energy gain ---------------------------------------------
+  // This is what makes feeding rescue possible: an organism taken below zero
+  // by phase 5 is credited here, before death is ever evaluated.
+  for (const o of living) {
+    if (feeding.consumptions.has(o.id)) {
+      applyEnergyDelta(o, config.energy.foodEnergyValue, config.energy.energyCapacity);
+    }
+  }
+
+  // ---- Phase 9: Reproduction eligibility --------------------------------
+  // Evaluated AFTER energy gain (so same-tick feeding can enable reproduction)
+  // and requires maturity: alive AND age >= maturityAge AND energy >= threshold
+  // AND reproduceRequested.
+  const eligibleParents = living
+    .filter((o) => {
+      const intent = intents.get(o.id);
+      if (!intent) return false;
+      return isReproductionEligible(o, intent.reproduceRequested, config.energy, config.lifecycle);
+    })
+    .sort((a, b) => a.id - b.id);
+
+  // ---- Phases 10-15: Reproduction resolution, cost, child construction ---
+  // Strictly ascending parent-ID order, each parent's full child draw sequence
+  // completing before the next parent begins, so canonical RNG consumption is
+  // a pure function of organism IDs and never of array position.
+  const children: OrganismRuntimeState[] = [];
+  let nextOrganismId = state.nextOrganismId;
+  const birthTick = state.tick + 1;
+  for (const parent of eligibleParents) {
+    const child = createOffspring(parent, nextOrganismId, birthTick, canonical, config, state.worldConfig);
+    nextOrganismId += 1;
+    children.push(child);
+    applyParentReproductionCost(parent, config.energy); // phase 11
+  }
+
+  // ---- Phase 16: Death resolution (energy + age, one combined pass) ------
+  let deaths = 0;
+  for (const o of living) {
+    const cause = evaluateDeath(o, config.lifecycle);
+    if (cause !== null) {
+      o.alive = false;
+      o.deathCause = cause;
+      o.deathTick = state.tick;
+      // Energy is not left meaningfully negative after death resolution (§12.29).
+      if (o.energy < 0) o.energy = 0;
+      deaths += 1;
+    }
+  }
+
+  // ---- Phase 17: Births/removals become active --------------------------
+  // Children join world state now but were not part of S_t, so they did not
+  // sense, decide or act this tick. Dead organisms leave the active set.
+  const survivors = workingOrganisms.filter((o) => o.alive);
+  const allOrganisms = [...survivors, ...children].sort((a, b) => a.id - b.id);
+
+  // ---- Phase 18: Food regeneration --------------------------------------
+  // Canonical RNG serves this only after every reproduction-related draw for
+  // this tick has been consumed.
+  const regen = regenerateFood(
+    state.worldConfig,
+    state.fertility,
+    canonical,
+    config.food,
+    remainingFood,
+    state.nextFoodId
+  );
+  const allFood = [...remainingFood, ...regen.newFood].sort((a, b) => a.id - b.id);
+
+  // ---- Phase 19: Telemetry (read-only) ----------------------------------
+  const meanEnergy = allOrganisms.length > 0 ? allOrganisms.reduce((s, o) => s + o.energy, 0) / allOrganisms.length : 0;
+  const meanAge = allOrganisms.length > 0 ? allOrganisms.reduce((s, o) => s + o.age, 0) / allOrganisms.length : 0;
+  const telemetry = computeTickTelemetry(
+    state.tick + 1,
+    allOrganisms.length,
+    allFood.length,
+    children.length,
+    deaths,
+    meanEnergy,
+    meanAge
+  );
+
+  // ---- Phase 20: Advance tick -------------------------------------------
+  const newWorld: WorldState = {
+    tick: state.tick + 1,
+    simulationVersion: state.simulationVersion,
+    worldConfig: state.worldConfig,
+    fertility: state.fertility, // static: never regenerated, never mutated
+    organisms: allOrganisms,
+    food: allFood,
+    nextOrganismId,
+    nextFoodId: regen.nextFoodId,
+    rng: { bootstrap: streams.bootstrap.getState(), canonical: canonical.getState() },
+  };
+
+  return { world: newWorld, telemetry };
+}
