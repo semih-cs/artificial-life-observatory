@@ -11,7 +11,8 @@
  *   full-evolutionary       Diagnostic D — full evolutionary loop
  *   movement-policy         Diagnostic A2 — test-only fixed movement policies (§16.9)
  *   mutation-2x2            Primary 2×2 mutation factorial
- *   calibration-sweep       First calibration parameter sweep
+ *   calibration-sweep       calibration-v1: first (energy/resource) sweep
+ *   calibration-v2          calibration-v2: standing food density x reproductive window
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
  *
  * Options:
@@ -285,7 +286,7 @@ async function main(): Promise<void> {
 
   if (!experiment) {
     console.log('Usage: npm run experiment -- <experiment-name> [--seed-set pilot|validation] [--max-ticks N]');
-    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, movement-policy, mutation-2x2, calibration-sweep, calibration-report');
+    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, movement-policy, mutation-2x2, calibration-sweep, calibration-v2, calibration-report');
     process.exit(1);
   }
 
@@ -301,6 +302,7 @@ async function main(): Promise<void> {
 
   let spec: ExperimentSpec | null = null;
   let isSweep = false;
+  let sweepId = 'calibration-v1';
 
   switch (experiment) {
     case 'starvation':
@@ -324,26 +326,60 @@ async function main(): Promise<void> {
     case 'calibration-sweep':
       isSweep = true;
       break;
+    case 'calibration-v2':
+      isSweep = true;
+      sweepId = 'calibration-v2';
+      break;
     default:
       console.error(`Unknown experiment: ${experiment}`);
       process.exit(1);
   }
 
   if (isSweep) {
-    console.log(`\nRunning calibration sweep... (§14.29 runaway cap: ${runawayCapEnabled ? 'ENFORCED' : 'DISABLED (historical reproduction)'})`);
-    const sweepSpec: SweepSpec = {
-      sweepId: 'calibration-v1',
-      description: 'Stage 1 energy/resource coarse sweep',
-      parameters: [
-        { path: 'food.regenAttemptsPerTick', values: [2, 4, 6] },
-        { path: 'energy.foodEnergyValue', values: [25, 40] },
-        { path: 'energy.reproductionCost', values: [35, 45] },
-      ],
-      seeds: seeds.slice(0, 8), // Use subset for coarse sweep
-      maxTicks: maxTicks ?? 10000,
-      metricsSampleInterval: 200,
-      runawayCapEnabled,
-    };
+    console.log(`\nRunning ${sweepId}... (§14.29 runaway cap: ${runawayCapEnabled ? 'ENFORCED' : 'DISABLED (historical reproduction)'})`);
+
+    /**
+     * calibration-v2 (§14.22, §16.26). Axes, seeds, horizon and primary readout
+     * were precommitted in docs/Phase 0B Pilot Report.md §6.2 BEFORE this sweep
+     * was run, on the evidence that calibration-v1 never varied standing food
+     * density and that §7 measured the founder energy budget.
+     *
+     *   food.worldFoodCapacity : [60, 120, 240]  standing density / encounter rate
+     *   lifecycle.maturityAge  : [300, 500]      reproductive window
+     *
+     * Everything else stays at the Phase 0A defaults — in particular
+     * lifecycle.maxAge remains 3000 so cohort turnover happens at the same time
+     * in every cell, and every energy parameter stays at the value §7 verified.
+     *
+     * PRIMARY READOUT: viableCompletionRate per configuration. Mean final
+     * population is descriptive only and is NOT a selection criterion.
+     */
+    const sweepSpec: SweepSpec = sweepId === 'calibration-v2'
+      ? {
+          sweepId: 'calibration-v2',
+          description: 'Stage 2 sweep: standing food density x reproductive window',
+          parameters: [
+            { path: 'food.worldFoodCapacity', values: [60, 120, 240] },
+            { path: 'lifecycle.maturityAge', values: [300, 500] },
+          ],
+          seeds, // all 15 pilot seeds
+          maxTicks: maxTicks ?? 20000,
+          metricsSampleInterval: 200,
+          runawayCapEnabled,
+        }
+      : {
+          sweepId: 'calibration-v1',
+          description: 'Stage 1 energy/resource coarse sweep',
+          parameters: [
+            { path: 'food.regenAttemptsPerTick', values: [2, 4, 6] },
+            { path: 'energy.foodEnergyValue', values: [25, 40] },
+            { path: 'energy.reproductionCost', values: [35, 45] },
+          ],
+          seeds: seeds.slice(0, 8), // Use subset for coarse sweep
+          maxTicks: maxTicks ?? 10000,
+          metricsSampleInterval: 200,
+          runawayCapEnabled,
+        };
 
     if (sweepConfigs) {
       console.log(`Chunked execution: running only configuration indices ${sweepConfigs.join(', ')}`);
