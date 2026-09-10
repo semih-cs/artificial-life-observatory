@@ -31,7 +31,7 @@ Most recent work is the §16.9 movement-policy diagnostic. `git log -1` is
 authoritative; recent history:
 
 ```text
-<this commit>  Diagnostic A2 (§16.9): results, calibration-v2 recommendation, provenance finding
+1fa6de6 Diagnostic A2 (§16.9): results, calibration-v2 recommendation, provenance finding
 2c7c56c Diagnostic A2 (§16.9): test-only fixed movement policies — implementation and precommitment
 4b91794 docs: record the Phase 0B checkpoint commit hash in PROJECT_STATUS.md
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
