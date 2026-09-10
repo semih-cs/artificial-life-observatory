@@ -25,6 +25,8 @@ IMPROVEMENT.** 1 of 15 viable (6.7%), identical to the single-founder default;
 extinction 9 → 5, runaway 5 → 9. The single-founder bottleneck is not sufficient
 to explain the calibration failure. Nothing frozen; no calibration cycle for
 `0A.2.0` has begun.
+**Food-limitation diagnostic (`diagnostic-food-limitation-v1`): DESIGNED AND
+PRECOMMITTED, NOT IMPLEMENTED, NOT RUN.** Pilot report §15.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -36,11 +38,12 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the multi-founder default baseline. `git log -1` is
-authoritative; recent history:
+Most recent work is the food-limitation diagnostic precommitment (design only).
+`git log -1` is authoritative; recent history:
 
 ```text
-(HEAD)  multifounder-default-baseline: results — outcome C — see `git log -1`
+(HEAD)  diagnostic-food-limitation-v1 PRECOMMITMENT — see `git log -1`
+ae145aa multifounder-default-baseline: results — outcome C, no meaningful improvement
 d9dfb92 multifounder-default-baseline: minimal CLI support for the precommitted run
 fb1c1b1 multifounder-default-baseline PRECOMMITMENT: protocol, readout, decision rule
 da79527 Phase 0A amendment: multi-founder initialization (0A.1.0 -> 0A.2.0)
@@ -475,7 +478,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (precommitment, results, determination C) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic design (precommitted, not run) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -530,7 +533,8 @@ implemented as specified. **The model was not modified.**
 11. **The relation between the runaway cap and the ecology is unmeasured.**
    Standing food was near capacity whenever a population hit the 200 cap, in
    both models. Whether the default ecology becomes food-limited below or above
-   200 is not known (pilot report §14.10).
+   200 is not known (pilot report §14.10). A diagnostic to answer it is
+   precommitted in pilot report §15 and has not been run.
 
 ## Scientific caution
 
@@ -578,6 +582,42 @@ new axes, and the single smallest model-level question is identified without
 modifying the model.
 
 ---
+
+## `diagnostic-food-limitation-v1` — PRECOMMITMENT (design only, not run)
+
+Full design: `docs/Phase 0B Pilot Report.md` §15. Committed before any code for
+it exists and before anything runs. Observational; not calibration; produces no
+`viableCompletionRate` evidence.
+
+Question: at what population, if any, does the default `0A.2.0` ecology begin to
+experience meaningful food scarcity, and is the 200 runaway cap stopping runs
+before that pressure can appear?
+
+| Item | Precommitted value |
+|---|---|
+| Model / params | `0A.2.0`, `founderGroupCount 5`, `DEFAULT_SIMULATION_CONFIG` unchanged |
+| Seeds | decision: **139595, 123757, 107919**; reference only: **210866** (pilot only) |
+| Horizon | 20,000 ticks |
+| Early stops | extinction; **safety ceiling 1000** (`SAFETY_CEILING`) — execution safety limit only; the 200 cap is NOT an early stop here, and its value, `classifyRunOutcome` and the definition of runaway are unchanged |
+| Milestones | 200, 250, 300, 400, 600, 800, 1000 |
+| Per-tick record | population, food count, food-capacity fraction, food consumed, food regenerated, births, deaths, mean energy |
+| Scarcity | trailing 200-tick mean food stock ≤ 30 (half of `worldFoodCapacity` 60); onset = first such tick |
+| Integrity gate | hash at baseline stop tick equals baseline `finalStateHash` for the three decision seeds; 210866 final hash equals baseline |
+| Output | `packages/experiment-harness/results/diagnostic-food-limitation-v1/` |
+
+Per decision seed: **C** = scarcity onset before the population first reaches
+250; **A** = no scarcity before 250, onset later; **B** = no onset before the run
+ends. Outcome = the class held by ≥ 2 of 3 decision seeds — A (cap too low),
+B (food never binding before the safety limit), C (food already scarce near
+200) — else INCONCLUSIVE. None of the outcomes changes the cap, the food
+parameters or the model in the task that reads it.
+
+Ceiling justification: food supply is hard-bounded at 2 items/tick = 50
+energy/tick, which at the founder-measured drain 0.0607 feeds ≈ 824 organisms;
+1000 is the first round value above that. The expected uncapped supply
+(area-mean fertility 0.47–0.57 → ≈ 1 item/tick) balances ≈ 390–470 organisms.
+
+Validation seeds untouched.
 
 ## Multi-founder default baseline (`0A.2.0`) — RESULT: outcome C
 
@@ -649,12 +689,17 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — record and commit, before anything is run — the design of ONE
-diagnostic that answers pilot report §14.10 for the amended default
-configuration: whether, and at what population, the default `0A.2.0` ecology
-becomes food-limited, relative to the 200-organism runaway cap.**
+**Implement and run `diagnostic-food-limitation-v1` exactly as precommitted in
+pilot report §15 — seeds, horizon, safety ceiling, milestones, scarcity
+criterion, window, integrity gate and interpretation rule unchanged.**
 
-Design only. Do not run it in the same step. Do not change the cap, the ~70%
-gate, the outcome classification, any default parameter or the model; do not
-vary `founderGroupCount`; do not start a calibration sweep; do not touch
-`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
+Implementation stays in `experiment-harness` and is observational: a runner
+option for the safety ceiling with its own `SAFETY_CEILING` termination reason,
+a per-tick food-flux recorder, the milestone/scarcity analysis, a CLI command,
+and tests (including that flux recording leaves the canonical hash unchanged).
+Commit the implementation, then run from the clean commit.
+
+Constraints that still hold: no simulation-core change; do not change the 200
+cap value, `classifyRunOutcome`, food parameters or `founderGroupCount`; no
+calibration sweep; do not touch `packages/experiment-harness/seeds/validation.json`;
+do not begin Phase 0C.

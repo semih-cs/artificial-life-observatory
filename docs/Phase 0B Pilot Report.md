@@ -6,7 +6,8 @@ validation seeds are untouched.**
 > **Model scope.** Sections 1–11 describe the historical **single-founder**
 > model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
 > multi-founder initialization (`0A.2.0`). §14 is the first `0A.2.0` result:
-> the multi-founder default baseline. Results from the two models are separate
+> the multi-founder default baseline. §15 is the precommitted design of the
+> `0A.2.0` food-limitation diagnostic. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -1379,3 +1380,215 @@ ecology.
 This is a question about the relation between the outcome instrument and the
 ecology. It is not a finding, it does not justify changing the cap or the gate,
 and it does not modify the model.
+
+---
+
+## 15. `diagnostic-food-limitation-v1` — does the 200 cap mask food limitation? (PRECOMMITMENT)
+
+**Design only. Written and committed before any code for this diagnostic exists
+and before anything is run. §15.10 is empty at this point.**
+
+This is an observational diagnostic of the unchanged `0A.2.0` default ecology.
+It is not a calibration sweep, it tunes nothing, it produces no
+`viableCompletionRate` evidence, and none of its runs may be added to any
+calibration table.
+
+### 15.1 Question
+
+At what population, if any, does the default `0A.2.0` ecology begin to
+experience meaningful food scarcity, and is the §14.29 runaway cap of 200
+stopping runs before that pressure can appear?
+
+### 15.2 What the model and the saved baseline already say
+
+Food mechanics (read from `foodRegen.ts`, `stepWorld.ts`, defaults):
+
+- food leaves the world only by consumption, at most one item per organism per
+  tick; it enters only through `regenAttemptsPerTick = 2` attempts per tick,
+  each accepted with probability `fertility(x, y)` and skipped outright when the
+  stock is at `worldFoodCapacity = 60`;
+- so supply is hard-bounded at **2 items/tick = 50 energy/tick**, and below
+  capacity its expectation is `2 x F̄`, where `F̄` is the area-mean of the
+  world's static fertility field;
+- `F̄` for the pilot worlds, computed exactly from each seed's bootstrap lattice
+  (no ticks run): 0.468–0.572, i.e. **uncapped supply ≈ 1 item/tick ≈ 25
+  energy/tick**;
+- at the founder-measured drain of 0.0607/tick (§7), 25 energy/tick balances
+  roughly **390–470 organisms**, and even the hard 50 energy/tick bound balances
+  only **≈ 824**. Reproduction (20 energy lost per birth) and age death lower
+  these figures further. They are order-of-magnitude anchors, not predictions:
+  evolved controllers need not drain what the founders drained.
+
+Saved `0A.2.0` baseline timeseries (`results/multifounder-default-baseline/`,
+200-tick samples): in every world the sampled food stock **never fell below 50**
+(the tick-0 initial count) at any sample, and at the sample where each runaway
+world reached 200 it stood at 50–60 of 60. By the model arithmetic above, 200
+organisms are about half the population the uncapped supply can sustain at
+founder drain. So the cap may well be stopping runs below the food-limited
+scale. That is what this diagnostic tests.
+
+### 15.3 Design (fixed)
+
+| Item | Value |
+|---|---|
+| Diagnostic id / version | `diagnostic-food-limitation-v1` |
+| Model | `simulationVersion 0A.2.0`, `founderGroupCount = 5`, `initialPopulationSize = 25` |
+| Parameters | `DEFAULT_SIMULATION_CONFIG`, **no override of any kind** |
+| Seeds | 4 pilot seeds (§15.4); validation seeds **not used** |
+| Horizon | **20,000 ticks** — the gated horizon of the baseline |
+| Early stops | extinction; the diagnostic safety ceiling (§15.5); nothing else |
+| §14.29 runaway cap | **not an early-stop condition in this diagnostic** (`runawayCapEnabled = false`); the cap value, `classifyRunOutcome` and the definition of runaway are unchanged |
+| Standard metrics | existing `computeTimeseriesRow` every 200 ticks (baseline cadence) |
+| Per-tick flux | §15.7 |
+| Output | `packages/experiment-harness/results/diagnostic-food-limitation-v1/` |
+| Provenance | clean committed worktree; every replicate records `gitCommit`, `gitDirty = false`, `sourceIdentity`, `simulationVersion` |
+
+**Trajectory identity.** Disabling the cap stops nothing earlier and consumes no
+RNG, so each run is bit-identical to its baseline replicate up to the tick where
+the baseline stopped. This is checked, not assumed (§15.8).
+
+### 15.4 Seeds — chosen only from observed baseline timing
+
+| Seed | Role | Baseline `0A.2.0` observation | Why |
+|---:|---|---|---|
+| 139595 | decision | runaway, reached 200 at tick 3037 (earliest) | longest post-200 window: 16,963 ticks |
+| 123757 | decision | runaway, reached 200 at tick 3094 (2nd earliest) | second-longest post-200 window: 16,906 ticks |
+| 107919 | decision | runaway, reached 200 at tick 9793 | the **latest** cap-reaching seed that still leaves ≥ 10,000 ticks (≥ 3 `maxAge` lifespans) after 200: 10,207 ticks |
+| 210866 | reference only | the one viable run: peak 196, never capped | never reaches 200 in the baseline, so its diagnostic run must equal the baseline exactly (an integrity check); shows food flux in a population of 100–196 sustained for ~11,600 ticks |
+
+Excluded: 202947 reached 200 at tick 18,876 — only 1,124 ticks remain, too
+short to observe anything past the cap. The remaining runaway seeds (115838,
+155433, 163352, 171271, 179190) are not needed for a first answer. Only the
+three decision seeds enter the A/B/C rule.
+
+### 15.5 Diagnostic safety ceiling — EXECUTION SAFETY LIMIT, not biology
+
+**Population 1000.** A run stops when `populationCount ≥ 1000`, recorded with
+its own termination reason `SAFETY_CEILING`.
+
+Justification: 1000 is the first round value above the **hard supply bound**
+≈ 824 — the population whose founder-measured drain (0.0607) exceeds 50
+energy/tick, the most the food system can deliver if every regeneration attempt
+succeeds. Beyond it no population at founder drain can be fed even in principle,
+so a world that reaches 1000 with a still-full food stock has already answered
+the question (outcome B). It sits about 2.4x above the expected supply balance
+(≈ 400), so a food-limited plateau anywhere near that scale is observable before
+the ceiling. It is 5x the runaway cap and costs little: baseline throughput near
+200 organisms was ~2,200–2,800 ticks/s and per-tick cost is roughly linear in
+population, so a worst-case 20,000-tick run near 1000 takes on the order of a
+minute. The basal-only theoretical bound (50 / 0.01 = 5000, every organism
+stationary at minimum metabolism) is not used: it contradicts every measured
+controller and would buy nothing but runtime.
+
+The ceiling is not a biological threshold, not a carrying capacity, and does not
+redefine runaway. A run stopped by it is labelled as such and interpreted only
+through §15.8.
+
+### 15.6 Milestones
+
+First tick at which `populationCount ≥ M`, for M in:
+
+**200, 250, 300, 400, 600, 800, 1000**
+
+200 is the cap; 250 and 300 are the near-cap band; 400 is the expected supply
+balance at founder drain (≈ 390–412 for the decision seeds); 600 lies between
+the expected and hard bounds; 800 is the hard supply bound (≈ 824); 1000 is the
+ceiling. A milestone never reached is recorded as `null`.
+
+At each milestone tick T record: T, population, food count, food-capacity
+fraction, and over the trailing window T−199..T: mean food stock, total food
+consumed, total food regenerated, births, deaths, mean of `meanEnergy`,
+per-capita intake (consumed / (mean population x 200)), and whether the
+scarcity criterion holds at T.
+
+### 15.7 Measurements
+
+Per tick, per replicate (`flux-<seed>.csv`), all read from the pre- and post-tick
+`WorldState` and the existing `TickTelemetry` — no simulation-core change, no RNG:
+
+- `population`, `foodCount`, `foodCapacityFraction = foodCount / 60`
+- `foodConsumed` = food ids present before the tick and absent after it (food
+  leaves only by consumption)
+- `foodRegenerated` = `nextFoodId` after − `nextFoodId` before
+- `births`, `deaths`, `meanEnergy` (existing telemetry)
+- asserted every tick: `foodCount_after = foodCount_before − foodConsumed + foodRegenerated`
+
+Per replicate, constant: the world's area-mean fertility `F̄` and hence the
+expected uncapped supply `2 x F̄` items/tick. Descriptive only: supply
+utilisation = consumed per tick / `2 x F̄`.
+
+Plus the existing 200-tick standard timeseries and replicate summary.
+
+### 15.8 Food-scarcity criterion (precommitted)
+
+**Meaningful food scarcity holds at tick T (T ≥ 200) when the mean post-tick
+food stock over the trailing 200 ticks, T−199..T, is ≤ 30 — half of
+`worldFoodCapacity`.** Scarcity **onset** is the first such tick; its onset
+population is the population at that tick.
+
+Why the stock, and why half. Regeneration is throttled only by the capacity
+check. While the stock sits near 60, regeneration is being blocked and
+consumption is below what the field can supply: food is not limiting. A stock
+held at or below half capacity for 200 ticks means the capacity check has not
+been what limits regeneration for that whole window, so consumption has been
+running at the full rate the fertility field can deliver: the supply side, not
+foraging, is binding. Half capacity sits far below anything observed without
+population pressure — Diagnostic B ended at 60 of 60 in every replicate, and no
+baseline sample after tick 0 fell below 50.
+
+Why 200 ticks. From empty, refilling to 60 takes at least 30 ticks at the hard
+supply bound and about 60 at `2 x F̄`, so a window of 200 cannot be pulled to
+≤ 30 by a transient dip. It is well under `maturityAge` (500), so it resolves
+the demographic timescale, and equals the baseline sampling cadence.
+
+Why not "consumption > regeneration". Over any window, `stock_end = stock_start
+− consumed + regenerated` exactly, so consumption exceeding regeneration only
+says the stock is falling — a transient. A depleted steady state has
+consumption ≈ regeneration. The flux balance is recorded (§15.7) and
+described; the stock level is the criterion. Population decline is not part of
+the criterion.
+
+### 15.9 Interpretation (fixed before any run)
+
+**Integrity gate, checked first.** For 139595, 123757 and 107919 the canonical
+state hash at the baseline's termination tick (3037, 3094, 9793) must equal that
+baseline replicate's `finalStateHash` (`7bc732eb4dfa8c7b`, `4c4456bc83b5e842`,
+`da0a52515e7c9bc6`); for 210866 the final hash at tick 20,000 must equal
+`16b073462ec8b5c4`. Any mismatch makes the diagnostic **INVALID**: nothing is
+interpreted and the cause is investigated.
+
+Per decision seed, with `t250` the first tick the population reaches 250:
+
+- **seed C** — scarcity onset occurs before `t250` (or the population never
+  reaches 250 and onset occurs at all);
+- **seed A** — no scarcity before `t250`, and onset occurs later, before the run
+  ends;
+- **seed B** — no scarcity onset at any tick up to the end of the run, whether it
+  ends at the horizon, the safety ceiling or extinction.
+
+Outcome — the class held by **at least 2 of the 3** decision seeds (reported as
+3/3 or 2/3):
+
+- **A — CAP IS TOO LOW.** Food is abundant at 200 and meaningful scarcity appears
+  only at higher population. The 200-organism cap is likely truncating the
+  ecological trajectory before resource limitation becomes visible. The cap is
+  **not** changed in that task.
+- **B — FOOD NEVER BECOMES BINDING BEFORE THE SAFETY LIMIT.** Population rises
+  past 200 while food stays near capacity or is rapidly replenished. The default
+  ecology lacks sufficient resource pressure in this regime; the problem is not
+  merely an early cap. The ecology is **not** modified in that task.
+- **C — FOOD IS ALREADY SCARCE NEAR 200.** The cap is not masking the onset of
+  food pressure. The cap is **not** changed in that task.
+- **INCONCLUSIVE** — the three decision seeds fall in three different classes.
+  No conclusion is drawn and no follow-up diagnostic is added on the basis of
+  it.
+
+The reference seed 210866 is reported descriptively and never enters the rule.
+No threshold, window, milestone, ceiling, horizon or seed may change after
+results are seen. Reaching the ceiling is not "runaway" and not a biological
+result; these runs are not calibration evidence and no `viableCompletionRate` is
+reported from them. Nothing here is evidence about adaptation or intelligence.
+
+### 15.10 Results
+
+*(empty at precommitment)*
