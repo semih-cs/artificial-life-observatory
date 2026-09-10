@@ -18,7 +18,7 @@ known limitation, it is listed under *Known Phase 0A limitations*.
 | Gate | Result |
 |------|--------|
 | Build (`npm run build`, `tsc` strict) | **PASS** |
-| Tests (`npm test`, vitest) | **PASS — 159 passed / 0 failed, 13 files** |
+| Tests (`npm test`, vitest) | **PASS — 168 passed / 0 failed, 13 files** |
 | Deterministic same-seed replay | **PASS** — identical canonical hash across independent processes |
 | Headless N-tick execution | **PASS** — 10,000 ticks in ~230 ms |
 | Phase 0A definition of done (Spec §14.6, §15.8) | **MET** |
@@ -82,7 +82,8 @@ implemented and covered by tests.
 
 **4.1 Independent mutation controls.** `morphologyMutationEnabled` and
 `neuralMutationEnabled` are two separate configuration flags. A disabled channel
-produces exact stored-value inheritance *and consumes zero RNG draws*. Per-gene
+produces exact stored-value inheritance while consuming the same RNG draws it
+would consume if enabled — see §4.15 below. Per-gene
 (`morphologyMutationRate`, baseline 0.10) and per-parameter
 (`neuralMutationRate`, baseline 0.05) probability gates were added; previously
 every gene and every weight mutated unconditionally. Magnitudes and
@@ -188,6 +189,25 @@ phase now clones runtime state, so resolution writes only to fresh objects and
 an earlier world remains valid. This is what makes the restored-state
 continuation test meaningful.
 
+**4.15 Mutation RNG isolation (§15.7).** The previous implementation had a
+disabled mutation channel consume zero RNG draws, which violated §15.7:
+toggling one channel shifted the other channel's draw positions on the shared
+CanonicalRNG stream. This is corrected: a disabled channel now executes its
+full draw schedule (consuming the same RNG draws it would consume if enabled),
+then discards the mutated values and returns an exact parent clone. This makes
+RNG consumption invariant to the mutation enable flags, satisfying §15.7
+within §18.70's two-stream architecture — no additional persistent RNG streams
+were added. Nine new tests prove: (1) toggling morphology ON/OFF does not
+change neural child values, (2) toggling neural ON/OFF does not change
+morphology child values, (3) all four flag combinations produce identical
+offspring placement, heading and final CanonicalRNG state, (4) disabled
+channels return exact parent values, and (5) enabled channels still produce
+mutated values.
+
+The golden 10,000-tick hash (`6a6576bd49e86b27`) is unchanged because the
+default configuration has both channels ON — the early-return path that was
+removed was never reached during the golden run.
+
 ---
 
 ## 5. Baseline values in force
@@ -240,7 +260,7 @@ sanity calculation and inside §12.11's 500–700 tick target.
 
 ## 6. Tests executed
 
-`npm test` → **13 files, 159 tests, all passing**, ~2 s wall clock.
+`npm test` → **13 files, 168 tests, all passing**, ~2 s wall clock.
 
 | File | Tests |
 |------|-------|
@@ -249,7 +269,7 @@ sanity calculation and inside §12.11's 500–700 tick target.
 | `perception.test.ts` | 13 |
 | `founder.test.ts` | 18 |
 | `bootstrap.test.ts` | 5 |
-| `mutation.test.ts` | 15 |
+| `mutation.test.ts` | 24 |
 | `movement.test.ts` | 11 |
 | `death.test.ts` | 9 |
 | `reproduction.test.ts` | 17 |
@@ -334,16 +354,10 @@ only — candidates are still accepted first-pass-wins and are never compared,
 ranked or scored — so the no-cherry-picking guarantee is intact. Whether the
 probe fixtures or `initSigma` should be revisited is a Phase 0B question.
 
-**8.3 Mutation channels share one RNG stream.** §18.70 [LOCKED]s Phase 0A to
-exactly two streams (Bootstrap, Canonical), while §15.7 asks that toggling one
-mutation channel not perturb the other's sequence. With a single canonical
-stream these cannot both hold: disabling the morphology channel shifts the
-neural channel's draw positions. The implementation follows §18.70's explicit
-two-stream lock. §18.18 leaves finer sub-streams deferred-not-rejected, and the
-purpose constants for future streams are already reserved, so this is a
-one-line-of-config change when Phase 0B needs true per-channel isolation. Until
-then the 2×2 factorial should treat paired seeds as pairing the *world*, not the
-mutation draw sequence.
+**8.3 (Resolved.)** Mutation RNG isolation (§15.7) is now satisfied within
+§18.70's two-stream architecture — see §4.15. A disabled channel consumes its
+full draw schedule so that toggling one channel does not perturb the other's
+draw positions. No additional persistent RNG streams were added.
 
 **8.4 Perception is O(organisms × food) per tick.** No spatial index. At the
 Phase 0A scale (tens of organisms, tens of food items) a 10,000-tick run takes
@@ -389,6 +403,7 @@ finding for Phase 0B.
 | maturity | ✅ |
 | reproduction | ✅ cost/birth-energy accounting enforced |
 | mutation toggles work independently | ✅ all four combinations tested |
+| mutation RNG isolation (§15.7) | ✅ toggling one channel does not perturb the other's draw sequence |
 | lineage | ✅ id, parentId, generationDepth, lineageRootId, birthTick |
 | starvation and max-age death | ✅ single combined pass |
 | newborn-next-tick rule | ✅ |
@@ -397,7 +412,7 @@ finding for Phase 0B.
 | food capacity | ✅ |
 | headless N-tick execution | ✅ `runTicks` / `runSimulation` / CLI |
 | canonical state hashing | ✅ |
-| same-seed replay produces identical hashes | ✅ `6a6576bd49e86b27` twice |
+| same-seed replay produces identical hashes | ✅ `6a6576bd49e86b27` twice (unchanged after §4.15 fix) |
 | README exists | ✅ |
 | implementation report reflects final code | ✅ this document |
 

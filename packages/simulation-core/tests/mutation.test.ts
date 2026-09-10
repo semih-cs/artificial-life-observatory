@@ -3,6 +3,8 @@ import { mutateGenome, mutateMorphology, mutateNeural } from '../src/biology/mut
 import { RngStream } from '../src/rng/rngStream.js';
 import { constantGenome, testConfig, TEST_HIDDEN_SIZE } from './helpers.js';
 import { SimulationConfig } from '../src/config/types.js';
+import { createOffspring } from '../src/world/offspring.js';
+import { makeOrganism, makeWorld } from './helpers.js';
 
 function channels(morph: boolean, neural: boolean): SimulationConfig {
   return testConfig((c) => {
@@ -49,12 +51,14 @@ describe('independent mutation channels (§13.6, §13.7, §15.7)', () => {
     expect(neuralEqual(c.neural, parent.neural)).toBe(true);
   });
 
-  it('morphology OFF / neural OFF consumes zero RNG draws', () => {
+  it('morphology OFF / neural OFF still consumes RNG draws (§15.7 isolation)', () => {
     const config = channels(false, false);
     const rng = new RngStream(7, 'canonical');
     const before = rng.getState();
     mutateGenome(parent, rng, config.mutation, config.bootstrap.geneBounds, config.neural.neuralParamBounds);
-    expect(rng.getState()).toEqual(before);
+    // The state MUST have advanced — disabled channels consume their full draw
+    // schedule to preserve RNG isolation across channels.
+    expect(rng.getState()).not.toEqual(before);
   });
 
   it('morphology ON / neural OFF -> only morphology changes', () => {
@@ -87,6 +91,86 @@ describe('independent mutation channels (§13.6, §13.7, §15.7)', () => {
         expect(c.mutation.neuralMutationEnabled).toBe(n);
       }
     }
+  });
+});
+
+describe('mutation RNG isolation (§15.7)', () => {
+  // Helper: create offspring with a given mutation flag combination and return
+  // both the child and the final RNG state.
+  function offspringWithState(morphOn: boolean, neuralOn: boolean, seed = 42) {
+    const config = channels(morphOn, neuralOn);
+    const parentOrg = makeOrganism({ id: 1, genome: parent, x: 100, y: 100, heading: 0, energy: 100, age: 50 });
+    const rng = new RngStream(seed, 'canonical');
+    const offspring = createOffspring(parentOrg, 2, 1, rng, config, { width: 200, height: 200 });
+    return { offspring, state: rng.getState() };
+  }
+
+  it('morphology OFF vs ON with neural ON: neural child genome is identical', () => {
+    const a = offspringWithState(false, true);
+    const b = offspringWithState(true, true);
+    // Neural genome must be identical because morphology draws are consumed
+    // regardless of the morphology enable flag.
+    expect(neuralEqual(a.offspring.genome.neural, b.offspring.genome.neural)).toBe(true);
+    // Morphology may differ (one is mutated, the other is the parent clone).
+  });
+
+  it('neural OFF vs ON with morphology ON: morphology child genome is identical', () => {
+    const a = offspringWithState(true, false);
+    const b = offspringWithState(true, true);
+    // Morphology genome must be identical because neural draws happen after
+    // morphology and don't affect morphology values.
+    expect(morphEqual(a.offspring.genome.morphology, b.offspring.genome.morphology)).toBe(true);
+    // Neural genome may differ.
+  });
+
+  it('all four mutation-toggle combinations produce identical offspring placement', () => {
+    const combos: [boolean, boolean][] = [[false, false], [false, true], [true, false], [true, true]];
+    const results = combos.map(([m, n]) => offspringWithState(m, n));
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]!.offspring.x).toBe(results[0]!.offspring.x);
+      expect(results[i]!.offspring.y).toBe(results[0]!.offspring.y);
+    }
+  });
+
+  it('all four mutation-toggle combinations produce identical offspring heading', () => {
+    const combos: [boolean, boolean][] = [[false, false], [false, true], [true, false], [true, true]];
+    const results = combos.map(([m, n]) => offspringWithState(m, n));
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]!.offspring.heading).toBe(results[0]!.offspring.heading);
+    }
+  });
+
+  it('all four mutation-toggle combinations produce identical final CanonicalRNG state', () => {
+    const combos: [boolean, boolean][] = [[false, false], [false, true], [true, false], [true, true]];
+    const results = combos.map(([m, n]) => offspringWithState(m, n));
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]!.state).toEqual(results[0]!.state);
+    }
+  });
+
+  it('disabled morphology channel gives exact parent morphology values', () => {
+    const result = offspringWithState(false, true);
+    expect(morphEqual(result.offspring.genome.morphology, parent.morphology)).toBe(true);
+  });
+
+  it('disabled neural channel gives exact parent neural values', () => {
+    const result = offspringWithState(true, false);
+    expect(neuralEqual(result.offspring.genome.neural, parent.neural)).toBe(true);
+  });
+
+  it('morphology OFF vs ON with neural ON: morphology may differ', () => {
+    const a = offspringWithState(false, true);
+    const b = offspringWithState(true, true);
+    // When morphology is ON with rate 1.0, it should differ from parent.
+    expect(morphEqual(a.offspring.genome.morphology, parent.morphology)).toBe(true);
+    expect(morphEqual(b.offspring.genome.morphology, parent.morphology)).toBe(false);
+  });
+
+  it('neural OFF vs ON with morphology ON: neural genome may differ', () => {
+    const a = offspringWithState(true, false);
+    const b = offspringWithState(true, true);
+    expect(neuralEqual(a.offspring.genome.neural, parent.neural)).toBe(true);
+    expect(neuralEqual(b.offspring.genome.neural, parent.neural)).toBe(false);
   });
 });
 
@@ -244,3 +328,4 @@ describe('mutation channels leave the network structurally valid', () => {
     expect(c.neural.outputBiases.length).toBe(4);
   });
 });
+

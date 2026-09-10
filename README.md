@@ -300,8 +300,9 @@ from the specification:
 - **`[LOCKED]`** — a simulation/research semantic invariant. Not a knob. The
   tick order, the six-input schema, sense/decide/resolve separation, the
   `reproductionCost > birthEnergy` relationship, "mutation OFF means exact
-  inheritance", and the two-stream RNG structure are all locked. Changing one
-  changes what the simulation *means*, not just what it computes.
+  inheritance", the two-stream RNG structure, and per-channel RNG isolation
+  (§15.7) are all locked. Changing one changes what the simulation *means*,
+  not just what it computes.
 - **`[BASELINE]`** — a replaceable default. Real, implementable, and used today;
   swappable later. Gene bounds, `maturityAge`, `maxAge`, world size, the PRNG
   algorithm itself.
@@ -342,7 +343,7 @@ npm run test:watch --workspace=packages/simulation-core
 | `perception.test.ts`    | the §11.58 sensor contract and its edge cases — no food, nearest food, exact-distance tie, FOV boundary, vision-range boundary, angular wrapping, food behind, zero distance, wall contact, corners, phenotype-dependent normalization |
 | `founder.test.ts`       | non-finite rejection (never coerced to zero), out-of-bounds clamping, the five viability checks, the corrected steering diagnostic, attempt-budget exhaustion |
 | `bootstrap.test.ts`     | deterministic initialization, common-founder ancestry, placement separation     |
-| `mutation.test.ts`      | all four channel combinations, zero draws when disabled, per-parameter rates, bounds, parent immutability |
+| `mutation.test.ts`      | all four channel combinations, RNG isolation (§15.7) — toggling one channel preserves the other's draws, offspring placement, heading, and final RNG state — per-parameter rates, bounds, parent immutability |
 | `movement.test.ts`      | world bounds, `maxSpeed`, zero movement → zero cost, velocity-squared scaling, size scaling, wall-blocked actual-movement charging, basal separation |
 | `death.test.ts`         | starvation, `maxAge` boundaries at `maxAge - 1` and `maxAge`, combined evaluation, same-tick feeding rescue, feed-reproduce-die |
 | `reproduction.test.ts`  | maturity gating, cost/birth-energy accounting, the no-free-energy invariant, lineage across generations, newborn-next-tick |

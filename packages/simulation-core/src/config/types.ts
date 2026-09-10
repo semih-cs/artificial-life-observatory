@@ -150,8 +150,10 @@ export interface MutationConfig {
    * [LOCKED] independent channels (§13.6, §11.31, §15.7). These are two
    * separate flags, never one combined switch: the Phase 0B 2x2 factorial
    * (§14.15-§14.20) depends on all four combinations being reachable.
-   * OFF means exact stored-value inheritance and zero RNG draws for that
-   * channel (§13.7).
+   * OFF means exact stored-value inheritance (§13.7). A disabled channel
+   * still consumes the same RNG draws it would consume if enabled, so that
+   * toggling one channel does not perturb the other channel's draw
+   * positions on the shared CanonicalRNG stream (§15.7 RNG isolation).
    */
   morphologyMutationEnabled: boolean;
   neuralMutationEnabled: boolean;

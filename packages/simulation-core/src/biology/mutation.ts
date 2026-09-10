@@ -10,9 +10,18 @@ import { MutationConfig, MorphologyGeneBounds } from '../config/types.js';
  * separately, in the fixed parameter order the specification gives, on the
  * CanonicalRNG stream.
  *
- * Channel OFF (§13.7, [LOCKED]) means EXACT stored-value inheritance:
- * child[k] === parent[k] for every k, and — importantly — zero RNG draws for
- * that channel, so a disabled channel cannot perturb anything at all.
+ * RNG isolation (§15.7): toggling one mutation channel must NOT perturb the
+ * other channel's random sequence. This is achieved within §18.70's
+ * two-stream architecture by making every channel's RNG consumption
+ * INVARIANT to its enable flag: a disabled channel executes the identical
+ * draw schedule it would execute if enabled, then discards the mutated
+ * values and returns exact parent clones.
+ *
+ * Channel OFF (§13.7, [LOCKED]) therefore means:
+ *   - child[k] === parent[k] for every k (exact stored-value inheritance),
+ *   - the SAME RNG draws are consumed as if the channel were ON,
+ *   - downstream channels, offspring placement and heading see identical
+ *     CanonicalRNG positions regardless of the flag.
  *
  * The parent genome is never modified (§13.4). Mutation only ever produces a
  * new genome object for a child.
@@ -49,7 +58,10 @@ function maybeMutate(value: number, rng: RngStream, rate: number, sigma: number,
 
 /**
  * Morphology mutation channel. Genes are considered in MORPHOLOGY_GENE_ORDER.
- * When `enabled` is false this returns an exact clone and consumes no RNG.
+ *
+ * When `enabled` is false the full draw schedule is still executed (so that
+ * downstream RNG consumers see the same state regardless of the flag), but
+ * the mutated values are discarded and an exact parent clone is returned.
  */
 export function mutateMorphology(
   parent: MorphologyGenome,
@@ -57,25 +69,30 @@ export function mutateMorphology(
   mutationConfig: MutationConfig,
   bounds: MorphologyGeneBounds
 ): MorphologyGenome {
-  if (!mutationConfig.morphologyMutationEnabled) {
-    return cloneMorphology(parent);
-  }
   const rate = mutationConfig.morphologyMutationRate;
   const sigma = mutationConfig.morphologyMutationSigma;
-  // Field-by-field in fixed order; object literal evaluation order matches
-  // MORPHOLOGY_GENE_ORDER, and the intermediate consts make that explicit.
+  // Always execute the full draw schedule in fixed gene order, consuming
+  // the same RNG draws regardless of the enable flag (§15.7 isolation).
   const size = maybeMutate(parent.size, rng, rate, sigma.size, bounds.size);
   const maxSpeed = maybeMutate(parent.maxSpeed, rng, rate, sigma.maxSpeed, bounds.maxSpeed);
   const visionRange = maybeMutate(parent.visionRange, rng, rate, sigma.visionRange, bounds.visionRange);
   const visionAngle = maybeMutate(parent.visionAngle, rng, rate, sigma.visionAngle, bounds.visionAngle);
   const metabolism = maybeMutate(parent.metabolism, rng, rate, sigma.metabolism, bounds.metabolism);
+
+  if (!mutationConfig.morphologyMutationEnabled) {
+    // Draws consumed above; return exact parent values (§13.7).
+    return cloneMorphology(parent);
+  }
   return { size, maxSpeed, visionRange, visionAngle, metabolism };
 }
 
 /**
  * Neural mutation channel. Parameter blocks are considered in
  * NEURAL_PARAM_ORDER; within a block, ascending index order.
- * When `enabled` is false this returns an exact clone and consumes no RNG.
+ *
+ * When `enabled` is false the full draw schedule is still executed (so that
+ * downstream RNG consumers see the same state regardless of the flag), but
+ * the mutated values are discarded and an exact parent clone is returned.
  */
 export function mutateNeural(
   parent: NeuralGenome,
@@ -83,9 +100,6 @@ export function mutateNeural(
   mutationConfig: MutationConfig,
   neuralBounds: { min: number; max: number }
 ): NeuralGenome {
-  if (!mutationConfig.neuralMutationEnabled) {
-    return cloneNeural(parent);
-  }
   const rate = mutationConfig.neuralMutationRate;
   const sigma = mutationConfig.neuralMutationSigma;
   const perturb = (arr: readonly number[]): number[] => {
@@ -95,12 +109,20 @@ export function mutateNeural(
     }
     return out;
   };
-  return {
+  // Always execute the full draw schedule in fixed block/index order,
+  // consuming the same RNG draws regardless of the enable flag (§15.7).
+  const mutated = {
     inputHiddenWeights: perturb(parent.inputHiddenWeights),
     hiddenBiases: perturb(parent.hiddenBiases),
     hiddenOutputWeights: perturb(parent.hiddenOutputWeights),
     outputBiases: perturb(parent.outputBiases),
   };
+
+  if (!mutationConfig.neuralMutationEnabled) {
+    // Draws consumed above; return exact parent values (§13.7).
+    return cloneNeural(parent);
+  }
+  return mutated;
 }
 
 /**
