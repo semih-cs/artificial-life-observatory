@@ -13,9 +13,11 @@
 ## Current phase
 
 **Phase 0A:** COMPLETE / FROZEN
-**Phase 0B:** IN PROGRESS — harness, probes and analysis complete; **calibration
-is open**. No baseline configuration has been frozen and the validation seeds
-are untouched.
+**Phase 0B:** harness, probes, diagnostics and analysis COMPLETE.
+**The parameter-sweep calibration cycle is CLOSED and UNSUCCESSFUL.** No baseline
+configuration was frozen, no candidate qualified, and the validation seeds are
+untouched. Phase 0B cannot proceed to confirmatory validation without first
+reconsidering the model-level question in §11.8 of the pilot report.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -27,17 +29,18 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is calibration-v2. `git log -1` is authoritative; recent
-history:
+Most recent work is calibration-v3, the final sweep of the cycle. `git log -1`
+is authoritative; recent history:
 
 ```text
-(HEAD)  calibration-v2 checkpoint — see `git log -1`
+(HEAD)  calibration-v3 result — see `git log -1`
+fc05ad1 calibration-v3: implement the precommitted sweep
+42e63e7 calibration-v3 PRECOMMITMENT: axes, design, selection rule, terminal rule
+7521456 calibration-v2: no candidate — 49 extinct, 40 runaway, 1 viable in 90 replicates
 4e063db fix: sourceIdentity was hashing nothing and returning a constant
 01e6ebe calibration-v2: add the precommitted sweep definition
 7fd7135 provenance: record worktree dirty state and a deterministic source identity
-9a33b4c docs: stop recording a self-referencing commit hash in PROJECT_STATUS.md
 700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
-5271387 docs: record the Diagnostic A2 commit hash in PROJECT_STATUS.md
 1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
 a568d01 fix: mutation RNG isolation (§15.7) — disabled channels consume full draw schedule
@@ -54,8 +57,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   168 / 168 passed
-experiment-harness tests: 74 / 74  passed
-workspace total:         242 / 242 passed
+experiment-harness tests: 77 / 77  passed
+workspace total:         245 / 245 passed
 workspace build:         PASS (tsc -p tsconfig.json in both packages)
 Phase 0A golden hash:    seed 20260910, 10000 ticks -> 6a6576bd49e86b27  CONFIRMED
 ```
@@ -326,6 +329,33 @@ end at population 0; the rest end in the hundreds), and the condition with the
 largest mean final population has the **lowest** viable completion rate. Do not
 select a winner from these seeds.
 
+### Calibration sweep `calibration-v3` (4 configurations x 15 pilot seeds) — FINAL
+
+`results/calibration-v3/`. Clean worktree, commit `fc05ad1`,
+`sourceIdentity c74242c483aff170`, identical across all four configurations.
+60 replicates, 20,000 ticks, runaway cap ENABLED.
+
+```text
+energy.reproductionEnergyThreshold : [75, 90]
+lifecycle.maxAge                   : [3000, 6000]
+```
+
+| Threshold | maxAge | Extinct | Runaway | Viable | Extinction rate | Runaway rate | Viable rate | Mean final pop | Max gen | Mean births |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 75 | 3000 | 9 | 5 | 1 | 60.0% | 33.3% | 6.7% | 69.3 | 19 | 312.5 |
+| 75 | 6000 | 9 | 6 | 0 | 60.0% | 40.0% | 0.0% | 80.2 | 20 | 289.5 |
+| 90 | 3000 | 9 | 6 | 0 | 60.0% | 40.0% | 0.0% | 80.0 | 16 | 296.2 |
+| 90 | 6000 | 9 | 6 | 0 | 60.0% | 40.0% | 0.0% | 80.1 | 16 | 264.9 |
+
+**36 extinct, 23 runaway, 1 viable across 60 replicates. NO CANDIDATE —
+CALIBRATION CYCLE UNSUCCESSFUL.** Neither axis moved the primary readout;
+extinction rate is 60.0% in all four cells. The best cell is the Phase 0A
+default configuration itself.
+
+Integrity check: the default configuration appears in both v2 and v3 from
+different builds (`4e063db`, `fc05ad1`) and gives 15 of 15 replicates identical
+on every field including `finalStateHash`.
+
 ### Calibration sweep `calibration-v2` (6 configurations x 15 pilot seeds)
 
 `results/calibration-v2/`. Run from a clean worktree at commit `4e063db`,
@@ -379,31 +409,46 @@ reproCost=45`, 3 of 8). The §16.35 [BASELINE] gate is roughly 70%. Full table i
 
 ---
 
-## Calibration decision
+## Calibration decision — CYCLE CLOSED, UNSUCCESSFUL
 
-**NO candidate baseline selected after two sweeps. Nothing frozen. Validation
-seeds untouched.**
+**No candidate baseline was selected after three sweeps. Nothing frozen.
+Validation seeds untouched. The parameter-sweep calibration cycle is closed.**
 
-18 configurations have now been tested across `calibration-v1` (food
-regeneration rate, food energy value, reproduction cost) and `calibration-v2`
-(standing food density, maturity age). Every one lands in the same bimodal
-regime of early extinction or runaway growth. At the gated 20,000-tick horizon
-the best viable completion rate observed is 6.7% — one replicate in fifteen —
-against the §16.35 [BASELINE] gate of roughly 70%.
+22 configurations were tested:
 
-Reasons a candidate cannot be selected, in order of weight:
+| Sweep | Direction | Axes | Best viable rate |
+|---|---|---|---:|
+| v1 | energy and resource coefficients | `regenAttemptsPerTick`, `foodEnergyValue`, `reproductionCost` | 37.5% at 10,000 ticks (horizon-inflated, see gap 10) |
+| v2 | standing resource density, reproductive window | `worldFoodCapacity`, `maturityAge` | 6.7% |
+| v3 | reproduction gate, cohort turnover | `reproductionEnergyThreshold`, `maxAge` | 6.7% |
 
-1. **No configuration meets the viability gate.** §16.18 defines ecological
-   viability as sustained non-degenerate dynamics; every tested configuration
-   sits between two degeneracies rather than between them.
-2. **The precommitted criteria do not discriminate.** `DEFAULT_CALIBRATION_
-   CRITERIA` passes 11 of 12 in v1 and 6 of 6 in v2, including configurations
-   where 89 of 90 replicates are degenerate. It screens; it cannot select.
-3. **Selecting on population size would be wrong.** The
-   largest-mean-population configurations are the runaway-dominated ones.
-4. **The documented tie-break never engages**, because zero configurations pass
-   the gate. Inventing a rule now would be the post-hoc selection §14.27 and
-   §16.28 exclude.
+At the gated 20,000-tick horizon the best result any configuration has produced
+is **6.7%** — one viable replicate in fifteen — against the §16.35 [BASELINE]
+gate of roughly 70%. Increasing resources reduces extinction but converts it to
+runaway; tightening reproduction and altering lifecycle timings barely move the
+outcome mix. No axis tested opened a viable middle.
+
+Per the terminal rule precommitted in pilot report §11.4: no calibration-v4, no
+further sweep, no weakened gate, no new axes, no validation seeds.
+
+**Single smallest model-level question, to be considered before any future
+calibration cycle (pilot report §11.8):**
+
+> Should the founding population be 25 near-clones of one founder controller?
+
+Across the 10 configurations run at the gated horizon — spanning a 4x change in
+food density and every reproduction and lifecycle parameter tested — **11 of 15
+seeds produce an identical outcome in every configuration** (7 always extinct,
+4 always runaway). Under the default configuration, births split with no middle
+ground: every extinct world produced at most 36 births, every non-extinct world
+at least 270. A seed determines the founder neural genome, and §13.76 builds all
+25 organisms from one founder with `morphBootstrapSigma` ≈ 1% of gene range and
+`neuralBootstrapSigma` 0.05 — so the world starts with almost no standing
+behavioural variation and one controller draw decides its fate.
+
+This does **not** establish that founder diversity would produce a viable
+regime, and it is **not** a Phase 0A defect: §13.76 is a [LOCKED] procedure
+implemented as specified. **The model was not modified.**
 
 ## Documentation
 
@@ -475,10 +520,11 @@ intelligence increased, or that any tested configuration is ecologically viable.
 
 ---
 
-## calibration-v3 — FINAL sweep of this calibration cycle (PRECOMMITMENT)
+## calibration-v3 precommitment (historical record — EXECUTED)
 
-Recorded and committed **before** implementation or execution. Full text in
-`docs/Phase 0B Pilot Report.md` §11.
+Recorded and committed in `42e63e7`, **before** implementation or execution.
+Full text in `docs/Phase 0B Pilot Report.md` §11; results in §11.5 and the
+terminal determination in §11.6.
 
 ```text
 energy.reproductionEnergyThreshold : [75, 90]
@@ -508,9 +554,23 @@ modifying the model.
 
 ## NEXT EXACT STEP
 
-**Implement `calibration-v3` in the harness CLI, commit it, and run it from a
-clean worktree on pilot seeds only.**
+**Decide, as a human design decision, whether §13.76's single-founder bootstrap
+should remain the starting condition — before any further calibration work.**
 
-The precommitment above is fixed. Do not touch
-`packages/experiment-harness/seeds/validation.json`; do not change any energy
-coefficient; do not shorten the 20,000-tick horizon; do not begin Phase 0C.
+This is a model-level decision, not an implementation task, and it is
+deliberately the only thing on the list. The evidence supporting the question is
+in `docs/Phase 0B Pilot Report.md` §11.8; the decision itself is out of scope for
+an agent to make unilaterally, because changing §13.76 changes a [LOCKED]
+Phase 0A procedure and would require a deliberate, versioned Phase 0A amendment.
+
+Nothing else should start until that is settled. In particular:
+
+- do **not** run another parameter sweep — the cycle is closed;
+- do **not** weaken the ~70% viability gate;
+- do **not** touch `packages/experiment-harness/seeds/validation.json`;
+- do **not** begin Phase 0C.
+
+If the decision is to keep the single-founder bootstrap unchanged, the honest
+recorded state is that the current Phase 0A model has no validated
+non-degenerate baseline within the parameter space explored, and Phase 0B stops
+short of confirmatory validation.

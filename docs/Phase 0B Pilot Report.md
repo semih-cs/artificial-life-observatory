@@ -953,7 +953,131 @@ forced.
 
 ### 11.5 Results
 
-_Pending execution._
+Run from a clean worktree: commit `fc05ad1`, `gitDirty false`,
+`sourceIdentity c74242c483aff170`, identical across all four configurations.
+60 replicates, 20,000 ticks, runaway cap enabled. Results in
+`results/calibration-v3/`.
+
+| Threshold | maxAge | Extinct | Runaway | Viable | Extinction rate | Runaway rate | **Viable rate** | Mean final pop | Median final pop | Total births | Mean births | Max gen | Mean gen |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 75 | 3000 | 9 | 5 | 1 | 60.0% | 33.3% | **6.7%** | 69.3 | 0.0 | 4687 | 312.5 | 19 | 5.20 |
+| 75 | 6000 | 9 | 6 | 0 | 60.0% | 40.0% | **0.0%** | 80.2 | 0.0 | 4343 | 289.5 | 20 | 4.60 |
+| 90 | 3000 | 9 | 6 | 0 | 60.0% | 40.0% | **0.0%** | 80.0 | 0.0 | 4443 | 296.2 | 16 | 4.60 |
+| 90 | 6000 | 9 | 6 | 0 | 60.0% | 40.0% | **0.0%** | 80.1 | 0.0 | 3973 | 264.9 | 16 | 4.20 |
+
+Across all 60 replicates: **36 extinct, 23 runaway, 1 viable.**
+
+Neither axis moved the primary readout. Raising the reproduction gate from 75 to
+90 left the runaway count unchanged at 6 of 15 and produced no viable replicate;
+raising `maxAge` from 3000 to 6000 did the same. Extinction rate is **60.0% in
+all four configurations** — the axes did not move it at all.
+
+The single viable replicate is seed 139595 in the `75 / 3000` cell — which is
+the Phase 0A default configuration — ending at 20,000 ticks with a population of
+40 and a peak of 109. It is the same replicate that was the sole viable run in
+calibration-v2.
+
+**Integrity check.** The Phase 0A default configuration appears in both sweeps:
+v2's `capacity 60 / maturityAge 500` cell and v3's `threshold 75 / maxAge 3000`
+cell are the same configuration, run from different builds (`4e063db` and
+`fc05ad1`). All 15 replicates are identical across every field including
+`finalStateHash`. The harness reproduces across builds and the CLI refactor
+changed nothing.
+
+### 11.6 Terminal determination: OUTCOME B
+
+**No configuration reached the ~70% `viableCompletionRate` gate. The best result
+was 6.7% — one viable replicate in fifteen — in the cell that is the Phase 0A
+default, i.e. the configuration this sweep was meant to improve on.**
+
+Per the terminal rule fixed in §11.4, and per the precommitted selection rule in
+§11.3 — under which the tie-break never engages because no configuration
+qualifies — **this Phase 0B calibration cycle is declared unsuccessful.**
+
+No calibration-v4 is proposed. No further parameter sweep is launched. The
+viability gate is not weakened. No new tuning axes are added. No validation seed
+has been used.
+
+All four configurations pass `DEFAULT_CALIBRATION_CRITERIA`, which admits cells
+where 14 of 15 replicates are degenerate. That screen has now failed to
+discriminate in all three sweeps and should not be treated as a viability test.
+
+### 11.7 What the three sweeps established
+
+22 configurations across three sweeps, covering these parameter directions:
+
+| Sweep | Direction tested | Axes | Best viable rate |
+|---|---|---|---:|
+| v1 | energy and resource coefficients | `regenAttemptsPerTick`, `foodEnergyValue`, `reproductionCost` | 37.5% at 10,000 ticks — see §10.5 |
+| v2 | standing resource density and reproductive window | `worldFoodCapacity`, `maturityAge` | 6.7% |
+| v3 | the reproduction gate and cohort turnover | `reproductionEnergyThreshold`, `maxAge` | 6.7% |
+
+v1's 37.5% does not survive the gated horizon: §10.5 showed two of its three
+"viable" runs were merely *not yet runaway* and crossed the cap by tick ~12,000.
+At 20,000 ticks the best result any configuration has produced is 6.7%.
+
+Direction of effect, consistently across sweeps: increasing resources
+(regeneration rate, food energy, standing density) reduces extinction but
+converts the difference into **runaway**, not into sustained dynamics.
+Tightening reproduction (higher cost, higher gate) and altering lifecycle
+timings (maturity, maximum age) move the outcome mix hardly at all. No axis
+tested has opened a viable middle between the two degeneracies.
+
+Separately established and not in question: the energy model is implemented as
+specified, verified at four fixed speeds against closed-form predictions (§7);
+the substrate is deterministic and reproducible across builds (§9, §11.5); and
+both mutation channels operate under configuration control (§3).
+
+### 11.8 The single smallest model-level question
+
+**Should the founding population be 25 near-clones of one founder controller?**
+
+The evidence that raises it is in the persisted results and needed no new runs.
+Taking all 10 configurations that ran at the gated 20,000-tick horizon (v2's six
+and v3's four, the same 15 pilot seeds throughout — 150 replicates):
+
+| | Seeds |
+|---|---|
+| identical outcome in **all 10** configurations | **11 of 15** |
+| always extinct regardless of parameters | 7 |
+| always runaway regardless of parameters | 4 |
+| responded to parameters at all | 4 |
+
+Those 10 configurations span a 4x change in standing food density, maturity age
+300 vs 500, reproduction gate 75 vs 90, and maximum age 3000 vs 6000. Across all
+of that, two thirds of seeds never change outcome. And the four that do respond
+mostly flip between extinction and runaway — not into viability.
+
+What distinguishes a seed is its founder. Under the default configuration,
+births by seed split with no middle ground: every extinct world produced at most
+36 births, every non-extinct world at least 270. A seed's world either forages
+well enough to grow without limit, or barely reproduces at all.
+
+A seed determines the founder neural genome, and §13.76 builds the whole
+starting population from **one** founder: `morphBootstrapSigma` is about 1% of
+each gene range and `neuralBootstrapSigma` is 0.05, so all 25 organisms are
+near-copies of a single controller. The world therefore begins with almost no
+standing behavioural variation, and one controller draw decides its fate.
+
+That is the model-level question worth reconsidering before any future
+calibration cycle: whether a founding population with essentially no behavioural
+diversity is the right starting condition, given that ecological calibration
+cannot reach a regime the founder draw has already decided.
+
+Stated carefully, because this is a question and not a finding:
+
+- This does **not** establish that founder diversity would produce a viable
+  regime. It establishes that the tested ecological parameters do not, and that
+  the founder draw predicts the outcome better than any of them.
+- It is **not** a defect in Phase 0A. §13.76's common-founder bootstrap is a
+  [LOCKED] procedure implemented as specified, and the founder screening is
+  binary pass/fail with no ranking, exactly as required.
+- It says nothing about adaptation, intelligence or the value of mutation. This
+  is ecological model calibration, not an intelligence benchmark. A world that
+  grows without bound is not a world that learned anything.
+
+**The model is not modified in this task.**
+
 
 ---
 
@@ -969,7 +1093,8 @@ _Pending execution._
 | Organisms detect, reach and consume food | Yes | Diagnostic B: median survival 1066 → 3000 ticks with food active |
 | Inheritance and both mutation channels operate under configuration control | Yes | 2×2 executes; conditions differ only in the two flags; RNG isolation tested |
 | Treatment conditions can produce different replicated outcomes | Yes | 2×2 condition summaries differ |
-| Some tested configuration is ecologically viable | **No** | 18 configurations across two sweeps; best viable completion at the gated 20,000-tick horizon is 6.7% (1 of 15) against a ~70% gate |
+| Some tested configuration is ecologically viable | **No** | 22 configurations across three sweeps; best viable completion at the gated 20,000-tick horizon is 6.7% (1 of 15) against a ~70% gate. Calibration cycle declared unsuccessful (§11.6) |
+| Outcome is driven by the founder draw more than by the tested ecology | Yes, at pilot level | 11 of 15 seeds give an identical outcome across all 10 configurations run at the gated horizon (§11.8) |
 | Neural mutation is beneficial | **No** | bimodal distributions; largest mean has lowest viable rate |
 | Morphology mutation is harmful | **No** | differences are inside the within-condition spread |
 | The population adapted / intelligence increased | **No** | no confirmatory design has been run; no probe data collected |
