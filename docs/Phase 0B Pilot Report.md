@@ -5,8 +5,9 @@ validation seeds are untouched.**
 
 > **Model scope.** Sections 1–11 describe the historical **single-founder**
 > model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
-> multi-founder initialization (`0A.2.0`). Results from the two models are
-> separate evidence bases and must not be pooled — see §12.1.
+> multi-founder initialization (`0A.2.0`). §14 is the first `0A.2.0` result:
+> the multi-founder default baseline. Results from the two models are separate
+> evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
 `packages/experiment-harness/results/` — `condition-summary.csv`,
@@ -1150,3 +1151,109 @@ condition, it does not make an organism better at anything.
 | Neural mutation is beneficial | **No** | bimodal distributions; largest mean has lowest viable rate |
 | Morphology mutation is harmful | **No** | differences are inside the within-condition spread |
 | The population adapted / intelligence increased | **No** | no confirmatory design has been run; no probe data collected |
+
+---
+
+## 14. Multi-founder default baseline (`0A.2.0`) — PRECOMMITMENT
+
+**This section was written and committed before any code for this run was
+added and before the run was executed. §14.7 was empty at that point.**
+
+This is ONE default-baseline pilot of the amended model. It is **not** a
+calibration sweep, **not** a new calibration cycle, and it tunes nothing.
+
+### 14.1 Question
+
+Did removing the single-founder initialization bottleneck materially change the
+extinction / runaway / viable regime under the **unchanged** Phase 0A default
+ecological parameters?
+
+### 14.2 Design (fixed)
+
+- model `simulationVersion 0A.2.0`, `bootstrap.founderGroupCount = 5`,
+  `initialPopulationSize = 25` (5 organisms per founder group)
+- **every other parameter at the unchanged `DEFAULT_SIMULATION_CONFIG`** — no
+  override of any kind
+- the 15 existing **pilot** seeds (`seeds/pilot.json`, sha256 `785e4411…`)
+- 20,000 ticks maximum; stop on extinction; metrics sampled every 200 ticks
+  (the calibration-v2/v3 cadence)
+- §14.29 runaway cap **enabled** (cap 200)
+- outcome classification unchanged (`classifyRunOutcome`, peak-population based)
+- results to `packages/experiment-harness/results/multifounder-default-baseline/`
+- run from a clean committed worktree; every replicate must record `gitCommit`,
+  `gitDirty = false`, `sourceIdentity` and `simulationVersion = 0A.2.0`
+- validation seeds are **not** used
+
+`founderGroupCount` is **not** a calibration axis and is not varied.
+`founderGroupCount = 1` exists only for historical regression compatibility.
+
+### 14.3 Readouts
+
+**PRIMARY READOUT: `viableCompletionRate`.** Reference threshold: the existing
+§16.35 [BASELINE] gate, `BASELINE_MIN_VIABLE_COMPLETION_RATE = 0.70` — with 15
+seeds that means at least 11 of 15 viable (10 of 15 = 66.7% does not pass).
+
+Descriptive only, never selectors: extinction rate, runaway rate, mean and
+median final population, total and mean births, maximum generation depth.
+
+### 14.4 Comparison reference
+
+The historical single-founder (`0A.1.0`) DEFAULT configuration at the same
+20,000-tick horizon: `results/calibration-v3/sweep_0_reproductionEnergyThreshold=75_maxAge=3000/`
+(threshold 75 / maxAge 3000 **is** the Phase 0A default; commit `fc05ad1`,
+clean, `sourceIdentity c74242c483aff170`, runaway cap enabled, same 15 pilot
+seeds). It is read from disk and **not re-run**. Its values, already recorded in
+§11.5: 9 extinct, 5 runaway, 1 viable (6.7%).
+
+The comparison is **paired by seed** — both arms use the same 15 seeds. Reported:
+per-seed outcome transitions (unchanged; extinct → viable; extinct → runaway;
+runaway → viable; runaway → extinct; viable → other).
+
+Scope of the comparison. §12.1's no-pooling rule stands: the two models are
+never combined into one dataset, and single-founder results are never used as
+evidence about the calibration of `0A.2.0`. This one paired side-by-side
+contrast is precommitted here because the question in §14.1 *is* the model
+contrast; both arms are reported separately and labelled by model version.
+
+### 14.5 Decision rule (fixed before results)
+
+With 15 seeds the classes are exhaustive (extinct + runaway + viable = 15), so
+"regime moved in the intended direction" is operationalised as viable
+completions gained. Across all 10 single-founder configurations at the gated
+horizon (§11.8) the viable count never exceeded 1 of 15, so a change of one or
+two replicates is within what a single seed flip produces.
+
+- **A — DEFAULT BASELINE QUALIFIES** — `viableCompletionRate ≥ 0.70`
+  (≥ 11 of 15). Mark the default `0A.2.0` configuration as the provisional
+  calibration candidate and freeze/version exactly that configuration. Tune
+  nothing. Do not run validation in this task; the next step becomes held-out
+  validation.
+- **B — IMPROVED BUT BELOW GATE** — not A, and viable completions **≥ 4 of 15**
+  (≥ 26.7%; at least +3 over the historical 1 of 15). Document the effect; state
+  that the amendment changed the regime but did not produce a qualifying
+  baseline; no sweep is started; stop.
+- **C — NO MEANINGFUL IMPROVEMENT** — viable completions **≤ 3 of 15**. Document
+  that the single-founder bottleneck was not sufficient to explain the
+  calibration failure; no sweep, no model change; identify ONE smallest next
+  scientific question; stop.
+
+A shift of extinction into runaway (or back) without viable completions is
+**not** movement in the intended direction and does not by itself qualify for B.
+
+No threshold, seed, horizon, parameter or classification may change after the
+results are seen.
+
+### 14.6 Optional observational check (not a decision input)
+
+If trivial with existing code: for each pilot world, the pairwise functional
+distance (`mean-absolute-output-difference-v1` on `probe-set-v1`) between its 5
+founder controllers — 10 pairs per world — summarised as mean / min / max. The
+founders are reconstructed by replaying `generateFounderProfiles` on a fresh
+BootstrapRNG from the same root seed (the first draws `bootstrapWorld` makes);
+probe evaluation consumes no RNG and nothing touches a running world. Functional
+distance is descriptive only: it is not fitness, it is not a selection
+criterion, and it plays no part in the decision rule above.
+
+### 14.7 Results
+
+*(empty at precommitment)*

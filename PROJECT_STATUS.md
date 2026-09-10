@@ -561,23 +561,47 @@ modifying the model.
 
 ---
 
+## Multi-founder default baseline — PRECOMMITMENT (recorded before any run)
+
+Recorded and committed **before** the CLI support for this run was added and
+before the run was executed. Full text: `docs/Phase 0B Pilot Report.md` §14.
+
+- ONE default-baseline pilot of the amended model; not a sweep, not a
+  calibration cycle, nothing tuned
+- `simulationVersion 0A.2.0`, `founderGroupCount = 5`, `initialPopulation = 25`
+  (5 per founder group); every other parameter at the unchanged
+  `DEFAULT_SIMULATION_CONFIG`
+- the same 15 PILOT seeds; 20,000-tick maximum; runaway cap ENABLED; metrics
+  every 200 ticks; unchanged outcome classification
+- results to `packages/experiment-harness/results/multifounder-default-baseline/`
+- clean committed worktree; every replicate records `gitCommit`,
+  `gitDirty = false`, `sourceIdentity`, `simulationVersion`
+- **PRIMARY READOUT: `viableCompletionRate`**; reference gate 0.70 (≥ 11 of 15)
+- comparison reference, read from disk and not re-run: the historical `0A.1.0`
+  default cell `results/calibration-v3/sweep_0_reproductionEnergyThreshold=75_maxAge=3000/`
+  (9 extinct / 5 runaway / 1 viable), paired by seed
+
+Decision rule, fixed before results:
+
+| Outcome | Condition |
+|---|---|
+| A — PROVISIONAL CANDIDATE FROZEN | viable ≥ 11 of 15 (rate ≥ 0.70) |
+| B — IMPROVED BUT BELOW GATE | not A, and viable ≥ 4 of 15 (≥ +3 over historical 1 of 15) |
+| C — NO MEANINGFUL IMPROVEMENT | viable ≤ 3 of 15 |
+
+Extinction converted into runaway (or back) without viable completions is not
+movement in the intended direction. `founderGroupCount` is not a calibration
+axis. Validation seeds are not used. Optional, observational, non-decisional:
+pairwise founder functional distance per world (§14.6).
+
 ## NEXT EXACT STEP
 
-**Run one new-model default-baseline pilot: the Phase 0A defaults (`0A.2.0`,
-multi-founder) at 20,000 ticks on the 15 existing pilot seeds, runaway cap
-enabled — to determine whether removing the single-founder bottleneck changes
-the extinction/runaway regime.**
-
-This is a single baseline measurement, not a sweep and not a calibration cycle.
-Its purpose is to establish where the amended model sits before any new axes are
-even considered. Report the same primary readout as before —
-`viableCompletionRate` — with extinction and runaway counts alongside.
-
-Write it to a clearly new-model path (for example
-`results/baseline-0A.2.0-default/`) and do **not** pool or compare it
-numerically with any single-founder result.
+**Execute the precommitted multi-founder default baseline (§14 of the pilot
+report, summary above) exactly as recorded: add only the minimal CLI support,
+commit it, run the 15 pilot seeds from the clean committed tree, compare paired
+against the historical default cell, and apply the fixed decision rule.**
 
 Constraints that still hold: do not touch
 `packages/experiment-harness/seeds/validation.json`; do not define a new
-calibration sweep until the baseline is in hand; do not weaken the ~70%
+calibration sweep; do not vary `founderGroupCount`; do not weaken the ~70%
 viability gate; do not begin Phase 0C.
