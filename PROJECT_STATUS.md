@@ -27,16 +27,18 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the Phase 0B provenance repair. `git log -1` is
-authoritative; recent history:
+Most recent work is calibration-v2. `git log -1` is authoritative; recent
+history:
 
 ```text
-(HEAD)  docs: repair the git-state history block in PROJECT_STATUS.md — a commit cannot record its own hash; `git log -1` is authoritative
+(HEAD)  calibration-v2 checkpoint — see `git log -1`
+4e063db fix: sourceIdentity was hashing nothing and returning a constant
+01e6ebe calibration-v2: add the precommitted sweep definition
+7fd7135 provenance: record worktree dirty state and a deterministic source identity
+9a33b4c docs: stop recording a self-referencing commit hash in PROJECT_STATUS.md
 700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
 5271387 docs: record the Diagnostic A2 commit hash in PROJECT_STATUS.md
 1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
-2c7c56c Diagnostic A2 (§16.9): test-only fixed movement policies — implementation and precommitment
-4b91794 docs: record the Phase 0B checkpoint commit hash in PROJECT_STATUS.md
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
 a568d01 fix: mutation RNG isolation (§15.7) — disabled channels consume full draw schedule
 db294c2 Phase 0A: complete the headless deterministic simulation core
@@ -52,8 +54,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   168 / 168 passed
-experiment-harness tests: 68 / 68  passed
-workspace total:         236 / 236 passed
+experiment-harness tests: 74 / 74  passed
+workspace total:         242 / 242 passed
 workspace build:         PASS (tsc -p tsconfig.json in both packages)
 Phase 0A golden hash:    seed 20260910, 10000 ticks -> 6a6576bd49e86b27  CONFIRMED
 ```
@@ -201,6 +203,23 @@ i.e. 80% of the default `maxSpeed`. **Do not change `baseMetabolicConstant`,
 Full analysis, including how last-death order statistics reconcile lifetime with
 drain in every condition, is in `docs/Phase 0B Pilot Report.md` §7.
 
+### Run provenance — HARDENED
+
+`src/runner/provenance.ts`. Every replicate and every manifest records
+`gitCommit`, `gitDirty` and `sourceIdentity` — a deterministic hash of the built
+JavaScript of both packages, so a result produced from uncommitted source or
+from a stale build is identifiable from the record alone. The manifest takes its
+provenance from the replicates themselves, so it cannot claim a different origin
+than the results it describes. The CLI prints all three before a run and warns
+on a dirty worktree.
+
+One bug was found and fixed during implementation: the identity directories
+resolved to non-existent paths, so the hash covered an empty file set and
+returned a constant that looked valid. Caught because two different builds
+recorded the same identity. Tests now assert the directories exist and are
+non-empty, that the identity differs from `EMPTY_IDENTITY`, and that each
+directory contributes independently.
+
 ### Run outcomes (§14.29, §16.34–§16.35) — IMPLEMENTED
 
 `src/analysis/outcome.ts`. Cap `min(8 x initialPopulation, 200)` = 200 at the
@@ -307,6 +326,38 @@ end at population 0; the rest end in the hundreds), and the condition with the
 largest mean final population has the **lowest** viable completion rate. Do not
 select a winner from these seeds.
 
+### Calibration sweep `calibration-v2` (6 configurations x 15 pilot seeds)
+
+`results/calibration-v2/`. Run from a clean worktree at commit `4e063db`,
+`sourceIdentity 893bcb420accc8cf`, identical across all six configurations.
+90 replicates, 20,000 ticks, runaway cap ENFORCED.
+
+```text
+food.worldFoodCapacity : [60, 120, 240]
+lifecycle.maturityAge  : [300, 500]
+```
+
+| Capacity | maturityAge | Extinct | Runaway | Viable | Extinction rate | Viable rate | Mean final pop | Max gen |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 60 | 300 | 9 | 6 | 0 | 60.0% | 0.0% | 80.0 | 20 |
+| 60 | 500 | 9 | 5 | 1 | 60.0% | 6.7% | 69.3 | 19 |
+| 120 | 300 | 7 | 8 | 0 | 46.7% | 0.0% | 106.7 | 20 |
+| 120 | 500 | 9 | 6 | 0 | 60.0% | 0.0% | 80.1 | 6 |
+| 240 | 300 | 7 | 8 | 0 | 46.7% | 0.0% | 106.9 | 12 |
+| 240 | 500 | 8 | 7 | 0 | 53.3% | 0.0% | 93.4 | 7 |
+
+**49 extinct, 40 runaway, 1 viable across 90 replicates. NO CANDIDATE
+SELECTED** — best viable rate 6.7% against the ~70% gate; the documented
+tie-break never engages because no configuration passes. All six pass the weak
+`DEFAULT_CALIBRATION_CRITERIA` screen, which admits configurations where 89 of
+90 replicates are degenerate.
+
+Important secondary finding: the same configuration reached 37.5% viable in
+calibration-v1 at 10,000 ticks. Two of those three "viable" runs were merely
+**not yet runaway** and crossed the cap by tick ~12,000. calibration-v1's
+viability figures should be read as viability *at 10,000 ticks*; the 20,000-tick
+horizon is load-bearing and must not be shortened. Detail in pilot report §10.
+
 ### Calibration sweep `calibration-v1` (12 configurations x 8 pilot seeds)
 
 ```text
@@ -330,25 +381,29 @@ reproCost=45`, 3 of 8). The §16.35 [BASELINE] gate is roughly 70%. Full table i
 
 ## Calibration decision
 
-**NO candidate baseline selected. Nothing frozen. Validation seeds untouched.**
+**NO candidate baseline selected after two sweeps. Nothing frozen. Validation
+seeds untouched.**
 
-Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
+18 configurations have now been tested across `calibration-v1` (food
+regeneration rate, food energy value, reproduction cost) and `calibration-v2`
+(standing food density, maturity age). Every one lands in the same bimodal
+regime of early extinction or runaway growth. At the gated 20,000-tick horizon
+the best viable completion rate observed is 6.7% — one replicate in fifteen —
+against the §16.35 [BASELINE] gate of roughly 70%.
 
-1. No configuration meets the §16.35 viable-completion gate; best observed 37.5%
-   against a ~70% baseline, and 8 of 12 configurations have zero viable
-   replicates.
-2. The precommitted criteria pass 11 of 12 configurations, so they screen but do
-   not select. Inventing a tie-break after seeing the data is the post-hoc
-   selection §14.27 and §16.28 exclude.
-3. Selecting on population size would invert the ecological reading here: the
-   largest-population configurations are the runaway-dominated ones.
-4. Eight seeds per configuration with 4–5 extinctions each leaves very few
-   informative replicates (§16.33).
-5. All runs used a 10,000-tick horizon; §14.28 / §16.34 set the validation
-   horizon at approximately 20,000, so viable completion at the gated horizon is
-   unmeasured.
+Reasons a candidate cannot be selected, in order of weight:
 
----
+1. **No configuration meets the viability gate.** §16.18 defines ecological
+   viability as sustained non-degenerate dynamics; every tested configuration
+   sits between two degeneracies rather than between them.
+2. **The precommitted criteria do not discriminate.** `DEFAULT_CALIBRATION_
+   CRITERIA` passes 11 of 12 in v1 and 6 of 6 in v2, including configurations
+   where 89 of 90 replicates are degenerate. It screens; it cannot select.
+3. **Selecting on population size would be wrong.** The
+   largest-mean-population configurations are the runaway-dominated ones.
+4. **The documented tie-break never engages**, because zero configurations pass
+   the gate. Inventing a rule now would be the post-hoc selection §14.27 and
+   §16.28 exclude.
 
 ## Documentation
 
@@ -356,7 +411,7 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
 |---|---|
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7 movement-policy diagnostic, §9 provenance hazard and repair |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7 movement-policy diagnostic, §9 provenance hazard and repair, §10 calibration-v2 |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
 
@@ -378,7 +433,9 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
    offline probe framework is complete; periodic sampling of living organisms
    with its own seeded sub-stream is not.
 5. **No probe or fingerprint data has been collected** from any experiment.
-6. **Runs are 10,000 ticks, not the §14.28 [BASELINE] 20,000.**
+6. ~~Runs are 10,000 ticks, not the §14.28 [BASELINE] 20,000.~~ **RESOLVED for
+   calibration-v2**, which ran at 20,000. The earlier experiments remain at
+   10,000; see gap 10.
 7. `npm ci` on a machine whose platform differs from the one that populated
    `node_modules` may need the platform-specific rollup/esbuild optional
    dependency reinstalled before vitest will start. This is an npm optional-
@@ -395,10 +452,13 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
    configurations — and the exact numerical delta between the old and current
    core builds cannot be recovered because the older `dist` no longer exists.
    The current build reproduces that seed consistently.
-9. **`gitCommit` provenance is still weak.** It records `git rev-parse HEAD`
-   and says nothing about uncommitted changes. Results generated from a dirty
-   worktree cannot be attributed to a specific tree state. Recording a dirty
-   flag or a source hash would close this; not done.
+9. ~~`gitCommit` provenance is still weak.~~ **RESOLVED.** Replicates and
+   manifests now record `gitDirty` and `sourceIdentity` alongside `gitCommit`.
+10. **calibration-v1 viability figures are horizon-limited.** They were measured
+   at 10,000 ticks; two of the three "viable" runs in its best cell were merely
+   not yet runaway and crossed the cap by tick ~12,000 at the gated 20,000-tick
+   horizon. Read §4.2 of the pilot report as viability *at 10,000 ticks*. The
+   §5 verdict is unaffected.
 
 ## Scientific caution
 
@@ -417,46 +477,44 @@ intelligence increased, or that any tested configuration is ecologically viable.
 
 ## NEXT EXACT STEP
 
-**Define and run `calibration-v2` — standing food density x reproductive window
-— on pilot seeds only.**
+**Write and commit the `calibration-v3` precommitment, before running anything.**
 
-Specified in `docs/Phase 0B Pilot Report.md` §6.2. This supersedes the earlier
-lifecycle-axis proposal; §6.3 records why it changed. Concretely:
+calibration-v2 produced no candidate, so the next action is not another sweep —
+it is the precommitment document for the next one, committed before execution,
+exactly as v2 was. Add a `calibration-v3` section to
+`docs/Phase 0B Pilot Report.md` fixing axes, seeds, horizon, primary readout and
+decision rule, then commit it, then implement and run.
 
-1. Add a `calibration-v2` sweep to `packages/experiment-harness/src/cli/main.ts`
-   with:
-   ```text
-   food.worldFoodCapacity : [60, 120, 240]
-   lifecycle.maturityAge  : [300, 500]
-   ```
-   all other parameters at Phase 0A defaults — in particular `lifecycle.maxAge`
-   stays at 3000 and every energy parameter stays at its verified default;
-   **all 15 pilot seeds**; **20,000 max ticks**; runaway cap enforced.
-   6 configurations x 15 seeds = 90 replicates.
-2. Precommit the readout **before running**: primary criterion is
-   `viableCompletionRate` per configuration, with extinction and runaway counts
-   reported alongside. Mean final population is descriptive only and is not a
-   selection criterion.
-3. Run it, writing results to `results/calibration-v2/`.
-4. If one or more configurations reach roughly 70% viable completion: select the
-   highest viable rate, ties broken by smaller departure from the Phase 0A
-   defaults; freeze it as `Phase0Baseline_v1` with its full parameter set,
-   thresholds and analysis plan recorded in this file; **only then** run the 2×2
-   once on the validation seed set, and never retune on those results.
-5. If none does: record that here, diagnose the next implicated subsystem, and
-   define `calibration-v3`. **Do not lower the gate to manufacture a candidate.**
+Proposed axes, with the justification that must be recorded alongside them:
 
-Why these two axes, in one line each:
+```text
+energy.reproductionEnergyThreshold : [75, 90]
+lifecycle.maxAge                   : [3000, 6000]
+```
 
-- `worldFoodCapacity` sets standing food density and hence encounter rate, and
-  `calibration-v1` never varied it — all 12 cells sat at 60, with Diagnostic B
-  ending at the cap in all 15 replicates and viable rate showing no trend across
-  the three regeneration levels, so refill speed was not the binding constraint.
-- `maturityAge` is now quantitatively motivated: §7 measured the founder drain
-  at 0.0607/tick, so an organism must eat once per ~412 ticks just to break even
-  and needs roughly two food items to reach the reproduction threshold within
-  the current 500-tick maturity window.
+- `reproductionEnergyThreshold` has been **75 in every configuration of both
+  sweeps**. It is the gate on reproduction itself — how much surplus an organism
+  must accumulate before it may reproduce — and therefore the direct control on
+  population growth rate, which is what drives 40 of 90 replicates into runaway.
+  It does not touch the energy model §7 verified.
+- `lifecycle.maxAge` was deferred from §6.3 to a later sweep and remains
+  untested. Now that the 20,000-tick horizon is known to be load-bearing,
+  cohort turnover timing is worth testing.
 
-Do not touch `packages/experiment-harness/seeds/validation.json` before step 4.
-Do not change any energy parameter — §7 verified the energy model.
-Do not begin Phase 0C.
+4 configurations x 15 pilot seeds x 20,000 ticks = 60 replicates, runaway cap
+enforced, all other parameters at Phase 0A defaults. Primary readout:
+`viableCompletionRate`. Mean final population descriptive only.
+
+Decision rule to precommit, unchanged in form from §6.2:
+
+- If one or more configurations reach roughly 70% viable completion, select the
+  highest viable rate, ties broken by smaller departure from the Phase 0A
+  defaults; freeze it as `Phase0Baseline_v1` with its full parameter set,
+  thresholds and analysis plan recorded here; **only then** run the 2x2 once on
+  the validation seed set, and never retune on those results.
+- If none does, report that, and do not lower the gate.
+
+Constraints that still hold: do not touch
+`packages/experiment-harness/seeds/validation.json`; do not change any energy
+coefficient (§7 verified the energy model); do not shorten the 20,000-tick
+horizon; do not begin Phase 0C.

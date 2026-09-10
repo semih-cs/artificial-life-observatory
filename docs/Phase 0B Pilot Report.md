@@ -745,7 +745,132 @@ suggests an invalid state, and the current build reproduces it consistently.
 The `reverified-*` directories are now the provenance-clean record for these
 four experiments. The originals are retained alongside them for comparison.
 
-## 10. Summary of claims
+## 10. calibration-v2 — standing food density x reproductive window
+
+Run on the current build from a clean worktree: commit `4e063db`,
+`gitDirty false`, `sourceIdentity 893bcb420accc8cf`, identical across all six
+configurations. Results in `results/calibration-v2/`.
+
+### 10.1 What was precommitted
+
+Axes, seeds, horizon, primary readout and decision rule were fixed in §6.2 and
+committed **before** the sweep was implemented or run:
+
+```
+food.worldFoodCapacity : [60, 120, 240]
+lifecycle.maturityAge  : [300, 500]
+```
+
+6 configurations x 15 pilot seeds x 20,000 ticks = 90 replicates, §14.29 runaway
+cap **enforced**. `lifecycle.maxAge` fixed at 3000 and every energy parameter at
+the value §7 verified. Primary readout: `viableCompletionRate`. Mean final
+population is descriptive only and is not a selection criterion.
+
+Nothing about the axes or the decision rule was changed after seeing results.
+
+### 10.2 Results
+
+| Capacity | maturityAge | Extinct | Runaway | Viable | Extinction rate | **Viable rate** | Mean final pop | Max generation |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 60 | 300 | 9 | 6 | 0 | 60.0% | **0.0%** | 80.0 | 20 |
+| 60 | 500 | 9 | 5 | 1 | 60.0% | **6.7%** | 69.3 | 19 |
+| 120 | 300 | 7 | 8 | 0 | 46.7% | **0.0%** | 106.7 | 20 |
+| 120 | 500 | 9 | 6 | 0 | 60.0% | **0.0%** | 80.1 | 6 |
+| 240 | 300 | 7 | 8 | 0 | 46.7% | **0.0%** | 106.9 | 12 |
+| 240 | 500 | 8 | 7 | 0 | 53.3% | **0.0%** | 93.4 | 7 |
+
+Across all 90 replicates: **49 extinct, 40 runaway, 1 viable.**
+
+All six configurations pass `DEFAULT_CALIBRATION_CRITERIA`, which is further
+evidence for §8's caution that this screen does not discriminate: it admits
+configurations in which 89 of 90 replicates end in a degenerate regime.
+
+### 10.3 Candidate determination
+
+**NOT SELECTED.**
+
+The precommitted gate is roughly 70% viable completion (§16.35 [BASELINE]). The
+best configuration reached **6.7%** — a single viable replicate out of 15 — and
+five of six configurations produced none at all. No configuration qualifies.
+
+The documented tie-break (highest viable rate, ties broken by smaller departure
+from the Phase 0A defaults) never engages, because zero configurations pass the
+gate. Per §6.2's decision rule and the standing instruction against inventing a
+post-hoc rule, no candidate is selected and the gate is not lowered.
+
+### 10.4 Neither axis moved the system toward viability
+
+Raising standing food density reduced extinction (60.0% → 46.7% at
+maturityAge 300) but converted the difference into runaway rather than into
+sustained dynamics (6 → 8 runaway replicates). Lowering `maturityAge` from 500
+to 300 did the same. Both axes move the system along the extinction-runaway
+axis without opening a viable middle.
+
+This is a pilot-level ecological observation about parameter direction. It is
+not evidence about adaptation, selection or mutation, and must not be read as
+such.
+
+### 10.5 The horizon, not the axes, explains most of the drop from calibration-v1
+
+calibration-v1's best cell reached 37.5% viable completion; the same
+configuration here reaches 6.7%. The two are the **same configuration** —
+v1's `regen 2 / food 25 / cost 45` cell and v2's `capacity 60 / maturityAge 500`
+cell are both the Phase 0A defaults — so the difference is not the new axes. It
+is the horizon: v1 ran 10,000 ticks, v2 runs the §14.28 / §16.34 [BASELINE]
+20,000.
+
+Seed by seed, on the 8 seeds the two sweeps share:
+
+| Seed | v1 @ 10,000 ticks | v2 @ 20,000 ticks |
+|---:|---|---|
+| 100000 | extinct @ 1062 | extinct @ 1062 |
+| 107919 | extinct @ 2931 | extinct @ 2931 |
+| 115838 | ran to 10,000 — peak 296, classified runaway | runaway, halted @ 7022 |
+| 123757 | extinct @ 5694 | extinct @ 5694 |
+| 131676 | ran to 10,000 — peak 133, **viable** | **runaway, halted @ 11648** |
+| 139595 | ran to 10,000 — peak 109, **viable** | **viable, reached 20,000** |
+| 147514 | extinct @ 3000 | extinct @ 3000 |
+| 155433 | ran to 10,000 — peak 149, **viable** | **runaway, halted @ 12283** |
+
+Two of v1's three viable runs were not viable — they were **not yet runaway**.
+Given another 10,000 ticks they crossed the cap. Only seed 139595 sustains a
+bounded population for the full 20,000 ticks, and it is the single viable
+replicate in all of calibration-v2.
+
+Two consequences:
+
+1. **calibration-v1's viability figures were optimistic**, and §4.2's table
+   should be read as viability *at 10,000 ticks*, not at the gated horizon. The
+   underlying calibration verdict in §5 is unaffected — it was "no defensible
+   candidate", and a shorter horizon flattering the numbers only strengthens
+   that.
+2. **The 20,000-tick horizon is load-bearing** and should not be shortened for
+   convenience in later sweeps.
+
+### 10.6 Where this leaves calibration
+
+Every configuration tested across both sweeps — 18 in total, spanning food
+regeneration rate, food energy value, reproduction cost, standing food density
+and maturity age — lands in the same bimodal regime. Nothing tested has produced
+sustained non-degenerate dynamics at the gated horizon in more than one
+replicate out of fifteen.
+
+What has **not** been varied in either sweep is the gate on reproduction itself:
+`energy.reproductionEnergyThreshold` has been 75 throughout. It directly
+controls how much surplus an organism must accumulate before it may reproduce,
+and therefore how fast a population can grow, without touching the energy model
+§7 verified. `lifecycle.maxAge` also remains untested, having been deferred from
+§6.3 to a later sweep.
+
+A `calibration-v3` over those two axes is the natural next step. **It must be
+precommitted and committed before it is run**, exactly as v2 was — axes, seeds,
+horizon, primary readout and decision rule fixed in advance. No axes are
+selected here on the basis of v2's numbers beyond the observation that the
+reproduction gate is the untested growth control.
+
+---
+
+## 11. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|
@@ -757,7 +882,7 @@ four experiments. The originals are retained alongside them for comparison.
 | Organisms detect, reach and consume food | Yes | Diagnostic B: median survival 1066 → 3000 ticks with food active |
 | Inheritance and both mutation channels operate under configuration control | Yes | 2×2 executes; conditions differ only in the two flags; RNG isolation tested |
 | Treatment conditions can produce different replicated outcomes | Yes | 2×2 condition summaries differ |
-| Some tested configuration is ecologically viable | **No** | best viable completion 37.5%, gate ~70% |
+| Some tested configuration is ecologically viable | **No** | 18 configurations across two sweeps; best viable completion at the gated 20,000-tick horizon is 6.7% (1 of 15) against a ~70% gate |
 | Neural mutation is beneficial | **No** | bimodal distributions; largest mean has lowest viable rate |
 | Morphology mutation is harmful | **No** | differences are inside the within-condition spread |
 | The population adapted / intelligence increased | **No** | no confirmatory design has been run; no probe data collected |
