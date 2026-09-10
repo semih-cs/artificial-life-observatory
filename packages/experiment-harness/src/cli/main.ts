@@ -15,6 +15,9 @@
  *   calibration-v2          calibration-v2: standing food density x reproductive window
  *   calibration-v3          calibration-v3: reproduction gate x cohort turnover (FINAL sweep)
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
+ *   multifounder-default-baseline
+ *                           One default-baseline pilot of model 0A.2.0 at the unchanged
+ *                           Phase 0A defaults (pilot report §14). Not a sweep.
  *
  * Options:
  *   --seed-set <pilot|validation>   Seed set to use (default: pilot)
@@ -33,14 +36,17 @@ import {
   fullEvolutionaryDiagnostic,
   mutation2x2Experiment,
   movementPolicyDiagnostic,
+  multiFounderDefaultBaseline,
+  MULTI_FOUNDER_DEFAULT_BASELINE_ID,
 } from '../experiments/definitions.js';
+import { founderFunctionalDiversity } from '../analysis/founderDiversity.js';
 import { MOVEMENT_POLICY_LEVELS, MovementPolicyId } from '../experiments/movementPolicies.js';
 import {
   predictDrain, impliedForwardFraction, measuredDrainPerTick, largestCleanWindow,
 } from '../analysis/energyModel.js';
 import { median as medianOf } from '../metrics/compute.js';
 import { runExperiment } from '../runner/experiment.js';
-import { DEFAULT_SIMULATION_CONFIG } from '@alo/simulation-core';
+import { DEFAULT_SIMULATION_CONFIG, cloneConfig } from '@alo/simulation-core';
 import { runSweep, SweepSpec } from '../runner/sweep.js';
 import { loadPilotSeeds, loadValidationSeeds } from '../runner/seeds.js';
 import { writeExperimentResults, writeSweepSummaryFromDisk } from '../output/writer.js';
@@ -287,7 +293,7 @@ async function main(): Promise<void> {
 
   if (!experiment) {
     console.log('Usage: npm run experiment -- <experiment-name> [--seed-set pilot|validation] [--max-ticks N]');
-    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, movement-policy, mutation-2x2, calibration-sweep, calibration-v2, calibration-v3, calibration-report');
+    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, movement-policy, mutation-2x2, calibration-sweep, calibration-v2, calibration-v3, calibration-report, multifounder-default-baseline');
     process.exit(1);
   }
 
@@ -323,6 +329,9 @@ async function main(): Promise<void> {
       break;
     case 'movement-policy':
       spec = movementPolicyDiagnostic(seeds, maxTicks ?? 20000);
+      break;
+    case MULTI_FOUNDER_DEFAULT_BASELINE_ID:
+      spec = multiFounderDefaultBaseline(seeds, maxTicks ?? 20000);
       break;
     case 'calibration-sweep':
       isSweep = true;
@@ -474,7 +483,30 @@ async function main(): Promise<void> {
 
   const outDir = outputDir ?? `results/${result.experimentId}`;
   writeExperimentResults(result, outDir);
+  if (result.experimentId === MULTI_FOUNDER_DEFAULT_BASELINE_ID) writeFounderDiversity(spec, outDir);
   console.log(`\nResults written to: ${outDir}/`);
+}
+
+/**
+ * Pilot report §14.6 — OBSERVATIONAL ONLY. Pairwise functional distance between
+ * each initial world's founder controllers, reconstructed by replaying the
+ * bootstrap founder draws on a fresh stream. Runs after the experiment, touches
+ * no world, and is not an input to any decision.
+ */
+function writeFounderDiversity(spec: ExperimentSpec, outDir: string): void {
+  const worlds = spec.seeds.map((seed) => {
+    const config = cloneConfig(spec.baseConfigFactory());
+    spec.conditions[0]!.configOverrides(config);
+    config.rootSeed = seed;
+    return founderFunctionalDiversity(config);
+  });
+  fs.writeFileSync(`${outDir}/founder-diversity.json`, JSON.stringify(worlds, null, 2));
+  console.log('\nFounder functional diversity (observational; not fitness, not a selector):');
+  console.log('seed    | founders | mean dist | min dist | max dist');
+  for (const w of worlds) {
+    const f = (x: number | null) => (x === null ? '-' : x.toFixed(4)).padStart(9);
+    console.log(`${String(w.seed).padEnd(7)} | ${String(w.founderCount).padStart(8)} | ${f(w.meanDistance)} | ${f(w.minDistance)} | ${f(w.maxDistance)}`);
+  }
 }
 
 main().catch((err) => {

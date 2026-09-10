@@ -236,3 +236,36 @@ export function movementPolicyDiagnostic(seeds: number[], maxTicks = 20000): Exp
     stopOnExtinction: true,
   };
 }
+
+/**
+ * Multi-founder default baseline (pilot report §14, precommitted).
+ *
+ * ONE condition: the amended model (`0A.2.0`, founderGroupCount 5) at the
+ * UNCHANGED Phase 0A defaults — no override of any kind. It is a single baseline
+ * measurement, not a sweep: founderGroupCount is not an axis, and nothing is
+ * tuned. 20,000 ticks, stop on extinction, metrics every 200 ticks (the
+ * calibration-v2/v3 cadence); the runaway cap is set by the caller (the CLI
+ * enforces it by default).
+ */
+export const MULTI_FOUNDER_DEFAULT_BASELINE_ID = 'multifounder-default-baseline';
+
+export function multiFounderDefaultBaseline(seeds: number[], maxTicks = 20000): ExperimentSpec {
+  return {
+    experimentId: MULTI_FOUNDER_DEFAULT_BASELINE_ID,
+    description:
+      'Multi-founder default baseline: model 0A.2.0 (5 founder groups x 5 organisms) at the ' +
+      'unchanged Phase 0A defaults. One condition, no overrides. Not a calibration sweep.',
+    baseConfigFactory: baseConfig,
+    conditions: [{
+      conditionId: 'multifounder-default',
+      configOverrides: (_c) => {
+        // Deliberately empty: every parameter stays at DEFAULT_SIMULATION_CONFIG.
+      },
+    }],
+    seeds,
+    maxTicks,
+    metricsSampleInterval: 200,
+    stopOnExtinction: true,
+    runawayCapEnabled: true,
+  };
+}

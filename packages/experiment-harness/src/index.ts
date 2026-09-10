@@ -12,6 +12,7 @@ export * from './analysis/degeneracy.js';
 export * from './analysis/outcome.js';
 export * from './analysis/persistedResults.js';
 export * from './analysis/energyModel.js';
+export * from './analysis/founderDiversity.js';
 export * from './probes/probeSet.js';
 export * from './probes/evaluate.js';
 export * from './probes/fingerprint.js';

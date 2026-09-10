@@ -45,6 +45,7 @@ npm run experiment -- movement-policy        # Diagnostic A2 (§16.9 fixed movem
 npm run experiment -- mutation-2x2           # primary 2x2 mutation factorial
 npm run experiment -- calibration-sweep      # coarse ecological parameter sweep
 npm run experiment -- calibration-report     # re-read persisted sweep results; runs nothing
+npm run experiment -- multifounder-default-baseline  # 0A.2.0 at unchanged defaults, 15 pilot seeds, 20,000 ticks (pilot report §14)
 ```
 
 Options:
