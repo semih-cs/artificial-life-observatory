@@ -27,18 +27,17 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Phase 0B checkpoint commit:
-
-`388646e5d20eb62836ab4db97fbbf580022f5319`
+Most recent work is the §16.9 movement-policy diagnostic. `git log -1` is
+authoritative; recent history:
 
 ```text
+<this commit>  Diagnostic A2 (§16.9): results, calibration-v2 recommendation, provenance finding
+2c7c56c Diagnostic A2 (§16.9): test-only fixed movement policies — implementation and precommitment
+4b91794 docs: record the Phase 0B checkpoint commit hash in PROJECT_STATUS.md
 388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
 a568d01 fix: mutation RNG isolation (§15.7) — disabled channels consume full draw schedule
 db294c2 Phase 0A: complete the headless deterministic simulation core
 ```
-
-(A follow-up commit records this hash in this file; `git log -1` is
-authoritative.)
 
 Worktree after the Phase 0B checkpoint: clean apart from generated artifacts,
 which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
@@ -50,8 +49,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   168 / 168 passed
-experiment-harness tests: 50 / 50  passed
-workspace total:         218 / 218 passed
+experiment-harness tests: 66 / 66  passed
+workspace total:         234 / 234 passed
 workspace build:         PASS (tsc -p tsconfig.json in both packages)
 Phase 0A golden hash:    seed 20260910, 10000 ticks -> 6a6576bd49e86b27  CONFIRMED
 ```
@@ -114,7 +113,9 @@ instead of an `Infinity`/`NaN` sentinel. The golden hash is unchanged and all
 - **functional neural probes: `probe-set-v1`, probe evaluation, functional
   distance, `behavior-fingerprint-v1`** (new)
 - **read-only persisted-result reader and `calibration-report` CLI command**
-  (new) — re-reads results from disk, runs nothing, consumes no seeds
+  — re-reads results from disk, runs nothing, consumes no seeds
+- **§16.9 test-only deterministic movement policies and the energy-model
+  analysis they feed** (new)
 - CSV/JSON writers and CLI
 
 CLI:
@@ -124,6 +125,7 @@ npm run experiment -- starvation
 npm run experiment -- feeding
 npm run experiment -- reproduction-control
 npm run experiment -- full-evolutionary
+npm run experiment -- movement-policy
 npm run experiment -- mutation-2x2
 npm run experiment -- calibration-sweep
 npm run experiment -- calibration-report      # read-only
@@ -154,6 +156,43 @@ periodic probe sampling of living organisms (§11.42–§11.43, §14.32), which 
 its own seeded sampling sub-stream and a cadence. No probe or fingerprint results
 have been collected from any experiment — see the pilot report for why that waits
 on a frozen baseline.
+
+### Movement-policy diagnostic (§16.9) — IMPLEMENTED AND RUN
+
+`src/experiments/movementPolicies.ts`, `src/experiments/installPolicy.ts`,
+`src/analysis/energyModel.ts`.
+
+Four fixed policies at §16.9's own levels — stationary / 25% / 50% / 100% of
+`maxSpeed` — plus the unmodified controllers as a reference cell. A policy is an
+ordinary `NeuralGenome` with zeroed input→hidden weights (making the controller
+provably input-independent) and output parameters, all inside
+`neuralParamBounds`, chosen so the [LOCKED] §11.59 mapping yields a constant
+action. It is installed once between `bootstrapWorld` and tick 1 through a
+condition's optional `worldTransform`, replacing only the neural genome and
+consuming no RNG. **No simulation-core code was changed.**
+
+Result — the uncertainty recorded as gap 3 in the previous handoff is
+**RESOLVED: controller effect, not an energy-model effect.**
+
+```text
+condition          measured drain   meas/pred    median lifetime   implied speed
+neural-reference        0.060739           -               1066          65.7 %
+stationary              0.020000      1.0000               2548           0.0 %
+speed-25                0.025851      1.0000               1972          25.0 %
+speed-50                0.043428      1.0001               1189          50.0 %
+speed-100               0.113731      1.0001                461         100.0 %
+```
+
+Across all 60 fixed-policy replicates measured/predicted drain lies in
+[0.99947, 1.00016]: basal metabolism, the size-scaled velocity-squared movement
+term and the phenotype speed mapping behave exactly as §12.6–§12.9 specify.
+Diagnostic A's median of 1066 is what this model should produce for controllers
+moving at 65.7% of `maxSpeed`; §16.8's 500–700 tick band corresponds to v = 1.0,
+i.e. 80% of the default `maxSpeed`. **Do not change `baseMetabolicConstant`,
+`movementEnergyCoefficient` or `configuredInitialEnergy` on this evidence.**
+
+Full analysis, including how last-death order statistics reconcile lifetime with
+drain in every condition, is in `docs/Phase 0B Pilot Report.md` §7.
 
 ### Run outcomes (§14.29, §16.34–§16.35) — IMPLEMENTED
 
@@ -191,6 +230,12 @@ Provenance on every replicate: `simulationVersion 0A.1.0`,
 `experimentHarnessVersion 0B.1.0`, `gitCommit a568d016...`, pilot seed set.
 
 **When console or chat output disagrees with these files, the files win.**
+
+### Diagnostic A2 — movement policies (15 pilot seeds x 5 conditions)
+
+`results/diagnostic-movement-policy/`. 75 replicates, 20,000 max ticks, run on
+the current build. All 75 ended in extinction with 0 births and 0 food, as
+designed. Numbers above; full report in the pilot report §7.
 
 ### Diagnostics A–D (15 pilot seeds each)
 
@@ -294,10 +339,10 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
 2. **Persisted results predate cap enforcement.** They are classified post hoc
    from sampled timeseries, so recovered peaks — and therefore runaway counts —
    are lower bounds.
-3. **Test-only fixed-speed movement policies (§16.9) are not implemented.** They
-   are what would separate "founder controllers move little" from "the energy
-   model is off" in Diagnostic A, whose lifetimes (median 1066) sit above the
-   §16.8 analytical target of 500–700 ticks.
+3. ~~Test-only fixed-speed movement policies (§16.9) are not implemented.~~
+   **RESOLVED.** Implemented and run; the energy model is verified correct and
+   Diagnostic A's lifetimes are a controller effect. See the movement-policy
+   section above and pilot report §7.
 4. **In-world probe sampling (§11.42–§11.43, §14.32) is not implemented.** The
    offline probe framework is complete; periodic sampling of living organisms
    with its own seeded sub-stream is not.
@@ -307,6 +352,20 @@ Reasons (detail in `docs/Phase 0B Pilot Report.md` §5):
    `node_modules` may need the platform-specific rollup/esbuild optional
    dependency reinstalled before vitest will start. This is an npm optional-
    dependency issue, not a repository defect.
+8. **One persisted replicate does not reproduce.** Diagnostic A seed 147514 is
+   recorded at extinction tick 1145 / hash `3adf024649660af4`; the current build
+   gives 1150 / `93e832500468f40f` from an identical `configHash`. The other 14
+   Diagnostic A replicates and all 15 Diagnostic B replicates re-verify bit for
+   bit, the current tree is deterministic, and the pre-checkpoint harness
+   reproduces 1150 as well — so this is not current-code non-determinism and not
+   a Phase 0A defect. The mechanism is provenance: the `experiment` script used
+   to compile only the harness and import `simulation-core` from a prebuilt
+   `dist`, so a run could consume a stale core build while recording the current
+   commit. **The script now builds `simulation-core` first.** Diagnostic A's
+   median (1066), min (485) and max (1662) are unchanged, so no conclusion moves.
+   Diagnostics C and D, the 2×2 and the sweep were written from even older
+   builds and have **not** been re-verified; treat them as provenance-uncertain
+   at replicate level. Full account in pilot report §9.
 
 ---
 
@@ -327,25 +386,27 @@ intelligence increased, or that any tested configuration is ecologically viable.
 
 ## NEXT EXACT STEP
 
-**Define and run `calibration-v2` — the lifecycle-timescale pilot — on pilot
-seeds only.**
+**Define and run `calibration-v2` — standing food density x reproductive window
+— on pilot seeds only.**
 
-Specified in `docs/Phase 0B Pilot Report.md` §6. Concretely:
+Specified in `docs/Phase 0B Pilot Report.md` §6.2. This supersedes the earlier
+lifecycle-axis proposal; §6.3 records why it changed. Concretely:
 
 1. Add a `calibration-v2` sweep to `packages/experiment-harness/src/cli/main.ts`
-   (or as a named sweep spec) with:
+   with:
    ```text
-   lifecycle.maturityAge: [300, 500]
-   lifecycle.maxAge:      [3000, 6000, 10000]
+   food.worldFoodCapacity : [60, 120, 240]
+   lifecycle.maturityAge  : [300, 500]
    ```
-   all other parameters at Phase 0A defaults; **all 15 pilot seeds**;
-   **20,000 max ticks**; runaway cap enforced (now the default).
+   all other parameters at Phase 0A defaults — in particular `lifecycle.maxAge`
+   stays at 3000 and every energy parameter stays at its verified default;
+   **all 15 pilot seeds**; **20,000 max ticks**; runaway cap enforced.
    6 configurations x 15 seeds = 90 replicates.
 2. Precommit the readout **before running**: primary criterion is
    `viableCompletionRate` per configuration, with extinction and runaway counts
    reported alongside. Mean final population is descriptive only and is not a
    selection criterion.
-3. Run it, and write results to `results/calibration-v2/`.
+3. Run it, writing results to `results/calibration-v2/`.
 4. If one or more configurations reach roughly 70% viable completion: select the
    highest viable rate, ties broken by smaller departure from the Phase 0A
    defaults; freeze it as `Phase0Baseline_v1` with its full parameter set,
@@ -354,5 +415,17 @@ Specified in `docs/Phase 0B Pilot Report.md` §6. Concretely:
 5. If none does: record that here, diagnose the next implicated subsystem, and
    define `calibration-v3`. **Do not lower the gate to manufacture a candidate.**
 
+Why these two axes, in one line each:
+
+- `worldFoodCapacity` sets standing food density and hence encounter rate, and
+  `calibration-v1` never varied it — all 12 cells sat at 60, with Diagnostic B
+  ending at the cap in all 15 replicates and viable rate showing no trend across
+  the three regeneration levels, so refill speed was not the binding constraint.
+- `maturityAge` is now quantitatively motivated: §7 measured the founder drain
+  at 0.0607/tick, so an organism must eat once per ~412 ticks just to break even
+  and needs roughly two food items to reach the reproduction threshold within
+  the current 500-tick maturity window.
+
 Do not touch `packages/experiment-harness/seeds/validation.json` before step 4.
+Do not change any energy parameter — §7 verified the energy model.
 Do not begin Phase 0C.

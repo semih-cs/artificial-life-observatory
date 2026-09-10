@@ -70,15 +70,14 @@ analytical target of 500–700 ticks, which assumes a baseline organism "using
 normal movement" spending on the order of 0.08/tick (50 / 0.08 ≈ 625). Observed
 lifetimes are 485–1662 with a median of 1066.
 
-The likely reason is that movement energy is charged on *actual resolved*
-movement: an organism whose founder controller requests little forward motion
-pays close to the basal 0.02/tick, which alone would support roughly 2,500
-ticks. The observed range is therefore consistent with founder controllers
-moving less, on average, than the "normal movement" the estimate assumes — not
-with an energy-model error. §16.9 provides for test-only fixed-speed movement
-policies (stationary / 25% / 50% / 100%) precisely to separate these two
-explanations; those policies are **not implemented**, so this remains an
-inference rather than a measurement.
+**This discrepancy is now resolved and is a controller effect, not an
+energy-model effect.** §7 reports the §16.9 fixed-movement-policy diagnostic:
+across 60 replicates at four fixed speeds, measured energy drain matches the
+closed-form prediction of the specified model to within 0.06%, and the founder
+controllers are measured to spend energy like an organism moving at 65.7% of
+`maxSpeed`. The §16.8 target band corresponds to v = 1.0, i.e. 80% of the
+default `maxSpeed` of 1.25; founders move slower than that, which is exactly why
+they live longer. No energy parameter needs changing on this evidence.
 
 ### B — feeding: food active, reproduction still unreachable
 
@@ -282,48 +281,98 @@ that pilot data already indicates is not viable. The seeds stay held out.
 
 ## 6. Smallest next pilot experiment
 
-One experiment, one subsystem, following §14.24 and §16.26.
+> **Revised after the §7 movement-policy diagnostic.** An earlier version of
+> this section proposed sweeping `lifecycle.maturityAge` x `lifecycle.maxAge`.
+> §7 measured the energy budget directly and, together with a closer reading of
+> what `calibration-v1` actually varied, points at a different pair of axes. The
+> superseded proposal and the reason it changed are kept in §6.3 so the
+> reasoning is auditable.
 
-**`calibration-v2` — lifecycle timescale alignment.**
+### 6.1 What the evidence now says
 
-Rationale: the sweep varied the energy/food/reproduction triple across 12 points
-and moved the viable rate by at most 37.5 points from zero, while every
-configuration showed the same extinction signature at `maxAge`. The parameter
-family that the diagnosis implicates and that `calibration-v1` never touched is
-the lifecycle timescale.
+Three findings constrain the choice:
 
-Proposed definition:
+1. **The energy model is correct, so energy coefficients are not candidates.**
+   §7 verifies basal, movement and speed mapping against closed-form
+   predictions at four speeds. Changing `baseMetabolicConstant`,
+   `movementEnergyCoefficient` or `configuredInitialEnergy` would be tuning a
+   subsystem that has just been shown to behave as specified — precisely what
+   §16.26 rules out.
+
+2. **The measured energy budget sets a hard feeding requirement.** Founder
+   controllers drain 0.0607/tick. At `foodEnergyValue` = 25, an organism must
+   eat once every 25 / 0.0607 ≈ **412 ticks merely to break even**, and more
+   often than that to accumulate toward the reproduction threshold of 75. Over
+   the 500-tick `maturityAge` window a founder spends about 30 energy, so it
+   needs roughly 1.2 food items just to reach maturity alive and about 2.2 to
+   reach the reproduction threshold. This is a quantitative target that did not
+   exist before §7.
+
+3. **`calibration-v1` never varied standing food density.** The sweep moved
+   `regenAttemptsPerTick` across [2, 4, 6], but `worldFoodCapacity` stayed at 60
+   in all 12 cells. Regeneration only refills *toward* the cap, so the sweep
+   varied refill speed against a fixed standing stock. Two observations confirm
+   the cap, not the refill rate, was binding: viable-completion rate shows no
+   trend across the three regeneration levels (§4.2), and in Diagnostic B the
+   ending food count was exactly 60 — the cap — in all 15 replicates, so food
+   supply was never depleted. Raising regeneration cannot help when the world is
+   already sitting at capacity.
+
+### 6.2 Proposed `calibration-v2`
+
+**Axes — standing food density x reproductive window:**
 
 ```
-lifecycle.maturityAge : [300, 500]
-lifecycle.maxAge      : [3000, 6000, 10000]
+food.worldFoodCapacity : [60, 120, 240]
+lifecycle.maturityAge  : [300, 500]
 ```
 
-- 6 configurations, all other parameters at the Phase 0A defaults.
-- Pilot seeds only. Use all 15, not 8 — the bimodality above shows 8 is too few.
-- **20,000 ticks** per replicate, matching the §14.28 / §16.34 validation
-  horizon, so viable completion is measured where it will be gated.
-- Runaway cap enforced (now the default), so explosive runs terminate and are
-  labelled instead of inflating means.
-- 90 replicates total.
+- `worldFoodCapacity` is the parameter that sets standing food density and
+  therefore encounter rate, which finding 3 shows was held constant through the
+  entire first sweep. 60 is the current baseline; 120 and 240 raise mean food
+  density from 1 item per 4,167 world units² to 1 per 2,083 and 1 per 1,042.
+- `maturityAge` is the reproductive window measured against finding 2: at 500
+  ticks a founder must survive 61% of its no-food lifetime and acquire roughly
+  two food items before it can reproduce at all. 300 tests whether that window
+  is the binding constraint.
 
-Primary readout, precommitted before running: **viable completion rate per
-configuration**, with extinction and runaway counts reported alongside. Mean
-final population is descriptive only and is not a selection criterion.
+Held fixed, deliberately: `lifecycle.maxAge` stays at the default 3000 so that
+cohort turnover happens at the same time in every cell while the *rates* change,
+and all energy parameters stay at their verified defaults.
 
-Decision rule, precommitted:
+**Execution, precommitted:**
+
+- 6 configurations, all 15 pilot seeds, **20,000 ticks** (the §14.28 / §16.34
+  baseline validation horizon, which `calibration-v1` did not use), runaway cap
+  enforced. 90 replicates.
+- Primary readout: **viable completion rate** per configuration, with extinction
+  and runaway counts reported alongside. Mean final population is descriptive
+  only and is not a selection criterion.
+
+**Decision rule, precommitted:**
 
 - If one or more configurations reach roughly 70% viable completion, select the
-  one with the highest viable rate, breaking ties by the smaller departure from
-  the Phase 0A defaults; freeze it as `Phase0Baseline_v1` with its full
-  parameter set, thresholds and analysis plan recorded in `PROJECT_STATUS.md`;
-  only then run the 2×2 on the validation seeds, once.
+  highest viable rate, breaking ties by the smaller departure from the Phase 0A
+  defaults; freeze it as `Phase0Baseline_v1` with its full parameter set,
+  thresholds and analysis plan recorded in `PROJECT_STATUS.md`; only then run
+  the 2×2 once on the validation seeds, and never retune on those results.
 - If none does, report that, diagnose the next implicated subsystem, and define
-  `calibration-v3`. Do not lower the gate to make a candidate pass.
+  `calibration-v3`. Do not lower the gate to manufacture a candidate.
 
 This costs 90 replicates and consumes no validation seeds.
 
----
+### 6.3 Superseded proposal
+
+The earlier proposal was `lifecycle.maturityAge: [300, 500]` x
+`lifecycle.maxAge: [3000, 6000, 10000]`, motivated by the extinction cluster at
+`maxAge` = 3000 described in §4.3.
+
+`maturityAge` survives into §6.2 because §7 gave it a quantitative
+justification. `maxAge` was dropped: raising it postpones cohort turnover
+without changing the feeding and reproduction *rates* that determine whether a
+population is self-sustaining when turnover arrives. It remains a reasonable
+`calibration-v3` axis if v2 shows the rates are adequate but the cliff still
+ends runs.
 
 ## 7. Diagnostic A2 — test-only fixed movement policies (§16.9)
 
@@ -444,7 +493,109 @@ Decision rule, fixed before running:
 
 ### 7.4 Results
 
-_Pending execution._
+15 pilot seeds per condition, 75 replicates, 20,000 max ticks. Every replicate
+in every condition ended in extinction with 0 births and 0 food, as designed.
+Source: `results/diagnostic-movement-policy/`.
+
+| Condition | Window | Measured drain/tick | Predicted drain/tick | Meas/Pred | Median lifetime | Predicted lifetime | Implied speed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `neural-reference` | 200 | 0.060739 | — | — | 1066 | — | 65.7% |
+| `stationary` | 200 | 0.020000 | 0.020000 | 1.0000 | 2548 | 2500.0 | 0.0% |
+| `speed-25` | 200 | 0.025851 | 0.025851 | 1.0000 | 1972 | 1934.2 | 25.0% |
+| `speed-50` | 200 | 0.043428 | 0.043424 | 1.0001 | 1189 | 1151.4 | 50.0% |
+| `speed-100` | 200 | 0.113731 | 0.113715 | 1.0001 | 461 | 439.7 | 100.0% |
+
+The measurement window was the full 200 ticks in every one of the 75
+replicates — no organism died that early in any condition, so every drain
+figure is a mean over an unchanging cohort.
+
+**The energy model as implemented is the energy model as specified.** Across all
+60 fixed-policy replicates the ratio of measured to predicted drain lies in
+[0.99947, 1.00016]. Inverting the model on the measured drain recovers the
+requested speed exactly — 0.0%, 25.0%, 50.0%, 100.0% — so basal metabolism,
+the size-scaled velocity-squared movement term and the phenotype speed mapping
+all behave as §12.6–§12.9 describe. This is the §16.10 sanity check passing at
+four separate points rather than one.
+
+**The founder controllers move at roughly two thirds of maximum speed.** The
+reference cell drains 0.060739/tick, which the same model maps to 65.7% of
+`maxSpeed` (v ≈ 0.82 units/tick). Across seeds the implied speed ranges from
+52.3% to 97.0% — the controllers are not uniform, but none of them is close to
+stationary and none is at full speed.
+
+#### Reconciling lifetime with drain
+
+A run's extinction tick is the tick of the **last** death, so it tracks the
+lowest-drain organism in the cohort, not the mean. Every condition shows this,
+and its size follows cohort heterogeneity exactly. Taking the slowest-draining
+organism in each cohort at tick 200 (from the timeseries `minEnergy`) and
+dividing initial energy by that organism's drain:
+
+| Condition | Energy spread at tick 200 | Implied lifetime of the slowest-draining organism | Observed median extinction tick |
+|---|---:|---:|---:|
+| `stationary` | 0.165 | 2547 | 2548 |
+| `speed-25` | 0.204 | 1972 | 1972 |
+| `speed-50` | 0.492 | 1189 | 1189 |
+| `speed-100` | 1.878 | 460 | 461 |
+| `neural-reference` | 3.264 | 1201 | 1066 |
+
+For all four fixed policies this predicts the observed extinction tick to within
+one tick. The only heterogeneity there is morphological — bootstrap perturbs
+`size`, `maxSpeed` and `metabolism` by about 1% — so the last death lands 2–5%
+beyond the cohort-mean prediction.
+
+The reference cell has an energy spread six times wider than any fixed policy
+at the same tick, because its organisms genuinely differ in how much they move.
+That is why its median lifetime of 1066 exceeds the 823 ticks its *mean* drain
+implies. The remaining gap (1201 predicted from the slowest organism versus 1066
+observed) is expected in the other direction: a neural controller's output is a
+function of its sensory vector, which includes `normalizedEnergy`, so its drain
+is not constant across its life the way a fixed policy's is.
+
+#### Answering the §16.8 discrepancy
+
+§12.59 and §16.10 estimate a starvation lifetime of about 625 ticks from
+`50 / 0.08`, where 0.08 is basal 0.02 plus a movement component of 0.06. That
+movement component is `movementEnergyCoefficient * size * v^2` evaluated at
+**v = 1.0** for a size-1.0 organism. The default `maxSpeed` is 1.25, so the
+spec's own worked example describes an organism moving at 80% of maximum, not
+100%; the model reproduces its arithmetic exactly at that point.
+
+The founder cohort's measured 65.7% of maxSpeed gives v ≈ 0.82 and a drain of
+0.0607, i.e. a cohort-mean lifetime of 823 ticks and a last-death lifetime of
+1066. Diagnostic A's median of 1066 is therefore the number this energy model
+*should* produce for controllers that move at this speed. Nothing is
+mis-calibrated.
+
+### 7.5 Verdict
+
+**Controller effect. Not an energy-model effect.**
+
+Against the decision rule fixed in §7.3: the four fixed policies match their
+predicted drain to within 0.06% — far inside the ±10% band — so the
+energy-model branch is excluded. The reference cell's implied speed of 65.7% is
+materially below 100%, satisfying the controller branch. The "mixed" branch does
+not apply: the reference cell's lifetime *is* reconcilable with its own drain,
+via the same last-death order statistic that explains all four fixed policies,
+and its measured energy spread independently confirms the heterogeneity that
+requires.
+
+What this establishes:
+
+- basal metabolism, movement cost and the phenotype speed mapping are
+  implemented as specified, verified at four speeds against closed-form
+  predictions;
+- Diagnostic A's lifetimes are fully explained by controller movement, and the
+  §16.8 target band of 500–700 ticks corresponds to v = 1.0, an organism moving
+  faster than these founders do;
+- there is no evidence of an energy-calibration defect, and none of
+  `baseMetabolicConstant`, `movementEnergyCoefficient` or
+  `configuredInitialEnergy` should be changed on this evidence.
+
+What it does **not** establish: nothing here says the founder controllers are
+good at finding food, or that ~66% of maxSpeed is an appropriate speed, or that
+any ecological configuration is viable. This diagnostic ran with food off. It
+measures energy expenditure and nothing else.
 
 ---
 
@@ -468,11 +619,74 @@ validation.
 
 ---
 
-## 9. Summary of claims
+## 9. A reproducibility finding in the persisted results
+
+While cross-checking the §7 reference cell against Diagnostic A, one persisted
+replicate was found not to reproduce under the current build.
+
+Re-running all 15 persisted Diagnostic A replicates against the committed tree:
+**14 of 15 final state hashes match bit for bit**. Seed 147514 does not — the
+persisted record has extinction at tick 1145 with hash `3adf024649660af4`, and
+the current tree produces tick 1150 with hash `93e832500468f40f`. The recorded
+`configHash` is identical (`ed046e733f83bcd1`), so the two runs used the same
+configuration. Diagnostic B re-runs 15 of 15 identical.
+
+What was ruled out:
+
+- **Not the current code being non-deterministic.** Repeated runs on the
+  committed tree give identical hashes, and the Phase 0A golden hash still
+  reproduces.
+- **Not the Phase 0B checkpoint's harness changes.** The pre-checkpoint harness,
+  extracted from a snapshot taken before any edits and built here, also produces
+  1150 for that seed.
+- **Not simulation-core source drift.** The core sources in that snapshot are
+  byte-identical to the committed ones.
+- **Not float sensitivity.** Perturbing one organism's energy or heading at
+  bootstrap by 1 ULP, 1e-15, 1e-12, 1e-9 and 1e-6 moves the extinction tick by
+  zero ticks on this and other seeds. A 5-tick shift needs a perturbation around
+  0.2 energy, which is nine orders of magnitude larger.
+
+What the evidence does show: the persisted results were written at 19:40:35, and
+the `simulation-core/dist` present in the pre-edit snapshot — byte-identical to
+today's — was built at **19:41:08**, half a minute *after* those results. The
+harness's `experiment` script compiled only the harness and imported
+`@alo/simulation-core` from its prebuilt `dist`, so a run could silently consume
+a stale core build while its provenance recorded the current git commit. That is
+the mechanism by which a persisted result can fail to correspond to the source
+it claims; whether it is what happened for this particular seed cannot be proven
+after the fact, because the older `dist` no longer exists.
+
+Consequences, stated conservatively:
+
+- **No conclusion in this report changes.** The affected value moves 1145 → 1150
+  in a 15-value set whose median (1066), minimum (485) and maximum (1662) are
+  all unchanged. The §7 diagnostic was run entirely on the current build.
+- **The calibration verdict is unaffected**: it rests on extinction and runaway
+  counts with wide margins, not on individual tick values.
+- **The other persisted experiments have not been re-verified.** Diagnostics C
+  and D, the 2×2 and the sweep were written earlier still, from builds that no
+  longer exist. They were not re-run, per the standing instruction not to repeat
+  completed expensive experiments; their aggregate conclusions are robust to
+  tick-level differences of this size, but they should be regarded as
+  provenance-uncertain at replicate level.
+- **The hazard is fixed going forward.** The harness `experiment` script now
+  builds `simulation-core` before the harness, so a run cannot consume a stale
+  core build.
+
+This is recorded as a provenance and tooling finding. It is **not** evidence of
+a Phase 0A defect: no locked invariant is implicated, the core is deterministic
+within a build, and Phase 0A was not reopened.
+
+---
+
+## 10. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|
-| The substrate runs deterministically across seeds and conditions | Yes | 192 → 218 passing tests; identical replicate hashes; golden hash `6a6576bd49e86b27` |
+| The substrate runs deterministically within a build | Yes | identical repeated replicate hashes; golden hash `6a6576bd49e86b27`; 29 of 30 persisted replicates from the latest batch re-verified (§9) |
+| The energy model is implemented as specified | **Yes** | §7: measured/predicted drain in [0.99947, 1.00016] across 60 replicates at four fixed speeds |
+| Diagnostic A's long lifetimes are a controller effect, not an energy defect | **Yes** | §7: founders measured at 65.7% of maxSpeed; §16.8's band corresponds to v = 1.0 |
+| The founder controllers are good at finding food | Not tested | §7 ran with food off; it measures expenditure only |
 | Diagnostic interventions do what they claim | Yes | 0 births in A and B across 15 replicates each; food 0 throughout A |
 | Organisms detect, reach and consume food | Yes | Diagnostic B: median survival 1066 → 3000 ticks with food active |
 | Inheritance and both mutation channels operate under configuration control | Yes | 2×2 executes; conditions differ only in the two flags; RNG isolation tested |

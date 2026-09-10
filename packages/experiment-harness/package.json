@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "experiment": "tsc -p tsconfig.json && node dist/cli/main.js"
+    "experiment": "tsc -p ../simulation-core/tsconfig.json && tsc -p tsconfig.json && node dist/cli/main.js"
   },
   "dependencies": {
     "@alo/simulation-core": "0.1.0"

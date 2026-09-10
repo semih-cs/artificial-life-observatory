@@ -41,6 +41,7 @@ npm run experiment -- starvation             # Diagnostic A
 npm run experiment -- feeding                # Diagnostic B
 npm run experiment -- reproduction-control   # Diagnostic C
 npm run experiment -- full-evolutionary      # Diagnostic D
+npm run experiment -- movement-policy        # Diagnostic A2 (§16.9 fixed movement policies)
 npm run experiment -- mutation-2x2           # primary 2x2 mutation factorial
 npm run experiment -- calibration-sweep      # coarse ecological parameter sweep
 npm run experiment -- calibration-report     # re-read persisted sweep results; runs nothing
@@ -123,6 +124,63 @@ Stage C. Food ON, reproduction ON, both mutation channels OFF. Because mutation
 is off, every offspring must inherit its parent's morphology and neural genome
 exactly, which makes this simultaneously an inheritance sanity test (§16.17).
 This is also the control cell of the 2×2. Default horizon 10,000 ticks.
+
+### Diagnostic A2 — fixed movement policies (`movement-policy`)
+
+Stage A, refined. §16.9 [LOCKED] permits test-only deterministic movement
+policies to isolate the EnergyModel from controller behaviour. Five conditions
+over the same seeds:
+
+| Condition | Controller |
+|---|---|
+| `neural-reference` | the unmodified founder/bootstrap controllers |
+| `stationary` | fixed policy, 0% of `maxSpeed` |
+| `speed-25` | fixed policy, 25% of `maxSpeed` |
+| `speed-50` | fixed policy, 50% of `maxSpeed` |
+| `speed-100` | fixed policy, 100% of `maxSpeed` |
+
+The four levels are §16.9's own. Configuration matches Diagnostic A (food
+completely off, mutation off, reproduction unreachable) with `lifecycle.maxAge`
+raised to 100,000 so `ENERGY_DEPLETION` is the only death mechanism. Default
+horizon 20,000 ticks.
+
+A policy is an ordinary `NeuralGenome` with all input→hidden weights zero,
+making the controller provably input-independent, and output parameters chosen
+so the [LOCKED] §11.59 mapping yields a constant action. All parameters stay
+inside `neuralParamBounds`. It is installed once between `bootstrapWorld` and
+tick 1 via a condition's optional `worldTransform`, replacing only the neural
+genome; morphology, position, heading, energy, ids, food, fertility and both RNG
+stream states are preserved exactly, and no RNG is consumed.
+
+Two consequences of the locked rules are handled explicitly. `forward` is a
+sigmoid, so 0.0 and 1.0 are asymptotes — the endpoints attain ≈2.7e-8 and
+≈1 − 2.7e-8, which for the stationary agent is a movement cost twelve orders of
+magnitude below basal. And every policy also turns at full rate: a zero-turn
+agent travels straight, reaches the perimeter, is clamped to zero displacement
+under the [LOCKED] §12.8 actual-displacement rule, and stops paying movement
+cost, which would make all four levels converge on basal. Turning is free and
+does not change displacement magnitude, so a full-rate turn keeps each agent
+orbiting a ≈2.4-unit polygon well inside the 10-unit minimum boundary
+separation. A test demonstrates the zero-turn failure mode.
+
+The CLI prints a §16.9/§16.10 energy report after the standard summary:
+measured drain per tick against the drain predicted by the specified model for
+each condition's own morphology and speed, observed against predicted lifetime,
+and — for the reference cell — the implied constant speed obtained by inverting
+the model on the measured drain.
+
+`src/analysis/energyModel.ts` holds the model:
+
+```
+predicted drain = metabolism * baseMetabolicConstant
+                + movementEnergyCoefficient * size * (fraction * maxSpeed)^2
+predicted lifetime = configuredInitialEnergy / predicted drain
+```
+
+Drain is measured over the largest death-free sampled window of at most 200
+ticks, so the mean is always taken over an unchanging cohort.
+
+Results: see `docs/Phase 0B Pilot Report.md` §7.
 
 ### Diagnostic D — full evolutionary loop (`full-evolutionary`)
 
@@ -317,6 +375,15 @@ Every replicate carries provenance: `experimentId`, `conditionId`,
 `replicateId`, `seed`, `simulationVersion`, `experimentHarnessVersion`,
 `configHash`, `maxTicks`, `gitCommit`, `timestamp`, plus the run's own
 `finalStateHash` (§16.3–§16.4).
+
+**Provenance caveat.** `gitCommit` is `git rev-parse HEAD`, which says nothing
+about uncommitted changes, and until recently the `experiment` script compiled
+only the harness and imported `simulation-core` from its prebuilt `dist` — so a
+run could consume a stale core build while recording the current commit. The
+script now builds `simulation-core` first. One persisted replicate predating
+that fix does not reproduce; see `docs/Phase 0B Pilot Report.md` §9. When a
+persisted result matters, re-verify it against the current build rather than
+trusting the recorded commit alone.
 
 `results/` is gitignored. **The persisted files are the authoritative record of
 a run** — not console output, not chat transcripts. Do not rerun an expensive
