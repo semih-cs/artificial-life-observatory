@@ -475,46 +475,42 @@ intelligence increased, or that any tested configuration is ecologically viable.
 
 ---
 
-## NEXT EXACT STEP
+## calibration-v3 — FINAL sweep of this calibration cycle (PRECOMMITMENT)
 
-**Write and commit the `calibration-v3` precommitment, before running anything.**
-
-calibration-v2 produced no candidate, so the next action is not another sweep —
-it is the precommitment document for the next one, committed before execution,
-exactly as v2 was. Add a `calibration-v3` section to
-`docs/Phase 0B Pilot Report.md` fixing axes, seeds, horizon, primary readout and
-decision rule, then commit it, then implement and run.
-
-Proposed axes, with the justification that must be recorded alongside them:
+Recorded and committed **before** implementation or execution. Full text in
+`docs/Phase 0B Pilot Report.md` §11.
 
 ```text
 energy.reproductionEnergyThreshold : [75, 90]
 lifecycle.maxAge                   : [3000, 6000]
 ```
 
-- `reproductionEnergyThreshold` has been **75 in every configuration of both
-  sweeps**. It is the gate on reproduction itself — how much surplus an organism
-  must accumulate before it may reproduce — and therefore the direct control on
-  population growth rate, which is what drives 40 of 90 replicates into runaway.
-  It does not touch the energy model §7 verified.
-- `lifecycle.maxAge` was deferred from §6.3 to a later sweep and remains
-  untested. Now that the 20,000-tick horizon is known to be load-bearing,
-  cohort turnover timing is worth testing.
+4 configurations x 15 pilot seeds x 20,000 ticks = 60 replicates, §14.29 runaway
+cap ENABLED, all other parameters at Phase 0A defaults, results to
+`results/calibration-v3/`.
 
-4 configurations x 15 pilot seeds x 20,000 ticks = 60 replicates, runaway cap
-enforced, all other parameters at Phase 0A defaults. Primary readout:
-`viableCompletionRate`. Mean final population descriptive only.
+**PRIMARY READOUT: `viableCompletionRate`.** Everything else is descriptive.
 
-Decision rule to precommit, unchanged in form from §6.2:
+Selection rule: a configuration qualifies only at the existing ~70%
+`viableCompletionRate` gate; among qualifiers take the highest rate; on an exact
+tie take the smaller departure from Phase 0A defaults; never select on mean
+population, births or generation depth. No axis or threshold may change after
+results are seen.
 
-- If one or more configurations reach roughly 70% viable completion, select the
-  highest viable rate, ties broken by smaller departure from the Phase 0A
-  defaults; freeze it as `Phase0Baseline_v1` with its full parameter set,
-  thresholds and analysis plan recorded here; **only then** run the 2x2 once on
-  the validation seed set, and never retune on those results.
-- If none does, report that, and do not lower the gate.
+**Terminal rule.** calibration-v3 is the FINAL parameter sweep of this cycle.
+Either a qualifying candidate exists — freeze exactly one, document it, stop
+before validation — or none does, in which case the cycle is declared
+unsuccessful with no calibration-v4, no further sweep, no weakened gate and no
+new axes, and the single smallest model-level question is identified without
+modifying the model.
 
-Constraints that still hold: do not touch
+---
+
+## NEXT EXACT STEP
+
+**Implement `calibration-v3` in the harness CLI, commit it, and run it from a
+clean worktree on pilot seeds only.**
+
+The precommitment above is fixed. Do not touch
 `packages/experiment-harness/seeds/validation.json`; do not change any energy
-coefficient (§7 verified the energy model); do not shorten the 20,000-tick
-horizon; do not begin Phase 0C.
+coefficient; do not shorten the 20,000-tick horizon; do not begin Phase 0C.

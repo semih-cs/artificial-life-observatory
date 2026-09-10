@@ -870,7 +870,94 @@ reproduction gate is the untested growth control.
 
 ---
 
-## 11. Summary of claims
+## 11. calibration-v3 — the reproduction gate x cohort turnover (PRECOMMITMENT)
+
+**This section was written and committed before calibration-v3 was implemented
+or run. §11.5 was empty at that point.**
+
+**calibration-v3 is the FINAL parameter sweep of this Phase 0B calibration
+cycle.** See the terminal rule in §11.4.
+
+### 11.1 Axes
+
+```
+energy.reproductionEnergyThreshold : [75, 90]
+lifecycle.maxAge                   : [3000, 6000]
+```
+
+`reproductionEnergyThreshold` has been 75 in every one of the 18 configurations
+tested across calibration-v1 and calibration-v2. It is the gate on reproduction
+itself — how much energy an organism must accumulate before it may reproduce —
+and therefore the most direct control on population growth rate, which is what
+drove 40 of 90 replicates into runaway in v2. It does not touch the energy model
+that §7 verified. At 90 it remains below `energyCapacity` (100), so reproduction
+stays reachable.
+
+`lifecycle.maxAge` was deferred from §6.3 and remains untested. Now that §10.5
+has shown the 20,000-tick horizon to be load-bearing, cohort turnover timing is
+worth testing.
+
+### 11.2 Design
+
+- 4 configurations
+- the 15 existing **pilot** seeds
+- 20,000 ticks maximum
+- §14.29 runaway cap **enabled**
+- all other parameters at the current Phase 0A defaults
+- 60 replicates total
+- results written to `packages/experiment-harness/results/calibration-v3/`
+
+**`viableCompletionRate` is the precommitted PRIMARY READOUT.** Extinction rate,
+runaway rate, mean and median final population, generation depth and births are
+reported alongside it as descriptive context and are **not** selectors.
+
+No axis may be added after seeing results. No gate or threshold may be changed
+after seeing results.
+
+### 11.3 Selection rule
+
+1. A configuration qualifies **only** if it reaches the existing ~70%
+   `viableCompletionRate` gate (§16.35 [BASELINE]).
+2. If more than one configuration qualifies, choose the highest
+   `viableCompletionRate`.
+3. On an exact tie, choose the configuration with the smaller departure from the
+   Phase 0A defaults.
+4. Mean population, births, maximum generation depth and every other metric are
+   **excluded** as primary selectors.
+
+### 11.4 Terminal rule
+
+Exactly two outcomes are permitted.
+
+**Outcome A — a qualifying candidate exists.** Apply the selection rule, freeze
+exactly one candidate baseline, version and document it, update
+`PROJECT_STATUS.md` and this report, and stop. Validation is a separate,
+subsequent step and is not run in the same task.
+
+**Outcome B — no qualifying candidate exists.** Then:
+
+- do not propose a calibration-v4;
+- do not launch another parameter sweep;
+- do not weaken the viability gate;
+- do not add new tuning axes;
+- do not use validation seeds.
+
+Instead, declare this Phase 0B calibration cycle unsuccessful, document that the
+tested parameter space of the current Phase 0A model did not produce a validated
+non-degenerate baseline, summarize which parameter directions v1, v2 and v3 have
+covered, and identify the single smallest **model-level** question to reconsider
+before any future calibration cycle — without modifying the model.
+
+A failed calibration cycle is a valid scientific result. Success is not to be
+forced.
+
+### 11.5 Results
+
+_Pending execution._
+
+---
+
+## 12. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|
