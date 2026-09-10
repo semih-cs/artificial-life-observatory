@@ -18,7 +18,7 @@ import {
 import { computeTimeseriesRow, meanAndVariance, median } from '../src/metrics/compute.js';
 import { detectDegeneracy, passesCalibrationCriteria, DEFAULT_DEGENERACY_CRITERIA, DEFAULT_CALIBRATION_CRITERIA } from '../src/analysis/degeneracy.js';
 import { generateSweepConfigurations, runSweep } from '../src/runner/sweep.js';
-import { runProvenance, hashDirectoryTrees } from '../src/runner/provenance.js';
+import { runProvenance, hashDirectoryTrees, EMPTY_IDENTITY, IDENTITY_DIRECTORIES } from '../src/runner/provenance.js';
 import type { ConditionSummary } from '../src/types.js';
 
 const SMALL_SEEDS = [42, 43, 44];
@@ -419,6 +419,26 @@ describe('run provenance (git commit, dirty state, source identity)', () => {
     const second = runProvenance();
     expect(second.sourceIdentity).toBe(first.sourceIdentity);
     expect(second.gitDirty).toBe(first.gitDirty);
+  });
+
+  it('source identity actually hashes the built output, not nothing', async () => {
+    // Guards the failure mode where the identity directories resolve to paths
+    // that do not exist: hashDirectoryTrees then returns the empty hash, a
+    // constant that looks like a valid identity but describes no code at all.
+    const fs = await import('node:fs');
+    for (const dir of IDENTITY_DIRECTORIES) {
+      expect(fs.existsSync(dir), `identity directory missing: ${dir}`).toBe(true);
+      expect(fs.readdirSync(dir).length).toBeGreaterThan(0);
+    }
+    expect(runProvenance().sourceIdentity).not.toBe(EMPTY_IDENTITY);
+  });
+
+  it('the two identity directories contribute independently', () => {
+    const [core, harness] = IDENTITY_DIRECTORIES as string[];
+    const both = hashDirectoryTrees([core!, harness!]);
+    expect(hashDirectoryTrees([core!])).not.toBe(both);
+    expect(hashDirectoryTrees([harness!])).not.toBe(both);
+    expect(hashDirectoryTrees([core!])).not.toBe(hashDirectoryTrees([harness!]));
   });
 
   it('hashDirectoryTrees is deterministic and content-sensitive', async () => {

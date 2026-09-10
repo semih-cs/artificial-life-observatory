@@ -38,7 +38,18 @@ export interface RunProvenance {
   sourceIdentity: string;
 }
 
-const HARNESS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+/**
+ * This module lives at `<package>/src/runner/` when running from source and
+ * `<package>/dist/runner/` when running built, so two levels up is the package
+ * directory in both layouts.
+ */
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+/** The built output whose hash identifies the code that actually runs. */
+export const IDENTITY_DIRECTORIES: readonly string[] = [
+  path.join(PACKAGE_ROOT, '..', 'simulation-core', 'dist'),
+  path.join(PACKAGE_ROOT, 'dist'),
+];
 
 /**
  * Hash a set of directory trees: every file with one of `extensions`, ordered
@@ -77,10 +88,10 @@ export function hashDirectoryTrees(dirs: readonly string[], extensions: readonly
 function readGit(): { gitCommit: string | null; gitDirty: boolean | null } {
   try {
     const gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: HARNESS_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+      cwd: PACKAGE_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
     const status = execFileSync('git', ['status', '--porcelain'], {
-      cwd: HARNESS_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+      cwd: PACKAGE_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
     });
     return { gitCommit, gitDirty: status.trim().length > 0 };
   } catch {
@@ -100,13 +111,17 @@ export function runProvenance(): RunProvenance {
   cached = {
     gitCommit: git.gitCommit,
     gitDirty: git.gitDirty,
-    sourceIdentity: hashDirectoryTrees([
-      path.join(HARNESS_ROOT, 'packages', 'simulation-core', 'dist'),
-      path.join(HARNESS_ROOT, 'packages', 'experiment-harness', 'dist'),
-    ]),
+    sourceIdentity: hashDirectoryTrees(IDENTITY_DIRECTORIES),
   };
   return cached;
 }
+
+/**
+ * The hash of an empty file set. A `sourceIdentity` equal to this means nothing
+ * was hashed — the identity would be a meaningless constant rather than a
+ * description of the running code. Asserted against by test.
+ */
+export const EMPTY_IDENTITY = hashDirectoryTrees([]);
 
 /** Test seam: drop the memoized value. */
 export function resetRunProvenanceCache(): void {
