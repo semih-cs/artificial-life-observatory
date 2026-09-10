@@ -31,7 +31,7 @@ Most recent work is the Phase 0B provenance repair. `git log -1` is
 authoritative; recent history:
 
 ```text
-9ba415c docs: repair the git-state history block in PROJECT_STATUS.md
+(HEAD)  docs: repair the git-state history block in PROJECT_STATUS.md — a commit cannot record its own hash; `git log -1` is authoritative
 700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
 5271387 docs: record the Diagnostic A2 commit hash in PROJECT_STATUS.md
 1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
