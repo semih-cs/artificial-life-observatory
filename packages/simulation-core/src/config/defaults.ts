@@ -1,5 +1,28 @@
 import { SimulationConfig } from './types.js';
 
+/**
+ * Model identities (§13.76 and its amendment).
+ *
+ * The bootstrap rule is the only difference between them, and it changes the
+ * canonical trajectory, so the two are different models and must never share a
+ * regression reference or be mixed in one analysis.
+ */
+
+/** Historical model: one founder controller, 25 near-clones of it. */
+export const SINGLE_FOUNDER_MODEL_VERSION = '0A.1.0';
+
+/** Amended model: 5 independent founder controllers, 5 organisms each. */
+export const MULTI_FOUNDER_MODEL_VERSION = '0A.2.0';
+
+/**
+ * The historical single-founder model's deterministic regression reference:
+ * seed 20260910, 10,000 ticks. It belongs to SINGLE_FOUNDER_MODEL_VERSION and
+ * is NOT a regression target for the amended model, which by design produces a
+ * different trajectory. It remains documented and testable via
+ * `singleFounderModelConfig()`.
+ */
+export const SINGLE_FOUNDER_GOLDEN_HASH = '6a6576bd49e86b27';
+
 const DEG = Math.PI / 180;
 
 /**
@@ -14,7 +37,7 @@ const DEG = Math.PI / 180;
  * "working value") is used and the source section is cited.
  */
 export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
-  simulationVersion: '0A.1.0',
+  simulationVersion: MULTI_FOUNDER_MODEL_VERSION,
   rootSeed: 1,
 
   world: {
@@ -74,6 +97,12 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     // other, so raising it does not weaken the no-cherry-picking guarantee.
     // The low pass rate is recorded as a Phase 0B calibration observation.
     maxFounderAttempts: 2000,
+    // Amended §13.76: five independent founder controllers, five organisms
+    // each. Introduced solely to give a world standing neural diversity at
+    // tick 0, so a single bootstrap draw cannot decide its whole trajectory.
+    // It is not an attempt to produce better controllers: the acceptance gate
+    // is unchanged and founders are never compared.
+    founderGroupCount: 5,
     boundaryMinSeparationFraction: 0.02, // [BASELINE] §13.76
     maxPlacementAttempts: 20, // [BASELINE] §13.76
     founderProbe: {
@@ -139,6 +168,19 @@ export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
     maxOffspringOffset: 10, // [OPEN — EMPIRICAL] §20.72, §12.46
   },
 };
+
+/**
+ * The historical single-founder model, for regression and for reading old
+ * results. Identical to the amended defaults except for the bootstrap rule and
+ * the version string, so `bootstrapWorld` reproduces the pre-amendment
+ * trajectory exactly — including SINGLE_FOUNDER_GOLDEN_HASH.
+ */
+export function singleFounderModelConfig(): SimulationConfig {
+  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  config.simulationVersion = SINGLE_FOUNDER_MODEL_VERSION;
+  config.bootstrap.founderGroupCount = 1;
+  return config;
+}
 
 /** Deep-clone the default config so callers can override fields without aliasing. */
 export function cloneConfig(config: SimulationConfig): SimulationConfig {

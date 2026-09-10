@@ -3,6 +3,11 @@
 **Status: pilot evidence only. No configuration has been frozen. The held-out
 validation seeds are untouched.**
 
+> **Model scope.** Sections 1–11 describe the historical **single-founder**
+> model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
+> multi-founder initialization (`0A.2.0`). Results from the two models are
+> separate evidence bases and must not be pooled — see §12.1.
+
 Every number in this report was read from the persisted result files under
 `packages/experiment-harness/results/` — `condition-summary.csv`,
 `replicates.json` and the sampled `timeseries-*.csv` — not from console or chat
@@ -1081,7 +1086,54 @@ Stated carefully, because this is a question and not a finding:
 
 ---
 
-## 12. Summary of claims
+## 12. Model amendment: multi-founder initialization
+
+§11.8 identified one model-level question. It has now been answered by an
+explicit versioned amendment to §13.76, recorded in
+`docs/Phase 0A Amendment - Multi-Founder Initialization.md`.
+
+**What changed.** The initial population is built from 5 independent founder
+neural genomes, 5 organisms each, instead of 25 near-clones of a single founder.
+Each founder is drawn independently from BootstrapRNG and accepted by the same
+unchanged validity + viability gate, first passing candidate wins. Model version
+moves `0A.1.0` → `0A.2.0`.
+
+**What did not change.** The founder acceptance gate; morphology initialization
+and the per-organism bootstrap perturbation; all runtime biology; mutation rules
+after reproduction; RNG stream separation; and every locked invariant. There is
+no ranking, scoring, best-of-N or comparison between founders. Nothing about
+sensing, actions, learning or fitness was added.
+
+**Golden hashes.** `0A.1.0` keeps `6a6576bd49e86b27`; `0A.2.0` is
+`b95a0b4ef7dd8449`, reproduced across independent processes. The historical hash
+is not a regression target for the amended model and still passes for the
+historical one.
+
+### 12.1 Status of everything in this report
+
+Sections 1–11 describe the **single-founder model (`0A.1.0`)**. Those results —
+the four diagnostics, the movement-policy diagnostic, the 2×2 mutation
+factorial, and calibration-v1, v2 and v3 — **remain valid historical results**.
+They are not invalidated, and they are not to be re-run.
+
+They must **not** be pooled or compared numerically with results from the
+amended model. Any future calibration cycle belongs to `0A.2.0` and starts from
+its own baseline measurement.
+
+The held-out validation seeds remain **untouched** and are unaffected.
+
+### 12.2 What this amendment does not claim
+
+It does not claim that founder diversity will produce a viable ecological
+regime — that is precisely the open question. Whether removing the single-
+founder bottleneck changes the extinction/runaway regime is unmeasured until a
+new-model baseline pilot is run. No claim is made about adaptation, intelligence
+or beneficial mutation: removing a bootstrap bottleneck changes a starting
+condition, it does not make an organism better at anything.
+
+---
+
+## 13. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|

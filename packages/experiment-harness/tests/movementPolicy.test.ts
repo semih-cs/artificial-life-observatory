@@ -296,16 +296,28 @@ describe('why every policy also turns (design justification)', () => {
 
     const basal = circling.timeseries[0]!.meanMetabolism
       * DEFAULT_SIMULATION_CONFIG.energy.baseMetabolicConstant;
+    const initialEnergy = DEFAULT_SIMULATION_CONFIG.energy.configuredInitialEnergy;
 
-    // Early on, before anyone reaches a wall, both drain at the full 100% rate.
+    // Lifetime-average drain: initial energy divided by how long the cohort
+    // lasted. This measures the whole run rather than one sampled window, so it
+    // does not depend on exactly when an individual first meets a wall.
+    const straightLifetimeDrain = initialEnergy / straight.extinctionTick!;
+    const circlingLifetimeDrain = initialEnergy / circling.extinctionTick!;
+
+    // The circling agent never reaches a wall, so it pays the full 100%-speed
+    // movement cost for its entire life — several times basal.
+    expect(circlingLifetimeDrain / basal).toBeGreaterThan(4);
+
+    // The straight-line agent parks against the perimeter and its lifetime
+    // drain collapses to near basal-only.
+    expect(straightLifetimeDrain / basal).toBeLessThan(1.5);
+
+    // And it got there by DECLINING from its own early rate — the signature of
+    // parking, rather than of having been slow all along.
     const straightEarly = measuredDrainPerTick(straight.timeseries, 50)!;
-    const circlingEarly = measuredDrainPerTick(circling.timeseries, 50)!;
-    expect(straightEarly / circlingEarly).toBeGreaterThan(0.95);
+    expect(straightEarly / straightLifetimeDrain).toBeGreaterThan(2);
 
-    // The straight-line agent then parks and outlives the circling one by a
-    // wide margin, ending near basal-only drain.
+    // Which is why it far outlives the circling agent on identical energy.
     expect(straight.extinctionTick!).toBeGreaterThan(2 * circling.extinctionTick!);
-    const straightLate = (straight.timeseries[0]!.meanEnergy - 0) / straight.extinctionTick!;
-    expect(straightLate / basal).toBeLessThan(1.5);
   });
 });

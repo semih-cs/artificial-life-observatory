@@ -149,3 +149,14 @@ export interface ExperimentResult {
 }
 
 export const EXPERIMENT_HARNESS_VERSION = '0B.1.0';
+
+/**
+ * Deterministic regression reference for the AMENDED multi-founder model
+ * (simulationVersion 0A.2.0): seed 20260910, 10,000 ticks.
+ *
+ * The historical single-founder model's reference is
+ * `SINGLE_FOUNDER_GOLDEN_HASH` in simulation-core. The two models produce
+ * different trajectories by design; neither hash is a regression target for the
+ * other, and results from the two models must never be pooled.
+ */
+export const MULTI_FOUNDER_GOLDEN_HASH = 'b95a0b4ef7dd8449';

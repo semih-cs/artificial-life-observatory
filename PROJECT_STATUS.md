@@ -12,12 +12,15 @@
 
 ## Current phase
 
-**Phase 0A:** COMPLETE / FROZEN
+**Phase 0A:** COMPLETE / FROZEN, with ONE adopted versioned amendment —
+multi-founder initialization (`0A.1.0` → `0A.2.0`). See
+`docs/Phase 0A Amendment - Multi-Founder Initialization.md`.
 **Phase 0B:** harness, probes, diagnostics and analysis COMPLETE.
-**The parameter-sweep calibration cycle is CLOSED and UNSUCCESSFUL.** No baseline
-configuration was frozen, no candidate qualified, and the validation seeds are
-untouched. Phase 0B cannot proceed to confirmatory validation without first
-reconsidering the model-level question in §11.8 of the pilot report.
+**The single-founder parameter-sweep calibration cycle is CLOSED and
+UNSUCCESSFUL.** No baseline was frozen, no candidate qualified, validation seeds
+untouched. The model-level question it identified has now been answered by the
+Phase 0A amendment above; a NEW calibration cycle belongs to the amended model
+and has not begun.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -29,16 +32,15 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is calibration-v3, the final sweep of the cycle. `git log -1`
-is authoritative; recent history:
+Most recent work is the Phase 0A multi-founder amendment. `git log -1` is
+authoritative; recent history:
 
 ```text
-(HEAD)  calibration-v3 result — see `git log -1`
+(HEAD)  Phase 0A amendment: multi-founder initialization — see `git log -1`
+dd9ab38 calibration-v3: no candidate — Phase 0B calibration cycle declared unsuccessful
 fc05ad1 calibration-v3: implement the precommitted sweep
 42e63e7 calibration-v3 PRECOMMITMENT: axes, design, selection rule, terminal rule
 7521456 calibration-v2: no candidate — 49 extinct, 40 runaway, 1 viable in 90 replicates
-4e063db fix: sourceIdentity was hashing nothing and returning a constant
-01e6ebe calibration-v2: add the precommitted sweep definition
 7fd7135 provenance: record worktree dirty state and a deterministic source identity
 700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
 1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
@@ -56,12 +58,17 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 ## Verification (this session, on the committed tree)
 
 ```text
-simulation-core tests:   168 / 168 passed
-experiment-harness tests: 77 / 77  passed
-workspace total:         245 / 245 passed
-workspace build:         PASS (tsc -p tsconfig.json in both packages)
-Phase 0A golden hash:    seed 20260910, 10000 ticks -> 6a6576bd49e86b27  CONFIRMED
+simulation-core tests:   179 / 179 passed
+experiment-harness tests:  78 / 78  passed
+workspace total:          257 / 257 passed
+workspace build:          PASS (tsc -p tsconfig.json in both packages)
+
+golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
+  0A.2.0 amended multi-founder (default):  b95a0b4ef7dd8449  CONFIRMED
+  0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
+
+The amended hash was reproduced in three independent processes.
 
 Commands:
 
@@ -456,7 +463,9 @@ implemented as specified. **The model was not modified.**
 |---|---|
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7 movement-policy diagnostic, §9 provenance hazard and repair, §10 calibration-v2 |
+| `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment and result scoping |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
 
@@ -554,23 +563,21 @@ modifying the model.
 
 ## NEXT EXACT STEP
 
-**Decide, as a human design decision, whether §13.76's single-founder bootstrap
-should remain the starting condition — before any further calibration work.**
+**Run one new-model default-baseline pilot: the Phase 0A defaults (`0A.2.0`,
+multi-founder) at 20,000 ticks on the 15 existing pilot seeds, runaway cap
+enabled — to determine whether removing the single-founder bottleneck changes
+the extinction/runaway regime.**
 
-This is a model-level decision, not an implementation task, and it is
-deliberately the only thing on the list. The evidence supporting the question is
-in `docs/Phase 0B Pilot Report.md` §11.8; the decision itself is out of scope for
-an agent to make unilaterally, because changing §13.76 changes a [LOCKED]
-Phase 0A procedure and would require a deliberate, versioned Phase 0A amendment.
+This is a single baseline measurement, not a sweep and not a calibration cycle.
+Its purpose is to establish where the amended model sits before any new axes are
+even considered. Report the same primary readout as before —
+`viableCompletionRate` — with extinction and runaway counts alongside.
 
-Nothing else should start until that is settled. In particular:
+Write it to a clearly new-model path (for example
+`results/baseline-0A.2.0-default/`) and do **not** pool or compare it
+numerically with any single-founder result.
 
-- do **not** run another parameter sweep — the cycle is closed;
-- do **not** weaken the ~70% viability gate;
-- do **not** touch `packages/experiment-harness/seeds/validation.json`;
-- do **not** begin Phase 0C.
-
-If the decision is to keep the single-founder bootstrap unchanged, the honest
-recorded state is that the current Phase 0A model has no validated
-non-degenerate baseline within the parameter space explored, and Phase 0B stops
-short of confirmatory validation.
+Constraints that still hold: do not touch
+`packages/experiment-harness/seeds/validation.json`; do not define a new
+calibration sweep until the baseline is in hand; do not weaken the ~70%
+viability gate; do not begin Phase 0C.

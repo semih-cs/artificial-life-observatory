@@ -5,7 +5,11 @@ import {
   runSimulation,
   canonicalStateHash,
   validateConfig,
+  singleFounderModelConfig,
+  MULTI_FOUNDER_MODEL_VERSION,
+  SINGLE_FOUNDER_GOLDEN_HASH,
 } from '@alo/simulation-core';
+import { MULTI_FOUNDER_GOLDEN_HASH } from '../src/types.js';
 import { runReplicate } from '../src/runner/replicate.js';
 import { runExperiment } from '../src/runner/experiment.js';
 import {
@@ -284,11 +288,22 @@ describe('parameter sweep', () => {
 });
 
 describe('Phase 0A regression', () => {
-  it('golden hash for seed 20260910, 10000 ticks is unchanged', () => {
+  it('amended multi-founder model: golden hash for seed 20260910, 10000 ticks', () => {
     const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
     config.rootSeed = 20260910;
     const result = runSimulation(config, 10000);
-    expect(result.summary.finalStateHash).toBe('6a6576bd49e86b27');
+    expect(config.simulationVersion).toBe(MULTI_FOUNDER_MODEL_VERSION);
+    expect(result.summary.finalStateHash).toBe(MULTI_FOUNDER_GOLDEN_HASH);
+  });
+
+  it('historical single-founder model still reproduces its own golden hash', () => {
+    // The pre-amendment reference. It belongs to the historical model and is
+    // NOT a regression target for the amended one — see
+    // docs/Phase 0A Amendment - Multi-Founder Initialization.md.
+    const config = singleFounderModelConfig();
+    config.rootSeed = 20260910;
+    const result = runSimulation(config, 10000);
+    expect(result.summary.finalStateHash).toBe(SINGLE_FOUNDER_GOLDEN_HASH);
   });
 });
 
@@ -546,23 +561,30 @@ describe('calibration-v3 sweep definition (precommitted §11)', () => {
     expect(() => validateConfig(c)).not.toThrow();
   });
 
-  it('a raised reproduction threshold actually delays reproduction', () => {
-    // Guards the axis being inert: at a higher gate, organisms must accumulate
-    // more energy before reproducing, so births over a fixed window cannot rise.
-    const low = cloneConfig(DEFAULT_SIMULATION_CONFIG);
-    low.energy.reproductionEnergyThreshold = 75;
-    const high = cloneConfig(DEFAULT_SIMULATION_CONFIG);
-    high.energy.reproductionEnergyThreshold = 90;
+  it('the reproduction gate controls reproduction and the axis is not inert', () => {
+    const at = (threshold: number) => {
+      const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+      config.energy.reproductionEnergyThreshold = threshold;
+      return runReplicate({
+        experimentId: 'test', conditionId: `gate-${threshold}`, seed: 139595,
+        maxTicks: 4000, config, metricsSampleInterval: 200,
+        stopOnExtinction: true, gitCommit: null,
+      });
+    };
 
-    const run = (config: typeof low) => runReplicate({
-      experimentId: 'test', conditionId: 'gate', seed: 139595,
-      maxTicks: 4000, config, metricsSampleInterval: 200,
-      stopOnExtinction: true, gitCommit: null,
-    });
+    const capacity = DEFAULT_SIMULATION_CONFIG.energy.energyCapacity;
 
-    const a = run(low);
-    const b = run(high);
-    expect(a.finalStateHash).not.toBe(b.finalStateHash);
-    expect(b.totalBirths).toBeLessThanOrEqual(a.totalBirths);
+    // The gate genuinely gates: raised past what any organism can reach (a
+    // finite value above capacity, not a sentinel) reproduction stops entirely.
+    expect(at(capacity + 1).totalBirths).toBe(0);
+    // At the default gate it proceeds.
+    expect(at(75).totalBirths).toBeGreaterThan(0);
+
+    // And both precommitted levels are live settings, not the same run: moving
+    // 75 -> 90 changes the canonical trajectory, so the axis is not inert.
+    // Total births over a fixed window is NOT asserted to fall — a later first
+    // reproduction also leaves parents alive longer, so the net effect on a
+    // population count is an empirical question, which is what the sweep is for.
+    expect(at(75).finalStateHash).not.toBe(at(90).finalStateHash);
   });
 });

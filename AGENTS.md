@@ -55,7 +55,16 @@ Use the following order of authority.
 
 `docs/Artificial Life Observatory - Spec v4 (Phase 0A Hotfixed).docx`
 
-For Phase 0A biological/simulation semantics, this is authoritative.
+For Phase 0A biological/simulation semantics, this is authoritative, **as
+amended by**:
+
+- `docs/Phase 0A Amendment - Multi-Founder Initialization.md` — amends §13.76's
+  bootstrap rule. The initial population is built from 5 independent founder
+  controllers (5 organisms each) rather than 25 near-clones of one. The founder
+  acceptance gate is unchanged. Model version `0A.2.0`; the historical
+  single-founder model is `0A.1.0`.
+
+An adopted amendment wins over the base document where they conflict.
 
 ### Current implementation reality
 
@@ -135,6 +144,10 @@ Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
 Do not change these casually.
 
+- The initial population is built from `bootstrap.founderGroupCount` INDEPENDENT
+  founder neural genomes (default 5, five organisms each), each accepted by the
+  same unchanged viability gate, first passing candidate wins. Founders are never
+  ranked, scored, compared or selected among.
 - Genome is immutable during an organism's lifetime.
 - Morphological and neural heritable state are separate.
 - Runtime state is separate from genome state.
@@ -271,11 +284,20 @@ npm test
 npm run build
 ```
 
-Phase 0A deterministic regression:
+Deterministic regression:
 
 ```bash
 npm run simulate -- --seed 20260910 --ticks 10000
 ```
+
+Expected hash depends on the model version, and the two must never be conflated:
+
+| Model | Config | Hash |
+|---|---|---|
+| `0A.2.0` amended multi-founder (default) | `DEFAULT_SIMULATION_CONFIG` | `b95a0b4ef7dd8449` |
+| `0A.1.0` historical single-founder | `singleFounderModelConfig()` | `6a6576bd49e86b27` |
+
+Results from the two models must not be pooled or compared numerically.
 
 Phase 0B CLI:
 

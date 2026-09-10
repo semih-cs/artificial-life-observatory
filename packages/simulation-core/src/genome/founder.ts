@@ -14,7 +14,12 @@ import { evaluateNetwork } from '../neural/network.js';
  * drawing, never which of several candidates is preferred.
  */
 
-function drawNeuralGenome(rng: RngStream, hiddenSize: number, sigma: number): NeuralGenome {
+/**
+ * Draw one raw founder candidate. Exported so a test can replay the exact draw
+ * sequence and verify that acceptance is first-passing-candidate, with no
+ * ranking or best-of-N.
+ */
+export function drawNeuralGenome(rng: RngStream, hiddenSize: number, sigma: number): NeuralGenome {
   // Fixed parameter order (§13.76 step 1): input->hidden weights, hidden
   // biases, hidden->output weights, output biases.
   const draw = (n: number): number[] => {

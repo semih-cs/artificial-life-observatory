@@ -62,6 +62,24 @@ export interface BootstrapConfig {
   geneBounds: MorphologyGeneBounds;
   /** [BASELINE] founder candidate retry budget (§13.76 step 4). */
   maxFounderAttempts: number;
+  /**
+   * Number of INDEPENDENT founder neural genomes generated at bootstrap
+   * (§13.76 as amended — see docs/Phase 0A Amendment - Multi-Founder
+   * Initialization.md).
+   *
+   * The initial population is divided evenly into this many founder-controller
+   * groups. Each founder genome is drawn independently from BootstrapRNG and
+   * accepted by the SAME unchanged validity + viability gate, first passing
+   * candidate wins. Founders are never ranked, scored, compared or selected
+   * among.
+   *
+   * 1 reproduces the historical single-founder model exactly. Must be an
+   * integer >= 1. It is capped at initialPopulationSize (never more founders
+   * than organisms), and when the division is not exact the remainder is spread
+   * deterministically over the earliest groups. At the default 25 organisms and
+   * 5 groups the division is exact: five organisms per founder.
+   */
+  founderGroupCount: number;
   /** [BASELINE] suggested fraction of min(worldWidth, worldHeight) (§13.76). */
   boundaryMinSeparationFraction: number;
   /** [BASELINE] placement retry budget (§13.76 placeWithMinSeparation). */
@@ -246,6 +264,14 @@ export function validateConfig(config: SimulationConfig): void {
   }
   if (!Number.isFinite(config.fertility.gridResolution) || config.fertility.gridResolution < 1) {
     problems.push('fertility.gridResolution must be >= 1.');
+  }
+  if (
+    !Number.isInteger(config.bootstrap.founderGroupCount) ||
+    config.bootstrap.founderGroupCount < 1
+  ) {
+    problems.push(
+      `bootstrap.founderGroupCount (${config.bootstrap.founderGroupCount}) must be an integer >= 1.`
+    );
   }
 
   if (problems.length > 0) {

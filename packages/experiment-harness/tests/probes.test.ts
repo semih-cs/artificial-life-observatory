@@ -284,7 +284,7 @@ describe('runaway cap and run outcomes (§14.29, §16.34–§16.35)', () => {
     config.energy.foodEnergyValue = 40;
     config.energy.reproductionCost = 35;
     const result = runReplicate({
-      experimentId: 'test', conditionId: 'runaway', seed: 131676,
+      experimentId: 'test', conditionId: 'runaway', seed: 115838,
       maxTicks: 3000, config, metricsSampleInterval: 200,
       stopOnExtinction: true, gitCommit: null,
     });
@@ -301,7 +301,7 @@ describe('runaway cap and run outcomes (§14.29, §16.34–§16.35)', () => {
     config.energy.foodEnergyValue = 40;
     config.energy.reproductionCost = 35;
     const result = runReplicate({
-      experimentId: 'test', conditionId: 'runaway-uncapped', seed: 131676,
+      experimentId: 'test', conditionId: 'runaway-uncapped', seed: 115838,
       maxTicks: 3000, config, metricsSampleInterval: 200,
       stopOnExtinction: true, gitCommit: null, runawayCapEnabled: false,
     });
