@@ -27,17 +27,22 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Committed HEAD: see `git log -1`. The Phase 0B checkpoint commit is the most
-recent commit; the two before it are:
+Phase 0B checkpoint commit:
+
+`388646e5d20eb62836ab4db97fbbf580022f5319`
 
 ```text
+388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
 a568d01 fix: mutation RNG isolation (§15.7) — disabled channels consume full draw schedule
 db294c2 Phase 0A: complete the headless deterministic simulation core
 ```
 
-Worktree after the Phase 0B checkpoint commit: clean apart from generated
-artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
-`results/`, `.DS_Store`, `*.log`).
+(A follow-up commit records this hash in this file; `git log -1` is
+authoritative.)
+
+Worktree after the Phase 0B checkpoint: clean apart from generated artifacts,
+which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
+`.DS_Store`, `*.log`).
 
 ---
 
