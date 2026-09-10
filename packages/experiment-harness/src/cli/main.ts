@@ -44,20 +44,22 @@ import { loadPilotSeeds, loadValidationSeeds } from '../runner/seeds.js';
 import { writeExperimentResults, writeSweepSummaryFromDisk } from '../output/writer.js';
 import { detectDegeneracy, passesCalibrationCriteria, DEFAULT_CALIBRATION_CRITERIA } from '../analysis/degeneracy.js';
 import { readPersistedSweep } from '../analysis/persistedResults.js';
+import { runProvenance } from '../runner/provenance.js';
 import { BASELINE_MIN_VIABLE_COMPLETION_RATE } from '../analysis/outcome.js';
 import type { ExperimentSpec, ExperimentResult, ReplicateResult } from '../types.js';
 import * as fs from 'node:fs';
-import { execSync } from 'node:child_process';
 
-function getGitCommit(): string | null {
-  try {
-    return execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
-  } catch {
-    return null;
+const gitCommit = runProvenance().gitCommit;
+
+/** One line so the operator can see what is about to run, before it runs. */
+function printProvenance(): void {
+  const p = runProvenance();
+  const dirty = p.gitDirty === null ? 'unknown' : p.gitDirty ? 'DIRTY' : 'clean';
+  console.log(`Provenance: commit ${p.gitCommit ?? 'unknown'} (${dirty}), source identity ${p.sourceIdentity}`);
+  if (p.gitDirty) {
+    console.log('  WARNING: worktree has uncommitted changes — these results are not attributable to a commit alone.');
   }
 }
-
-const gitCommit = getGitCommit();
 
 function parseArgs(): {
   experiment: string; seedSet: string; maxTicks?: number; outputDir?: string;
@@ -293,6 +295,7 @@ async function main(): Promise<void> {
     return;
   }
 
+  printProvenance();
   const seeds = loadSeeds(seedSet);
   console.log(`Seed set: ${seedSet} (${seeds.length} seeds)`);
 

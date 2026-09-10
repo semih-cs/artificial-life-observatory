@@ -386,14 +386,32 @@ Each experiment writes to `packages/experiment-harness/results/<experiment-id>/`
 
 Every replicate carries provenance: `experimentId`, `conditionId`,
 `replicateId`, `seed`, `simulationVersion`, `experimentHarnessVersion`,
-`configHash`, `maxTicks`, `gitCommit`, `timestamp`, plus the run's own
-`finalStateHash` (§16.3–§16.4).
+`configHash`, `maxTicks`, `gitCommit`, `gitDirty`, `sourceIdentity`,
+`timestamp`, plus the run's own `finalStateHash` (§16.3–§16.4). `manifest.json`
+repeats the provenance fields, taken from the replicates themselves so it can
+never claim a different origin than the results it describes.
 
-**Provenance.** `gitCommit` is `git rev-parse HEAD`, which says nothing about
-uncommitted changes, and the `experiment` script used to compile only the
-harness and import `simulation-core` from its prebuilt `dist` — so a run could
-consume a stale core build while recording the current commit. The script now
-builds `simulation-core` first, and that hazard cannot recur.
+Three of those fields together identify the code that ran:
+
+| Field | Meaning |
+|---|---|
+| `gitCommit` | HEAD at run time, or null outside a repository |
+| `gitDirty` | whether the worktree had uncommitted changes; null if unknown |
+| `sourceIdentity` | deterministic hash of the built JavaScript that actually ran |
+
+`sourceIdentity` hashes the `dist` output of both packages. Since the
+`experiment` script rebuilds `simulation-core` first, that build reflects the
+working source including uncommitted edits — so two runs from different source
+states get different identities even at the same commit, and a run against a
+stale build is distinguishable from one against a fresh build. The CLI prints
+all three before a run starts and warns when the worktree is dirty.
+
+**Provenance.** The `experiment` script used to compile only the harness and
+import `simulation-core` from its prebuilt `dist`, so a run could consume a
+stale core build while recording the current commit. The script now builds
+`simulation-core` first, and results additionally record `gitDirty` and
+`sourceIdentity` (above), so a result produced from uncommitted source or a
+stale build is now identifiable from the record alone.
 
 The four experiments whose results predated the fix were re-run on the current
 build into parallel `reverified-*` directories, with the originals preserved:

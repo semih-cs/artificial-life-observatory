@@ -12,11 +12,24 @@ export function writeExperimentResults(result: ExperimentResult, outputDir: stri
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Manifest
+  // Provenance is taken from the replicates themselves, so the manifest can
+  // never claim a different origin than the results it describes. A run should
+  // be single-identity; if it somehow is not, every value observed is listed.
+  const distinct = <T,>(values: T[]): T[] => [...new Set(values.map(v => JSON.stringify(v)))].map(v => JSON.parse(v) as T);
+  const provenances = result.replicates.map(r => r.provenance);
+
   const manifest = {
     experimentId: result.experimentId,
     conditionCount: result.conditions.length,
     replicateCount: result.replicates.length,
     conditions: result.conditions.map(c => c.conditionId),
+    provenance: {
+      gitCommit: distinct(provenances.map(p => p.gitCommit)),
+      gitDirty: distinct(provenances.map(p => p.gitDirty)),
+      sourceIdentity: distinct(provenances.map(p => p.sourceIdentity)),
+      simulationVersion: distinct(provenances.map(p => p.simulationVersion)),
+      experimentHarnessVersion: distinct(provenances.map(p => p.experimentHarnessVersion)),
+    },
     generatedAt: new Date().toISOString(),
   };
   fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2));

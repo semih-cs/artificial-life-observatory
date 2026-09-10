@@ -19,6 +19,7 @@ import type { ReplicateResult, ReplicateProvenance, TimeseriesRow } from '../typ
 import { EXPERIMENT_HARNESS_VERSION } from '../types.js';
 import { computeTimeseriesRow, maxGenerationDepth, activeLineageCount } from '../metrics/compute.js';
 import { classifyRunOutcome, runawayPopulationCap } from '../analysis/outcome.js';
+import { runProvenance } from './provenance.js';
 
 export interface ReplicateOptions {
   experimentId: string;
@@ -46,6 +47,11 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
   const configHash = hash64(JSON.stringify(config));
   const replicateId = `${opts.conditionId}_seed${opts.seed}`;
 
+  // Identity of the code that is about to run. `opts.gitCommit` is honoured
+  // when supplied so callers can override, but dirty state and source identity
+  // are always measured here rather than trusted from a caller.
+  const runIdentity = runProvenance();
+
   const provenance: ReplicateProvenance = {
     experimentId: opts.experimentId,
     conditionId: opts.conditionId,
@@ -55,7 +61,9 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
     experimentHarnessVersion: EXPERIMENT_HARNESS_VERSION,
     configHash,
     maxTicks: opts.maxTicks,
-    gitCommit: opts.gitCommit,
+    gitCommit: opts.gitCommit ?? runIdentity.gitCommit,
+    gitDirty: runIdentity.gitDirty,
+    sourceIdentity: runIdentity.sourceIdentity,
     timestamp: new Date().toISOString(),
   };
 

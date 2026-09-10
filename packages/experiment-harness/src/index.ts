@@ -3,6 +3,7 @@ export * from './runner/replicate.js';
 export * from './runner/experiment.js';
 export * from './runner/sweep.js';
 export * from './runner/seeds.js';
+export * from './runner/provenance.js';
 export * from './experiments/definitions.js';
 export * from './experiments/movementPolicies.js';
 export * from './experiments/installPolicy.js';

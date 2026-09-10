@@ -51,6 +51,13 @@ export interface ReplicateProvenance {
   configHash: string;
   maxTicks: number;
   gitCommit: string | null;
+  /** Whether the worktree had uncommitted changes at run time; null if unknown. */
+  gitDirty: boolean | null;
+  /**
+   * Deterministic hash of the built JavaScript that produced this result.
+   * Distinguishes runs from different source states at the same commit.
+   */
+  sourceIdentity: string;
   timestamp: string;
 }
 

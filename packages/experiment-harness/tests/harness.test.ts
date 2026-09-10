@@ -18,6 +18,7 @@ import {
 import { computeTimeseriesRow, meanAndVariance, median } from '../src/metrics/compute.js';
 import { detectDegeneracy, passesCalibrationCriteria, DEFAULT_DEGENERACY_CRITERIA, DEFAULT_CALIBRATION_CRITERIA } from '../src/analysis/degeneracy.js';
 import { generateSweepConfigurations, runSweep } from '../src/runner/sweep.js';
+import { runProvenance, hashDirectoryTrees } from '../src/runner/provenance.js';
 import type { ConditionSummary } from '../src/types.js';
 
 const SMALL_SEEDS = [42, 43, 44];
@@ -393,6 +394,92 @@ describe('chunked sweep execution and summary rebuild', () => {
     expect(summary[1].passesCriteria).toBe(false);
     // Condition-summary fields are carried through.
     expect(summary[0].viableCompletionRate).toBe(0.375);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('run provenance (git commit, dirty state, source identity)', () => {
+  it('every replicate records commit, dirty state and source identity', () => {
+    const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+    const result = runReplicate({
+      experimentId: 'test', conditionId: 'prov', seed: 42,
+      maxTicks: 10, config, metricsSampleInterval: 10,
+      stopOnExtinction: true, gitCommit: null,
+    });
+    const p = result.provenance;
+    expect(typeof p.sourceIdentity).toBe('string');
+    expect(p.sourceIdentity).toMatch(/^[0-9a-f]{16}$/);
+    expect([true, false, null]).toContain(p.gitDirty);
+    expect(p.gitCommit === null || typeof p.gitCommit === 'string').toBe(true);
+  });
+
+  it('source identity is stable within a process', () => {
+    const first = runProvenance();
+    const second = runProvenance();
+    expect(second.sourceIdentity).toBe(first.sourceIdentity);
+    expect(second.gitDirty).toBe(first.gitDirty);
+  });
+
+  it('hashDirectoryTrees is deterministic and content-sensitive', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alo-prov-'));
+    fs.mkdirSync(path.join(dir, 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'a.js'), 'export const a = 1;');
+    fs.writeFileSync(path.join(dir, 'nested', 'b.js'), 'export const b = 2;');
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'ignored');
+
+    const base = hashDirectoryTrees([dir]);
+    expect(base).toMatch(/^[0-9a-f]{16}$/);
+    expect(hashDirectoryTrees([dir])).toBe(base);
+
+    // A non-matching extension does not participate.
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'still ignored, but different');
+    expect(hashDirectoryTrees([dir])).toBe(base);
+
+    // An uncommitted-style content edit changes the identity.
+    fs.writeFileSync(path.join(dir, 'nested', 'b.js'), 'export const b = 3;');
+    const edited = hashDirectoryTrees([dir]);
+    expect(edited).not.toBe(base);
+
+    // Restoring the content restores the identity.
+    fs.writeFileSync(path.join(dir, 'nested', 'b.js'), 'export const b = 2;');
+    expect(hashDirectoryTrees([dir])).toBe(base);
+
+    // Renaming a file changes the identity even though contents are unchanged.
+    fs.renameSync(path.join(dir, 'a.js'), path.join(dir, 'renamed.js'));
+    expect(hashDirectoryTrees([dir])).not.toBe(base);
+
+    // A missing directory contributes nothing rather than throwing.
+    expect(() => hashDirectoryTrees([path.join(dir, 'does-not-exist')])).not.toThrow();
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('the manifest reports the same provenance as the replicates it describes', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { writeExperimentResults } = await import('../src/output/writer.js');
+
+    const result = runExperiment(starvationDiagnostic([42], 200));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alo-manifest-'));
+    writeExperimentResults(result, dir);
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf-8'));
+    expect(manifest.provenance).toBeDefined();
+    // One run, one identity.
+    expect(manifest.provenance.sourceIdentity).toEqual([result.replicates[0]!.provenance.sourceIdentity]);
+    expect(manifest.provenance.gitDirty).toEqual([result.replicates[0]!.provenance.gitDirty]);
+    expect(manifest.provenance.gitCommit).toEqual([result.replicates[0]!.provenance.gitCommit]);
+
+    // And the persisted replicate rows carry it too.
+    const rows = JSON.parse(fs.readFileSync(path.join(dir, 'replicates.json'), 'utf-8'));
+    expect(rows[0].sourceIdentity).toBe(result.replicates[0]!.provenance.sourceIdentity);
+    expect(rows[0]).toHaveProperty('gitDirty');
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
