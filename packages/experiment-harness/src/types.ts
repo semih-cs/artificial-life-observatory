@@ -4,7 +4,13 @@
 
 import type { RunOutcome } from './analysis/outcome.js';
 
-export type TerminationReason = 'MAX_TICKS' | 'EXTINCTION' | 'RUNAWAY_POPULATION' | 'ERROR';
+/**
+ * How a replicate ended. `SAFETY_CEILING` is a diagnostic-only EXECUTION SAFETY
+ * LIMIT (pilot report §15.5): it bounds runtime and memory when the §14.29 cap is
+ * deliberately not used as an early stop. It is not a biological threshold and
+ * does not redefine runaway.
+ */
+export type TerminationReason = 'MAX_TICKS' | 'EXTINCTION' | 'RUNAWAY_POPULATION' | 'SAFETY_CEILING' | 'ERROR';
 
 export interface ExperimentCondition {
   conditionId: string;
@@ -39,6 +45,13 @@ export interface ExperimentSpec {
    * biological model never suppresses births because of it.
    */
   runawayCapEnabled?: boolean;
+  /**
+   * OPTIONAL diagnostic-only execution safety limit (pilot report §15.5). When
+   * set, a run stops with `SAFETY_CEILING` once the population reaches it. Must
+   * exceed the §14.29 cap. Not a biological threshold; ordinary experiments
+   * leave it undefined.
+   */
+  safetyPopulationCeiling?: number;
 }
 
 export interface ReplicateProvenance {

@@ -6,7 +6,7 @@
  * Purely a consumer of simulation-core's public API.
  */
 
-import type { WorldState } from '@alo/simulation-core';
+import type { WorldState, TickTelemetry } from '@alo/simulation-core';
 import {
   SimulationConfig,
   cloneConfig,
@@ -15,7 +15,7 @@ import {
   canonicalStateHash,
   hash64,
 } from '@alo/simulation-core';
-import type { ReplicateResult, ReplicateProvenance, TimeseriesRow } from '../types.js';
+import type { ReplicateResult, ReplicateProvenance, TimeseriesRow, TerminationReason } from '../types.js';
 import { EXPERIMENT_HARNESS_VERSION } from '../types.js';
 import { computeTimeseriesRow, maxGenerationDepth, activeLineageCount } from '../metrics/compute.js';
 import { classifyRunOutcome, runawayPopulationCap } from '../analysis/outcome.js';
@@ -38,7 +38,22 @@ export interface ReplicateOptions {
    * must not consume RNG. See experiments/installPolicy.ts.
    */
   worldTransform?: (world: WorldState, config: SimulationConfig) => WorldState;
+  /**
+   * OPTIONAL diagnostic-only execution safety limit (pilot report §15.5): stop
+   * with `SAFETY_CEILING` once the population reaches it. Must exceed the
+   * §14.29 cap. Not a biological threshold and not a definition of runaway.
+   */
+  safetyPopulationCeiling?: number;
+  /**
+   * OPTIONAL read-only observer, called once per tick with the state before
+   * and after `stepWorld` and that tick's telemetry. `stepWorld` never modifies
+   * its input, so both states are stable. The observer must not mutate either
+   * state and must not consume RNG; it cannot influence the trajectory.
+   */
+  onTick?: TickObserver;
 }
+
+export type TickObserver = (before: WorldState, after: WorldState, telemetry: TickTelemetry) => void;
 
 export function runReplicate(opts: ReplicateOptions): ReplicateResult {
   const config = cloneConfig(opts.config);
@@ -74,6 +89,12 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
   // never suppresses a birth.
   const runawayCap = runawayPopulationCap(config.population.initialPopulationSize);
   const runawayCapEnabled = opts.runawayCapEnabled ?? true;
+  const safetyCeiling = opts.safetyPopulationCeiling;
+  if (safetyCeiling !== undefined && !(safetyCeiling > runawayCap)) {
+    throw new Error(
+      `safetyPopulationCeiling (${safetyCeiling}) must exceed the §14.29 runaway cap (${runawayCap}).`
+    );
+  }
 
   let world = bootstrapWorld(config);
   // §16.9 test-only construction step. Applied before tick 1, never during the
@@ -82,7 +103,7 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
   const timeseries: TimeseriesRow[] = [];
   let cumulativeBirths = 0;
   let cumulativeDeaths = 0;
-  let terminationReason: 'MAX_TICKS' | 'EXTINCTION' | 'RUNAWAY_POPULATION' | 'ERROR' = 'MAX_TICKS';
+  let terminationReason: TerminationReason = 'MAX_TICKS';
   let extinctionTick: number | null = null;
   let peakPopulation = world.organisms.filter((o) => o.alive).length;
 
@@ -96,8 +117,10 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
 
   try {
     for (let i = 0; i < opts.maxTicks; i++) {
+      const before = world;
       const result = stepWorld(world, config);
       world = result.world;
+      opts.onTick?.(before, world, result.telemetry);
       cumulativeBirths += result.telemetry.births;
       cumulativeDeaths += result.telemetry.deaths;
       if (result.telemetry.populationCount > peakPopulation) {
@@ -140,6 +163,18 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
       // hidden: §16.34 treats an early-terminated run as experimental data.
       if (runawayCapEnabled && result.telemetry.populationCount >= runawayCap) {
         terminationReason = 'RUNAWAY_POPULATION';
+        if ((i + 1) % opts.metricsSampleInterval !== 0) {
+          timeseries.push(computeTimeseriesRow(
+            world, cumulativeBirths, cumulativeDeaths,
+            organismsEverReproduced, seenOrganismIds.size
+          ));
+        }
+        break;
+      }
+
+      // Diagnostic-only execution safety limit (pilot report §15.5).
+      if (safetyCeiling !== undefined && result.telemetry.populationCount >= safetyCeiling) {
+        terminationReason = 'SAFETY_CEILING';
         if ((i + 1) % opts.metricsSampleInterval !== 0) {
           timeseries.push(computeTimeseriesRow(
             world, cumulativeBirths, cumulativeDeaths,

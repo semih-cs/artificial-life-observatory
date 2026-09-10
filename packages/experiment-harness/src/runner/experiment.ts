@@ -7,7 +7,7 @@
 
 import { cloneConfig, SimulationConfig } from '@alo/simulation-core';
 import type { ExperimentSpec, ExperimentResult, ConditionSummary, ReplicateResult } from '../types.js';
-import { runReplicate } from './replicate.js';
+import { runReplicate, TickObserver } from './replicate.js';
 import { median } from '../metrics/compute.js';
 import { summarizeOutcomes } from '../analysis/outcome.js';
 
@@ -16,6 +16,8 @@ export interface ExperimentRunOptions {
   gitCommit?: string | null;
   /** Called after each replicate completes. */
   onReplicateComplete?: (result: ReplicateResult, index: number, total: number) => void;
+  /** OPTIONAL read-only per-tick observer for one replicate (see runReplicate). */
+  tickObserverFor?: (conditionId: string, seed: number) => TickObserver | undefined;
 }
 
 export function runExperiment(spec: ExperimentSpec, options: ExperimentRunOptions = {}): ExperimentResult {
@@ -44,6 +46,8 @@ export function runExperiment(spec: ExperimentSpec, options: ExperimentRunOption
         gitCommit,
         runawayCapEnabled,
         worldTransform: condition.worldTransform,
+        safetyPopulationCeiling: spec.safetyPopulationCeiling,
+        onTick: options.tickObserverFor?.(condition.conditionId, seed),
       });
 
       replicates.push(result);

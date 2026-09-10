@@ -8,7 +8,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ExperimentResult, ReplicateResult, ConditionSummary, TimeseriesRow } from '../types.js';
 
-export function writeExperimentResults(result: ExperimentResult, outputDir: string): void {
+export interface WriteOptions {
+  /**
+   * Write condition-summary.{json,csv} (default true). Diagnostics whose
+   * precommitment excludes a viable-completion readout (pilot report §15.9)
+   * set this false so no such figure is produced.
+   */
+  conditionSummary?: boolean;
+}
+
+export function writeExperimentResults(result: ExperimentResult, outputDir: string, options: WriteOptions = {}): void {
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Manifest
@@ -35,8 +44,10 @@ export function writeExperimentResults(result: ExperimentResult, outputDir: stri
   fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
   // Condition summaries
-  fs.writeFileSync(path.join(outputDir, 'condition-summary.json'), JSON.stringify(result.conditions, null, 2));
-  writeConditionSummaryCSV(result.conditions, path.join(outputDir, 'condition-summary.csv'));
+  if (options.conditionSummary ?? true) {
+    fs.writeFileSync(path.join(outputDir, 'condition-summary.json'), JSON.stringify(result.conditions, null, 2));
+    writeConditionSummaryCSV(result.conditions, path.join(outputDir, 'condition-summary.csv'));
+  }
 
   // Replicate summaries (without timeseries)
   const replicateSummaries = result.replicates.map(r => ({

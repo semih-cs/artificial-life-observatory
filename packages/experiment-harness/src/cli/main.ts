@@ -15,6 +15,8 @@
  *   calibration-v2          calibration-v2: standing food density x reproductive window
  *   calibration-v3          calibration-v3: reproduction gate x cohort turnover (FINAL sweep)
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
+ *   food-limitation         diagnostic-food-limitation-v1 (pilot report §15): does the 200 cap
+ *                           mask food limitation? Fixed seeds, observational only.
  *   multifounder-default-baseline
  *                           One default-baseline pilot of model 0A.2.0 at the unchanged
  *                           Phase 0A defaults (pilot report §14). Not a sweep.
@@ -40,13 +42,23 @@ import {
   MULTI_FOUNDER_DEFAULT_BASELINE_ID,
 } from '../experiments/definitions.js';
 import { founderFunctionalDiversity } from '../analysis/founderDiversity.js';
+import {
+  foodLimitationDiagnostic, FOOD_LIMITATION_DIAGNOSTIC_ID, FOOD_LIMITATION_DECISION_SEEDS,
+  FOOD_LIMITATION_REFERENCE_SEED, FOOD_LIMITATION_INTEGRITY, FOOD_LIMITATION_MILESTONES,
+  FOOD_SCARCITY_WINDOW, FOOD_SCARCITY_THRESHOLD, FOOD_LIMITATION_NEAR_CAP_LEVEL,
+  FOOD_LIMITATION_SAFETY_CEILING, FOOD_LIMITATION_HORIZON,
+} from '../experiments/foodLimitation.js';
+import {
+  createFoodFluxRecorder, FoodFluxRecorder, scarcityOnsetTick, firstTickAtLeast,
+  milestoneRecords, classifyDecisionSeed, majorityOutcome, SeedClass,
+} from '../analysis/foodLimitation.js';
 import { MOVEMENT_POLICY_LEVELS, MovementPolicyId } from '../experiments/movementPolicies.js';
 import {
   predictDrain, impliedForwardFraction, measuredDrainPerTick, largestCleanWindow,
 } from '../analysis/energyModel.js';
 import { median as medianOf } from '../metrics/compute.js';
 import { runExperiment } from '../runner/experiment.js';
-import { DEFAULT_SIMULATION_CONFIG, cloneConfig } from '@alo/simulation-core';
+import { DEFAULT_SIMULATION_CONFIG, cloneConfig, canonicalStateHash } from '@alo/simulation-core';
 import { runSweep, SweepSpec } from '../runner/sweep.js';
 import { loadPilotSeeds, loadValidationSeeds } from '../runner/seeds.js';
 import { writeExperimentResults, writeSweepSummaryFromDisk } from '../output/writer.js';
@@ -127,7 +139,9 @@ function printProgress(result: ReplicateResult, index: number, total: number): v
     ? `extinct@${result.extinctionTick}`
     : result.terminationReason === 'RUNAWAY_POPULATION'
       ? `runaway@${result.endTick}(pop=${result.endingPopulation})`
-      : `pop=${result.endingPopulation}`;
+      : result.terminationReason === 'SAFETY_CEILING'
+        ? `safety-ceiling@${result.endTick}(pop=${result.endingPopulation})`
+        : `pop=${result.endingPopulation}`;
   const rate = (result.endTick / (result.wallClockMs / 1000)).toFixed(0);
   process.stdout.write(
     `  [${index}/${total}] ${result.provenance.conditionId} seed=${result.provenance.seed} ` +
@@ -304,6 +318,13 @@ async function main(): Promise<void> {
   }
 
   printProvenance();
+
+  // Fixed-seed precommitted diagnostic; ignores --seed-set and --max-ticks.
+  if (experiment === 'food-limitation') {
+    runFoodLimitation(outputDir ?? `results/${FOOD_LIMITATION_DIAGNOSTIC_ID}`);
+    return;
+  }
+
   const seeds = loadSeeds(seedSet);
   console.log(`Seed set: ${seedSet} (${seeds.length} seeds)`);
 
@@ -507,6 +528,164 @@ function writeFounderDiversity(spec: ExperimentSpec, outDir: string): void {
     const f = (x: number | null) => (x === null ? '-' : x.toFixed(4)).padStart(9);
     console.log(`${String(w.seed).padEnd(7)} | ${String(w.founderCount).padStart(8)} | ${f(w.meanDistance)} | ${f(w.minDistance)} | ${f(w.maxDistance)}`);
   }
+}
+
+/**
+ * diagnostic-food-limitation-v1 (pilot report §15). Runs the four precommitted
+ * pilot seeds, enforces the §15.9 integrity gate BEFORE any interpretation, and
+ * only then classifies the three decision seeds. Writes no condition summary,
+ * so no viable-completion figure is produced (§15.9).
+ */
+function runFoodLimitation(outDir: string): void {
+  const spec = foodLimitationDiagnostic();
+  const pilot = new Set(loadPilotSeeds());
+  for (const seed of spec.seeds) {
+    if (!pilot.has(seed)) throw new Error(`food-limitation seed ${seed} is not a pilot seed`);
+  }
+  const capacity = DEFAULT_SIMULATION_CONFIG.food.worldFoodCapacity;
+  if (FOOD_SCARCITY_THRESHOLD !== capacity / 2) throw new Error('scarcity threshold must be half of worldFoodCapacity');
+
+  console.log(`\nRunning: ${spec.experimentId}`);
+  console.log(`  seeds: ${spec.seeds.join(', ')} (decision: ${FOOD_LIMITATION_DECISION_SEEDS.join(', ')}; reference: ${FOOD_LIMITATION_REFERENCE_SEED})`);
+  console.log(`  max ticks: ${spec.maxTicks}; runaway cap as early stop: DISABLED; execution safety ceiling: ${spec.safetyPopulationCeiling}\n`);
+
+  const recorders = new Map<number, FoodFluxRecorder>();
+  const checkpointHash = new Map<number, string>();
+  const result = runExperiment(spec, {
+    gitCommit,
+    onReplicateComplete: printProgress,
+    tickObserverFor: (_conditionId, seed) => {
+      const checkpoint = FOOD_LIMITATION_INTEGRITY[seed];
+      const recorder = createFoodFluxRecorder(capacity, (_before, after) => {
+        if (checkpoint && after.tick === checkpoint.tick) checkpointHash.set(seed, canonicalStateHash(after));
+      });
+      recorders.set(seed, recorder);
+      return recorder.observer;
+    },
+  });
+
+  writeExperimentResults(result, outDir, { conditionSummary: false });
+  for (const [seed, recorder] of recorders) {
+    const header = 'tick,population,foodCount,foodCapacityFraction,foodConsumed,foodRegenerated,births,deaths,meanEnergy';
+    const lines = recorder.rows.map(r =>
+      `${r.tick},${r.population},${r.foodCount},${r.foodCapacityFraction.toFixed(6)},${r.foodConsumed},${r.foodRegenerated},${r.births},${r.deaths},${r.meanEnergy}`);
+    fs.writeFileSync(`${outDir}/flux-${seed}.csv`, [header, ...lines].join('\n') + '\n');
+  }
+
+  // ---- §15.9 integrity gate, checked first --------------------------------
+  const baselinePath = 'results/multifounder-default-baseline/replicates.json';
+  const baseline: Array<Record<string, unknown>> = fs.existsSync(baselinePath)
+    ? JSON.parse(fs.readFileSync(baselinePath, 'utf-8')) : [];
+  const integrity = spec.seeds.map((seed) => {
+    const expected = FOOD_LIMITATION_INTEGRITY[seed]!;
+    const observedHash = checkpointHash.get(seed) ?? null;
+    const rows = recorders.get(seed)!.rows;
+    const replicate = result.replicates.find(r => r.provenance.seed === seed)!;
+    const base = baseline.find(b => b['seed'] === seed);
+    const failures: string[] = [];
+    if (observedHash !== expected.hash) failures.push(`hash at tick ${expected.tick}: ${observedHash} != ${expected.hash}`);
+    if (!base) {
+      failures.push(`baseline replicate for seed ${seed} not found at ${baselinePath}`);
+    } else {
+      const upTo = rows.slice(0, expected.tick);
+      const checks: Array<[string, unknown, unknown]> = [
+        ['population at stop tick', upTo[upTo.length - 1]?.population, base['endingPopulation']],
+        ['cumulative births at stop tick', upTo.reduce((s, r) => s + r.births, 0), base['totalBirths']],
+        ['cumulative deaths at stop tick', upTo.reduce((s, r) => s + r.deaths, 0), base['totalDeaths']],
+        ['food at stop tick', upTo[upTo.length - 1]?.foodCount, base['endingFoodCount']],
+      ];
+      if (seed === FOOD_LIMITATION_REFERENCE_SEED) {
+        // The reference run never reaches the cap, so it must reproduce the full baseline result.
+        for (const field of ['terminationReason', 'endTick', 'extinctionTick', 'finalStateHash', 'endingPopulation',
+          'totalBirths', 'totalDeaths', 'endingFoodCount', 'peakPopulation', 'outcome',
+          'maxGenerationDepth', 'activeLineageCount'] as const) {
+          checks.push([field, (replicate as unknown as Record<string, unknown>)[field], base[field]]);
+        }
+      }
+      for (const [name, observed, wanted] of checks) {
+        if (observed !== wanted) failures.push(`${name}: ${String(observed)} != ${String(wanted)}`);
+      }
+    }
+    return { seed, checkTick: expected.tick, expectedHash: expected.hash, observedHash, pass: failures.length === 0, failures };
+  });
+  const valid = integrity.every(i => i.pass);
+
+  console.log('\n§15.9 integrity gate:');
+  for (const i of integrity) {
+    console.log(`  seed ${i.seed} @ tick ${i.checkTick}: ${i.pass ? 'PASS' : 'FAIL'} (hash ${i.observedHash})${i.failures.length ? ' — ' + i.failures.join('; ') : ''}`);
+  }
+
+  const common = {
+    diagnosticId: FOOD_LIMITATION_DIAGNOSTIC_ID,
+    precommitmentCommit: '6b14031989bd03d7f735ad820605146dca094864',
+    parameters: {
+      decisionSeeds: [...FOOD_LIMITATION_DECISION_SEEDS], referenceSeed: FOOD_LIMITATION_REFERENCE_SEED,
+      horizon: FOOD_LIMITATION_HORIZON, safetyCeiling: FOOD_LIMITATION_SAFETY_CEILING,
+      milestones: [...FOOD_LIMITATION_MILESTONES], scarcityWindow: FOOD_SCARCITY_WINDOW,
+      scarcityThreshold: FOOD_SCARCITY_THRESHOLD, nearCapLevel: FOOD_LIMITATION_NEAR_CAP_LEVEL,
+      worldFoodCapacity: capacity,
+    },
+    integrity,
+  };
+
+  if (!valid) {
+    fs.writeFileSync(`${outDir}/food-limitation-analysis.json`, JSON.stringify({ ...common, status: 'INVALID' }, null, 2));
+    console.log('\nDIAGNOSTIC INVALID — integrity gate failed. Nothing is interpreted.');
+    process.exitCode = 2;
+    return;
+  }
+
+  // ---- §15.8 / §15.9 analysis, only after the gate passes ------------------
+  const seeds = spec.seeds.map((seed) => {
+    const recorder = recorders.get(seed)!;
+    const rows = recorder.rows;
+    const replicate = result.replicates.find(r => r.provenance.seed === seed)!;
+    const onsetTick = scarcityOnsetTick(rows, FOOD_SCARCITY_WINDOW, FOOD_SCARCITY_THRESHOLD);
+    const t250 = firstTickAtLeast(rows, FOOD_LIMITATION_NEAR_CAP_LEVEL);
+    const role = seed === FOOD_LIMITATION_REFERENCE_SEED ? 'reference' : 'decision';
+    const fBar = recorder.meanFertility();
+    const peak = rows.reduce((m, r) => Math.max(m, r.population), 0);
+    const minFood = rows.reduce((m, r) => Math.min(m, r.foodCount), Infinity);
+    let minTrailingMean = Infinity;
+    let sum = 0;
+    for (let i = 0; i < rows.length; i++) {
+      sum += rows[i]!.foodCount;
+      if (i >= FOOD_SCARCITY_WINDOW) sum -= rows[i - FOOD_SCARCITY_WINDOW]!.foodCount;
+      if (i >= FOOD_SCARCITY_WINDOW - 1) minTrailingMean = Math.min(minTrailingMean, sum / FOOD_SCARCITY_WINDOW);
+    }
+    return {
+      seed, role,
+      terminationReason: replicate.terminationReason, endTick: replicate.endTick,
+      endingPopulation: replicate.endingPopulation, peakPopulation: peak,
+      totalBirths: replicate.totalBirths, totalDeaths: replicate.totalDeaths,
+      maxGenerationDepth: replicate.maxGenerationDepth,
+      areaMeanFertility: fBar, expectedUncappedSupplyPerTick: fBar === null ? null : 2 * fBar,
+      minFoodCount: minFood, minTrailingMeanFoodStock: minTrailingMean,
+      scarcityOnsetTick: onsetTick,
+      populationAtScarcityOnset: onsetTick === null ? null : rows[onsetTick - 1]!.population,
+      firstTickAt250: t250,
+      seedClass: role === 'decision' ? classifyDecisionSeed(onsetTick, t250) : null,
+      milestones: milestoneRecords(rows, FOOD_LIMITATION_MILESTONES, FOOD_SCARCITY_WINDOW, FOOD_SCARCITY_THRESHOLD),
+    };
+  });
+  const decisionClasses = seeds.filter(s => s.role === 'decision').map(s => s.seedClass as SeedClass);
+  const majority = majorityOutcome(decisionClasses);
+
+  fs.writeFileSync(`${outDir}/food-limitation-analysis.json`, JSON.stringify({
+    ...common, status: 'VALID', seeds, decisionClasses, outcome: majority.outcome, support: `${majority.support}/3`,
+  }, null, 2));
+
+  console.log('\nseed    | role      | end                 | peak | min trailing-200 food | onset tick | pop@onset | t250  | class');
+  for (const s of seeds) {
+    console.log(
+      `${String(s.seed).padEnd(7)} | ${s.role.padEnd(9)} | ${(s.terminationReason + '@' + s.endTick).padEnd(19)} | ` +
+      `${String(s.peakPopulation).padStart(4)} | ${s.minTrailingMeanFoodStock.toFixed(2).padStart(21)} | ` +
+      `${String(s.scarcityOnsetTick ?? '-').padStart(10)} | ${String(s.populationAtScarcityOnset ?? '-').padStart(9)} | ` +
+      `${String(s.firstTickAt250 ?? '-').padStart(5)} | ${s.seedClass ?? '(ref)'}`
+    );
+  }
+  console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
+  console.log(`Results written to: ${outDir}/`);
 }
 
 main().catch((err) => {

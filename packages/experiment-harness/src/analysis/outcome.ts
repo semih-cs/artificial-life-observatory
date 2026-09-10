@@ -29,7 +29,12 @@ export type RunOutcome =
   | 'ERROR';
 
 export interface OutcomeInput {
-  terminationReason: 'MAX_TICKS' | 'EXTINCTION' | 'RUNAWAY_POPULATION' | 'ERROR';
+  /**
+   * `SAFETY_CEILING` (pilot report §15.5) is accepted for type completeness
+   * only. The classification rules below are unchanged: a ceiling run always
+   * has peak >= ceiling > runawayCap, so it falls under the existing peak rule.
+   */
+  terminationReason: 'MAX_TICKS' | 'EXTINCTION' | 'RUNAWAY_POPULATION' | 'SAFETY_CEILING' | 'ERROR';
   /** Highest population observed at any sampled point in the run. */
   peakPopulation: number;
   /** Cap in force for this run (see runawayPopulationCap). */
