@@ -504,3 +504,65 @@ describe('run provenance (git commit, dirty state, source identity)', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('calibration-v3 sweep definition (precommitted §11)', () => {
+  it('generates exactly the four precommitted configurations', () => {
+    const configs = generateSweepConfigurations({
+      sweepId: 'calibration-v3', description: 'test',
+      parameters: [
+        { path: 'energy.reproductionEnergyThreshold', values: [75, 90] },
+        { path: 'lifecycle.maxAge', values: [3000, 6000] },
+      ],
+      seeds: [1], maxTicks: 20000,
+    });
+    expect(configs.length).toBe(4);
+    expect(configs.map(c => [
+      c.parameterValues['energy.reproductionEnergyThreshold'],
+      c.parameterValues['lifecycle.maxAge'],
+    ])).toEqual([[75, 3000], [75, 6000], [90, 3000], [90, 6000]]);
+  });
+
+  it('both threshold levels leave reproduction reachable and every other parameter at defaults', () => {
+    for (const threshold of [75, 90]) {
+      // A threshold at or above energyCapacity would make reproduction
+      // unreachable, silently turning the sweep into a reproduction-off
+      // diagnostic. Both precommitted levels must stay strictly below it.
+      expect(threshold).toBeLessThan(DEFAULT_SIMULATION_CONFIG.energy.energyCapacity);
+    }
+    for (const maxAge of [3000, 6000]) {
+      // maxAge must exceed maturityAge or no organism can ever reproduce.
+      expect(maxAge).toBeGreaterThan(DEFAULT_SIMULATION_CONFIG.lifecycle.maturityAge);
+    }
+    // The axes are the only departures from the Phase 0A defaults.
+    const c = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+    c.energy.reproductionEnergyThreshold = 90;
+    c.lifecycle.maxAge = 6000;
+    expect(c.energy.foodEnergyValue).toBe(DEFAULT_SIMULATION_CONFIG.energy.foodEnergyValue);
+    expect(c.energy.reproductionCost).toBe(DEFAULT_SIMULATION_CONFIG.energy.reproductionCost);
+    expect(c.energy.baseMetabolicConstant).toBe(DEFAULT_SIMULATION_CONFIG.energy.baseMetabolicConstant);
+    expect(c.energy.movementEnergyCoefficient).toBe(DEFAULT_SIMULATION_CONFIG.energy.movementEnergyCoefficient);
+    expect(c.food.worldFoodCapacity).toBe(DEFAULT_SIMULATION_CONFIG.food.worldFoodCapacity);
+    expect(c.lifecycle.maturityAge).toBe(DEFAULT_SIMULATION_CONFIG.lifecycle.maturityAge);
+    expect(() => validateConfig(c)).not.toThrow();
+  });
+
+  it('a raised reproduction threshold actually delays reproduction', () => {
+    // Guards the axis being inert: at a higher gate, organisms must accumulate
+    // more energy before reproducing, so births over a fixed window cannot rise.
+    const low = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+    low.energy.reproductionEnergyThreshold = 75;
+    const high = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+    high.energy.reproductionEnergyThreshold = 90;
+
+    const run = (config: typeof low) => runReplicate({
+      experimentId: 'test', conditionId: 'gate', seed: 139595,
+      maxTicks: 4000, config, metricsSampleInterval: 200,
+      stopOnExtinction: true, gitCommit: null,
+    });
+
+    const a = run(low);
+    const b = run(high);
+    expect(a.finalStateHash).not.toBe(b.finalStateHash);
+    expect(b.totalBirths).toBeLessThanOrEqual(a.totalBirths);
+  });
+});
