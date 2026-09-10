@@ -43,6 +43,7 @@ export function runExperiment(spec: ExperimentSpec, options: ExperimentRunOption
         stopOnExtinction,
         gitCommit,
         runawayCapEnabled,
+        worldTransform: condition.worldTransform,
       });
 
       replicates.push(result);

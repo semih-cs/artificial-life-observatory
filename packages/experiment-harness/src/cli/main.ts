@@ -9,6 +9,7 @@
  *   feeding                 Diagnostic B — feeding
  *   reproduction-control    Diagnostic C — reproduction without mutation
  *   full-evolutionary       Diagnostic D — full evolutionary loop
+ *   movement-policy         Diagnostic A2 — test-only fixed movement policies (§16.9)
  *   mutation-2x2            Primary 2×2 mutation factorial
  *   calibration-sweep       First calibration parameter sweep
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
@@ -25,8 +26,15 @@ import {
   reproductionControlDiagnostic,
   fullEvolutionaryDiagnostic,
   mutation2x2Experiment,
+  movementPolicyDiagnostic,
 } from '../experiments/definitions.js';
+import { MOVEMENT_POLICY_LEVELS, MovementPolicyId } from '../experiments/movementPolicies.js';
+import {
+  predictDrain, impliedForwardFraction, measuredDrainPerTick, largestCleanWindow,
+} from '../analysis/energyModel.js';
+import { median as medianOf } from '../metrics/compute.js';
 import { runExperiment } from '../runner/experiment.js';
+import { DEFAULT_SIMULATION_CONFIG } from '@alo/simulation-core';
 import { runSweep, SweepSpec } from '../runner/sweep.js';
 import { loadPilotSeeds, loadValidationSeeds } from '../runner/seeds.js';
 import { writeExperimentResults } from '../output/writer.js';
@@ -143,12 +151,110 @@ function printCalibrationReport(sweepDir: string): void {
   );
 }
 
+/**
+ * §16.9 / §16.10 energy report: for every condition, compare the measured
+ * per-tick energy drain against the drain the specified energy model predicts
+ * for that condition's morphology and speed, and report observed lifetimes
+ * against predicted lifetimes.
+ *
+ * Precommitted measurement rule: drain is read over the largest death-free
+ * sampled window no longer than 200 ticks, so the mean is always taken over an
+ * unchanging set of organisms. The window actually used is reported per
+ * condition.
+ */
+const DRAIN_WINDOW_MAX_TICKS = 200;
+
+function printMovementPolicyReport(result: ExperimentResult): void {
+  const energy = DEFAULT_SIMULATION_CONFIG.energy;
+
+  console.log('\n=== §16.9 movement-policy energy report ===\n');
+  console.log(
+    'Condition        | Window | Measured drain | Predicted drain | Meas/Pred | ' +
+    'Median lifetime | Predicted lifetime | Obs/Pred | Implied speed'
+  );
+  console.log(
+    '-----------------|--------|----------------|-----------------|-----------|' +
+    '-----------------|--------------------|----------|--------------'
+  );
+
+  for (const condition of result.conditions) {
+    const replicates = result.replicates.filter(r => r.provenance.conditionId === condition.conditionId);
+    if (replicates.length === 0) continue;
+
+    const windows: number[] = [];
+    const drains: number[] = [];
+    const predictedDrains: number[] = [];
+    const predictedLifetimes: number[] = [];
+    const impliedFractions: number[] = [];
+    const lifetimes: number[] = [];
+
+    const level = MOVEMENT_POLICY_LEVELS[condition.conditionId as MovementPolicyId];
+
+    for (const r of replicates) {
+      const window = largestCleanWindow(r.timeseries, DRAIN_WINDOW_MAX_TICKS);
+      const drain = window > 0 ? measuredDrainPerTick(r.timeseries, window) : null;
+      const initial = r.timeseries.find(row => row.tick === 0);
+      if (drain === null || !initial) continue;
+
+      const morphology = {
+        size: initial.meanSize,
+        maxSpeed: initial.meanMaxSpeed,
+        metabolism: initial.meanMetabolism,
+      };
+
+      windows.push(window);
+      drains.push(drain);
+
+      if (level !== undefined) {
+        const prediction = predictDrain(morphology, level, energy);
+        predictedDrains.push(prediction.drainPerTick);
+        predictedLifetimes.push(prediction.predictedLifetime);
+      }
+
+      const implied = impliedForwardFraction(drain, morphology, energy);
+      if (implied !== null) impliedFractions.push(implied);
+      if (r.extinctionTick !== null) lifetimes.push(r.extinctionTick);
+    }
+
+    const measuredDrain = medianOf(drains);
+    const predictedDrain = predictedDrains.length > 0 ? medianOf(predictedDrains) : null;
+    const medianLifetime = lifetimes.length > 0 ? medianOf(lifetimes) : null;
+    const predictedLifetime = predictedLifetimes.length > 0 ? medianOf(predictedLifetimes) : null;
+    const impliedSpeed = impliedFractions.length > 0 ? medianOf(impliedFractions) : null;
+
+    const ratio = predictedDrain && predictedDrain > 0 ? (measuredDrain / predictedDrain) : null;
+    const lifeRatio = medianLifetime !== null && predictedLifetime
+      ? medianLifetime / predictedLifetime
+      : null;
+
+    console.log(
+      condition.conditionId.padEnd(17) + '| ' +
+      String(medianOf(windows)).padStart(6) + ' | ' +
+      measuredDrain.toFixed(8).padStart(14) + ' | ' +
+      (predictedDrain === null ? '-'.padStart(15) : predictedDrain.toFixed(8).padStart(15)) + ' | ' +
+      (ratio === null ? '-'.padStart(9) : ratio.toFixed(4).padStart(9)) + ' | ' +
+      (medianLifetime === null ? '-'.padStart(15) : medianLifetime.toFixed(1).padStart(15)) + ' | ' +
+      (predictedLifetime === null ? '-'.padStart(18) : predictedLifetime.toFixed(1).padStart(18)) + ' | ' +
+      (lifeRatio === null ? '-'.padStart(8) : lifeRatio.toFixed(4).padStart(8)) + ' | ' +
+      (impliedSpeed === null ? '-'.padStart(13) : (impliedSpeed * 100).toFixed(1).padStart(11) + ' %')
+    );
+  }
+
+  console.log(
+    '\nMeasured drain: median across replicates of (meanEnergy@0 - meanEnergy@window) / window.\n' +
+    'Predicted drain: metabolism*baseMetabolicConstant + movementCoefficient*size*(fraction*maxSpeed)^2,\n' +
+    'using each replicate\'s own tick-0 mean morphology.\n' +
+    'Implied speed inverts that model on the measured drain; for the reference cell it is a\n' +
+    'root-mean-square summary of energy expenditure, not a claim about any individual organism.'
+  );
+}
+
 async function main(): Promise<void> {
   const { experiment, seedSet, maxTicks, outputDir } = parseArgs();
 
   if (!experiment) {
     console.log('Usage: npm run experiment -- <experiment-name> [--seed-set pilot|validation] [--max-ticks N]');
-    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, mutation-2x2, calibration-sweep, calibration-report');
+    console.log('\nExperiments: starvation, feeding, reproduction-control, full-evolutionary, movement-policy, mutation-2x2, calibration-sweep, calibration-report');
     process.exit(1);
   }
 
@@ -179,6 +285,9 @@ async function main(): Promise<void> {
       break;
     case 'mutation-2x2':
       spec = mutation2x2Experiment(seeds, maxTicks ?? 10000);
+      break;
+    case 'movement-policy':
+      spec = movementPolicyDiagnostic(seeds, maxTicks ?? 20000);
       break;
     case 'calibration-sweep':
       isSweep = true;
@@ -258,6 +367,7 @@ async function main(): Promise<void> {
   });
 
   printConditionSummary(result);
+  if (result.experimentId === 'diagnostic-movement-policy') printMovementPolicyReport(result);
 
   const outDir = outputDir ?? `results/${result.experimentId}`;
   writeExperimentResults(result, outDir);

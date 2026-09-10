@@ -6,7 +6,10 @@
  */
 
 import { cloneConfig, DEFAULT_SIMULATION_CONFIG, SimulationConfig } from '@alo/simulation-core';
+import type { WorldState } from '@alo/simulation-core';
 import type { ExperimentSpec, ExperimentCondition } from '../types.js';
+import { MOVEMENT_POLICY_IDS } from './movementPolicies.js';
+import { installMovementPolicy } from './installPolicy.js';
 
 function baseConfig(): SimulationConfig {
   return cloneConfig(DEFAULT_SIMULATION_CONFIG);
@@ -158,6 +161,78 @@ export function mutation2x2Experiment(seeds: number[], maxTicks = 10000): Experi
     seeds,
     maxTicks,
     metricsSampleInterval: 100,
+    stopOnExtinction: true,
+  };
+}
+
+/**
+ * Diagnostic A2 — test-only fixed movement policies (§16.9).
+ *
+ * Purpose: separate two candidate explanations for Diagnostic A's
+ * longer-than-expected starvation lifetimes (median 1066 against the §16.8
+ * target of 500-700 ticks):
+ *
+ *   (1) the founder/neural controllers request little movement, so organisms
+ *       pay far less than the movement cost the §16.10 estimate assumes; or
+ *   (2) basal/movement energy calibration is itself wrong.
+ *
+ * The design isolates the energy model by removing the controller as a
+ * variable: four conditions run deterministic fixed-speed policies, and a fifth
+ * runs the unmodified controller as the reference cell. The five conditions are
+ * identical in every other respect — same seeds, same config, same morphology
+ * per seed.
+ *
+ * Configuration, precommitted:
+ *   - food COMPLETELY off: initialFoodCount = 0 AND regenAttemptsPerTick = 0
+ *   - both mutation channels off
+ *   - reproduction unreachable: reproductionEnergyThreshold = energyCapacity + 1
+ *     (finite, per the Diagnostic A/B convention)
+ *   - lifecycle.maxAge raised to 100000 so ENERGY_DEPLETION is the ONLY death
+ *     mechanism. Age death would truncate the slower policies and corrupt the
+ *     very quantity being measured. Diagnostic A's longest observed lifetime
+ *     was 1662 ticks, well under the default maxAge of 3000, so the reference
+ *     cell is unaffected by this change and remains comparable to Diagnostic A.
+ *
+ * Everything else stays at the Phase 0A defaults. In particular the energy
+ * parameters under test - baseMetabolicConstant, movementEnergyCoefficient,
+ * configuredInitialEnergy - are NOT touched.
+ */
+export function movementPolicyDiagnostic(seeds: number[], maxTicks = 20000): ExperimentSpec {
+  const diagnosticConfig = (c: SimulationConfig): void => {
+    c.food.initialFoodCount = 0;
+    c.food.regenAttemptsPerTick = 0;
+    c.mutation.morphologyMutationEnabled = false;
+    c.mutation.neuralMutationEnabled = false;
+    c.energy.reproductionEnergyThreshold = c.energy.energyCapacity + 1;
+    // Starvation must be the only death mechanism in an energy diagnostic.
+    c.lifecycle.maxAge = 100000;
+  };
+
+  const conditions: ExperimentCondition[] = [
+    {
+      // Reference cell: the unmodified founder/neural controllers.
+      conditionId: 'neural-reference',
+      configOverrides: diagnosticConfig,
+    },
+    ...MOVEMENT_POLICY_IDS.map((policyId) => ({
+      conditionId: policyId,
+      configOverrides: diagnosticConfig,
+      worldTransform: (world: WorldState, config: SimulationConfig) =>
+        installMovementPolicy(world, config, policyId),
+    })),
+  ];
+
+  return {
+    experimentId: 'diagnostic-movement-policy',
+    description:
+      'Test-only fixed movement policies (§16.9): stationary / 25% / 50% / 100% speed plus the ' +
+      'unmodified controller, with food and reproduction off, to separate controller behaviour ' +
+      'from energy-model calibration.',
+    baseConfigFactory: baseConfig,
+    conditions,
+    seeds,
+    maxTicks,
+    metricsSampleInterval: 50,
     stopOnExtinction: true,
   };
 }

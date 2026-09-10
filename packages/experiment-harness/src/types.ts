@@ -10,6 +10,16 @@ export interface ExperimentCondition {
   conditionId: string;
   /** Config overrides applied on top of the base config for this condition. */
   configOverrides: (config: import('@alo/simulation-core').SimulationConfig) => void;
+  /**
+   * OPTIONAL test-only world construction step, applied exactly once between
+   * `bootstrapWorld` and tick 1 (§16.9). It must return a NEW WorldState and
+   * must not consume RNG. Used only to install deterministic diagnostic
+   * movement policies; ordinary experiments leave it undefined.
+   */
+  worldTransform?: (
+    world: import('@alo/simulation-core').WorldState,
+    config: import('@alo/simulation-core').SimulationConfig
+  ) => import('@alo/simulation-core').WorldState;
 }
 
 export interface ExperimentSpec {

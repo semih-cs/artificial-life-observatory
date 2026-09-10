@@ -325,7 +325,130 @@ This costs 90 replicates and consumes no validation seeds.
 
 ---
 
-## 7. Functional neural probes
+## 7. Diagnostic A2 — test-only fixed movement policies (§16.9)
+
+**Precommitted before execution.** This section was written and committed
+before the experiment was run; the results subsection was empty at that point.
+
+### 7.1 The question
+
+§2 recorded an open uncertainty: Diagnostic A's starvation lifetimes (485–1662,
+median 1066) sit above the §16.8 / §16.10 analytical target of 500–700 ticks.
+Two explanations were left standing:
+
+1. the founder/neural controllers request little movement, so organisms pay far
+   less movement energy than the §16.10 estimate assumes; or
+2. the basal/movement energy calibration is itself wrong.
+
+§16.9 provides the instrument for separating them, and §16.9 is [LOCKED]:
+"Test-only movement policies may be used to isolate the EnergyModel without
+altering canonical organism behavior."
+
+### 7.2 Design
+
+Five conditions over the same 15 pilot seeds, differing only in the neural
+controller:
+
+| Condition | Controller |
+|---|---|
+| `neural-reference` | the unmodified founder/bootstrap controllers |
+| `stationary` | fixed policy, 0% of `maxSpeed` |
+| `speed-25` | fixed policy, 25% of `maxSpeed` |
+| `speed-50` | fixed policy, 50% of `maxSpeed` |
+| `speed-100` | fixed policy, 100% of `maxSpeed` |
+
+The four levels are taken verbatim from §16.9 ("Stationary Agent, Constant 25%
+Speed Agent, Constant 50% Speed Agent, Constant 100% Speed Agent"), so no level
+had to be invented.
+
+Configuration, identical in all five conditions and precommitted:
+
+- food **completely** off — `initialFoodCount = 0` **and**
+  `regenAttemptsPerTick = 0`
+- both mutation channels off
+- reproduction unreachable — `reproductionEnergyThreshold = energyCapacity + 1`
+  (finite, per the Diagnostic A/B convention)
+- `lifecycle.maxAge` raised to 100,000 so `ENERGY_DEPLETION` is the only death
+  mechanism; age death would truncate the slower policies and corrupt the
+  measurement. Diagnostic A's longest lifetime was 1662 ticks, well under the
+  default `maxAge` of 3000, so the reference cell is unaffected by this and
+  stays comparable to Diagnostic A.
+- the energy parameters under test — `baseMetabolicConstant`,
+  `movementEnergyCoefficient`, `configuredInitialEnergy` — are **not** touched
+- 20,000 max ticks, metrics sampled every 50 ticks, pilot seeds only
+
+No simulation-core code is changed. A policy is an ordinary `NeuralGenome`
+whose input→hidden weights are all zero — making the controller provably
+input-independent — with output biases and hidden→output weights chosen so the
+[LOCKED] §11.59 mapping yields the target constant action. Every parameter stays
+inside the [BASELINE] `neuralParamBounds` of [-2, 2]. The genome is installed
+once between `bootstrapWorld` and tick 1, replacing only the neural genome and
+leaving morphology, position, heading, energy, ids, food, the fertility field
+and both RNG stream states byte-identical.
+
+Two consequences of the locked rules are documented rather than hidden:
+
+- `forward` is a sigmoid, so exactly 0.0 and exactly 1.0 are unreachable. Within
+  bounds the endpoints attain ≈2.7e-8 and ≈1 − 2.7e-8. The "stationary" agent
+  therefore requests ~3.4e-8 units/tick and pays ~7e-17 energy for it — twelve
+  orders of magnitude below basal metabolism, and asserted by test.
+- Every policy also requests a **full-rate turn**. A zero-turn agent travels in
+  a straight line, reaches the perimeter, is clamped to zero displacement by
+  `resolveMovement`, and from then on pays only basal — its drain would decay to
+  basal and the four levels would converge, measuring nothing. Turning costs no
+  energy and does not change displacement magnitude, so a full-rate turn makes
+  each agent orbit a regular polygon of circumradius ≈2.4 units at full speed,
+  far inside the 10-unit minimum boundary separation, and displacement per tick
+  stays exactly the requested speed for the whole run. A test demonstrates the
+  zero-turn failure mode explicitly, so this design choice is evidenced rather
+  than asserted.
+
+### 7.3 Precommitted metrics and decision rule
+
+Primary measurement: **mean energy drain per tick**, read as
+`(meanEnergy@0 − meanEnergy@window) / window` over the largest death-free
+sampled window no longer than 200 ticks, so the mean is always taken over an
+unchanging set of organisms. The window used is reported per condition.
+
+Each condition's measured drain is compared against the drain the **specified**
+energy model predicts for that condition, using each replicate's own tick-0 mean
+morphology:
+
+```
+predicted drain = metabolism * baseMetabolicConstant
+                + movementEnergyCoefficient * size * (fraction * maxSpeed)^2
+predicted lifetime = configuredInitialEnergy / predicted drain
+```
+
+Secondary measurement: observed lifetime (extinction tick) against predicted
+lifetime.
+
+For the reference cell, the same model is **inverted** on its measured drain to
+express the controllers' energy expenditure as an implied constant speed
+fraction. This is a root-mean-square summary of expenditure across the
+population, not a claim about what any individual organism requested.
+
+Decision rule, fixed before running:
+
+- **Controller effect** if the four fixed policies each match their predicted
+  drain within ±10%, and the reference cell's implied speed is materially below
+  100%. The energy model is then behaving as specified and the §16.8 target of
+  500–700 ticks is simply the prediction for a near-full-speed organism.
+- **Energy-model effect** if the fixed policies do *not* match their
+  predictions — the model as implemented would then differ from the model as
+  specified, independently of any controller.
+- **Mixed** if the policies match but the reference cell's lifetime cannot be
+  reconciled with its own measured drain.
+- **Inconclusive** if the measurement window is not death-free or the spread
+  across seeds swamps the differences between policies.
+
+### 7.4 Results
+
+_Pending execution._
+
+---
+
+## 8. Functional neural probes
 
 `probe-set-v1` (250 fixed synthetic §11.58 sensory states) and
 `behavior-fingerprint-v1` are implemented and tested, satisfying the §11.37–
@@ -345,7 +468,7 @@ validation.
 
 ---
 
-## 8. Summary of claims
+## 9. Summary of claims
 
 | Claim | Supported? | Evidence |
 |---|---|---|

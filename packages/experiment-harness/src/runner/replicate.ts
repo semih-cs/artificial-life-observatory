@@ -6,6 +6,7 @@
  * Purely a consumer of simulation-core's public API.
  */
 
+import type { WorldState } from '@alo/simulation-core';
 import {
   SimulationConfig,
   cloneConfig,
@@ -30,6 +31,12 @@ export interface ReplicateOptions {
   gitCommit: string | null;
   /** Enforce the §14.29 test-only runaway cap. Defaults to true. */
   runawayCapEnabled?: boolean;
+  /**
+   * OPTIONAL test-only world construction step (§16.9), applied exactly once
+   * after bootstrap and before the first tick. Must return a new WorldState and
+   * must not consume RNG. See experiments/installPolicy.ts.
+   */
+  worldTransform?: (world: WorldState, config: SimulationConfig) => WorldState;
 }
 
 export function runReplicate(opts: ReplicateOptions): ReplicateResult {
@@ -61,6 +68,9 @@ export function runReplicate(opts: ReplicateOptions): ReplicateResult {
   const runawayCapEnabled = opts.runawayCapEnabled ?? true;
 
   let world = bootstrapWorld(config);
+  // §16.9 test-only construction step. Applied before tick 1, never during the
+  // run, so it cannot influence any observation of a running world.
+  if (opts.worldTransform) world = opts.worldTransform(world, config);
   const timeseries: TimeseriesRow[] = [];
   let cumulativeBirths = 0;
   let cumulativeDeaths = 0;
