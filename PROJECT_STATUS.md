@@ -28,6 +28,8 @@ to explain the calibration failure. Nothing frozen; no calibration cycle for
 **Food-limitation diagnostic (`diagnostic-food-limitation-v1`): RUN — integrity
 gate PASS, outcome INCONCLUSIVE** (decision seeds C, A, B; no 2-of-3 majority).
 Pilot report §15. Cap, ecology and model unchanged.
+**Outcome classifier v2 (`trajectory-outcome-v2`): DESIGNED, NOT IMPLEMENTED.**
+Pilot report §16. All existing classifications remain v1 (peak ≥ 200) results.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -39,11 +41,12 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the food-limitation diagnostic result. `git log -1` is
-authoritative; recent history:
+Most recent work is the outcome classifier v2 design (design only).
+`git log -1` is authoritative; recent history:
 
 ```text
-(HEAD)  diagnostic-food-limitation-v1: results — INCONCLUSIVE — see `git log -1`
+(HEAD)  outcome classifier v2: design only — see `git log -1`
+d3edab2 diagnostic-food-limitation-v1: results — integrity PASS, outcome INCONCLUSIVE
 60bd999 diagnostic-food-limitation-v1: minimal harness support for the precommitted run
 6b14031 diagnostic-food-limitation-v1 PRECOMMITMENT: design only, nothing run
 ae145aa multifounder-default-baseline: results — outcome C, no meaningful improvement
@@ -481,7 +484,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -538,6 +541,10 @@ implemented as specified. **The model was not modified.**
    both models. Whether the default ecology becomes food-limited below or above
    200 is not known (pilot report §14.10). The precommitted diagnostic (§15)
    was run and is INCONCLUSIVE under its own rule; the question remains open.
+12. **The v1 outcome classifier is too coarse.** Peak ≥ 200 does not separate
+   unbounded growth from bounded high plateaus (§15.10, §16.1). A trajectory
+   classifier v2 is designed (§16) but not implemented. Until it is, every
+   outcome label in the repository is v1.
 
 ## Scientific caution
 
@@ -585,6 +592,62 @@ new axes, and the single smallest model-level question is identified without
 modifying the model.
 
 ---
+
+## Outcome classifier v2 (`trajectory-outcome-v2`) — DESIGN ONLY, not implemented
+
+Full design: `docs/Phase 0B Pilot Report.md` §16. Nothing implemented or run;
+the 200 cap is unchanged in code; no persisted result rewritten.
+
+**Project-owner decision after §15 (recorded):** Phase 0B next designs a
+replacement outcome-assessment rule that separates extinction, unbounded growth,
+high bounded plateaus and ordinary viable completion. No further diagnostic, no
+sweep, no model change.
+
+**Why.** v1 (`classifyRunOutcome`, §14.29) labels a run runaway once its peak
+reaches 200. Uncapped (§15), two v1-"runaway" worlds held level near 190 and 310
+for ~16,000 ticks. v1 cannot separate unbounded growth from a high bounded
+plateau. The cap value and "reach ⇒ runaway" are [BASELINE] (§6.30, §6.42,
+§17.64). The LOCKED content — cap is execution-only, never canonical — is kept.
+§16.18 [LOCKED] defines viability as sustained non-degenerate dynamics.
+
+**Rule, evaluated in order** (H = 20,000; terminal window 14,001–20,000 split
+into E = 14,001–17,000 and L = 17,001–20,000, one `maxAge` each; standard
+200-tick samples, ≥ 10 per half; r = mean pop(L) / mean pop(E)):
+
+1. error → `INCONCLUSIVE (ERROR)`
+2. population hit 0 → `EXTINCT`
+3. safety ceiling (1000) reached → `RUNAWAY_GROWTH (CEILING)`
+4. ended before 20,000 for any other reason, incl. the v1 cap → `INCONCLUSIVE (TRUNCATED)`
+5. < 10 samples in a half → `INCONCLUSIVE (INSUFFICIENT_SAMPLES)`
+6. r ≥ 2^(3000/20000) = 1.1096 (would double within one more horizon) → `RUNAWAY_GROWTH (GROWING_AT_HORIZON)`
+7. r ≤ 0.9013 (would halve within one more horizon) → `INCONCLUSIVE (DECLINING)`
+8. else plateau: terminal-window mean ≥ 200 → `HIGH_BOUNDED`, else `BOUNDED_VIABLE`
+
+Food pressure and birth/death balance are reported over the terminal window,
+confirmatory only, with no threshold. Every run is annotated with peak, final
+population and `v1WouldBeRunaway`.
+
+**Retrospective sanity check** (read-only, the four §15 trajectories, rule fixed
+first, no revision needed):
+
+| Seed | Peak | Final | r | Window mean | v1 | v2 |
+|---:|---:|---:|---:|---:|---|---|
+| 139595 | 215 | 189 | 1.011 | 194.0 | RUNAWAY | BOUNDED_VIABLE |
+| 123757 | 351 | 310 | 0.973 | 312.2 | RUNAWAY | HIGH_BOUNDED |
+| 107919 | 478 | 473 | 1.185 | 369.7 | RUNAWAY | RUNAWAY_GROWTH |
+| 210866 | 196 | 170 | 0.960 | 174.7 | VIABLE | BOUNDED_VIABLE |
+
+**Proposed gate.** `boundedCompletionRate = (BOUNDED_VIABLE + HIGH_BOUNDED) / N
+≥ 0.70`, where N is all runs including INCONCLUSIVE. The ~70% threshold is
+unchanged. Gate-eligible runs must run to 20,000 ticks with the 200 cap not used
+as an early stop and the safety ceiling on. The `HIGH_BOUNDED` and
+`RUNAWAY_GROWTH` shares are reported alongside.
+
+**Historical scope.** Every recorded `outcome`, count and `viableCompletionRate`
+is a v1 result and stays as recorded. The decisions taken under v1 stand. v2
+labels go to separate, version-tagged fields/files. Capped runs are
+`INCONCLUSIVE (TRUNCATED)` under v2. 10,000-tick results fall below the v2
+minimum horizon.
 
 ## `diagnostic-food-limitation-v1` — RESULT: INCONCLUSIVE
 
@@ -721,13 +784,13 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Project-owner decision, recorded in `PROJECT_STATUS.md` before anything else
-runs: given that `diagnostic-food-limitation-v1` is INCONCLUSIVE under its own
-precommitted rule (pilot report §15.9–§15.10), decide what Phase 0B does next.**
+**Implement `trajectory-outcome-v2` exactly as designed in pilot report §16 and
+reclassify existing pilot results from persisted trajectories only, without
+rerunning simulation.**
 
-This is a written decision, not a run. Per §15.9, no follow-up diagnostic may be
-added on the basis of the inconclusive result without that decision.
-Constraints that still hold: no change to the 200 cap, the ~70% gate,
-`classifyRunOutcome`, food parameters, `founderGroupCount` or the model; no
-calibration sweep; do not touch `packages/experiment-harness/seeds/validation.json`;
-do not begin Phase 0C.
+v2 labels are written to separate, version-tagged outputs; v1 fields and every
+persisted file stay untouched; no parameter of the rule may be changed.
+Constraints that still hold: no simulation-core change; do not change the 200
+cap in code, food parameters or `founderGroupCount`; no calibration sweep; do
+not touch `packages/experiment-harness/seeds/validation.json`; do not begin
+Phase 0C.

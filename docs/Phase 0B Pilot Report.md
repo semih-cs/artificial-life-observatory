@@ -7,7 +7,9 @@ validation seeds are untouched.**
 > model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
 > multi-founder initialization (`0A.2.0`). §14 is the first `0A.2.0` result:
 > the multi-founder default baseline. §15 is the `0A.2.0` food-limitation
-> diagnostic (precommitted design and result: INCONCLUSIVE). Results from the two models are separate
+> diagnostic (precommitted design and result: INCONCLUSIVE). §16 is the design
+> of the trajectory-based outcome classifier v2. Every classification in §§2–15
+> is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -1156,6 +1158,7 @@ condition, it does not make an organism better at anything.
 | The single-founder bottleneck explains the calibration failure | **No** | §14.9: removing it moved worlds between the two degeneracies, not into viability |
 | Multi-founder worlds start with functionally distinct founders | Yes, observational | §14.8: per-world mean pairwise founder distance 0.304–0.401, min pair 0.224 |
 | The 200 runaway cap masks food limitation in the default `0A.2.0` ecology | **Undetermined** | §15.10: decision seeds classified C, A, B — INCONCLUSIVE under the precommitted 2-of-3 rule |
+| Peak population ≥ 200 identifies unbounded growth | **No** | §16.1: uncapped, two v1-"runaway" worlds held level near 190 and 310 for ~16,000 ticks |
 
 ---
 
@@ -1675,3 +1678,209 @@ above.
 
 These are pilot-level descriptions of four worlds. They are not evidence of
 adaptation, intelligence, or any evolutionary advantage.
+
+---
+
+## 16. Outcome classifier v2 — trajectory-based (DESIGN ONLY)
+
+**Design only. Nothing is implemented, nothing is run, and no persisted result
+is rewritten by this section.** The 200 cap is unchanged in code. The retrospective
+check in §16.8 reads existing files and does not simulate.
+
+### 16.1 Why the v1 rule is insufficient
+
+The v1 rule (`classifyRunOutcome`, §14.29) labels a run `RUNAWAY_POPULATION` as
+soon as its **peak** population reaches 200. §15 ran four worlds past that point
+with the cap not used as an early stop. The three worlds v1 had labelled runaway
+did not explode. 139595 held near 190 for about 16,000 ticks after a peak of 215.
+123757 held near 310 after a peak of 351. 107919 was still climbing slowly at
+the horizon (473). None came near the 1000 safety ceiling. A single crossing of
+200 therefore does not separate unbounded growth from a high but bounded
+population. v1 also cannot tell a world that grows without limit from one that
+settles above 200, because it stops the run at 200 and discards what happens
+next. Under v1 both are "runaway". That is too coarse to interpret.
+
+### 16.2 Specification basis
+
+- The LOCKED content of §6.30 / §14.29 is preserved. The cap is an
+  experimental-execution safeguard, not a canonical population rule, and the
+  canonical world never suppresses births.
+- The cap value `min(8 x initialPopulation, 200)` and "reaching it ⇒ runaway"
+  are [BASELINE] items: §6.30 calls it the "initial rule", and the §6.42 and
+  §17.64 decision summaries list it under [BASELINE]. §14.26
+  [LOCKED] expects baselines to change when pilot evidence justifies it, as a
+  new version.
+- §16.18 [LOCKED] defines viability as "sustained non-degenerate dynamics, not
+  constant population size". Its named degeneracies are near-certain early
+  extinction and "near-immediate unlimited growth". v2 classifies on exactly
+  that distinction.
+- §16.34 / §16.55: extinction and runaway stay legitimate, reported outcomes.
+  No run is dropped.
+
+So v2 is a versioned change to a [BASELINE] analysis rule. It is not a change to
+any locked rule or to the model.
+
+### 16.3 Classes and fixed parameters
+
+Classifier id `trajectory-outcome-v2`. The v1 rule is `peak-cap-outcome-v1`.
+v2 uses its own labels so the two can never be confused in a results file.
+
+| v2 class | Meaning |
+|---|---|
+| `EXTINCT` | population reached 0 at any tick |
+| `BOUNDED_VIABLE` | reached the horizon; population level over the terminal window; terminal-window mean < 200 |
+| `HIGH_BOUNDED` | reached the horizon; population level over the terminal window; terminal-window mean ≥ 200 |
+| `RUNAWAY_GROWTH` | reached the execution safety ceiling, **or** reached the horizon still growing at the growth criterion |
+| `INCONCLUSIVE` | `TRUNCATED` (stopped early for any other reason, including the v1 cap), `DECLINING` (reached the horizon falling at the decline criterion), `INSUFFICIENT_SAMPLES`, or `ERROR` |
+
+| Parameter | Value | Why |
+|---|---|---|
+| Horizon H | 20,000 ticks | the §14.28 / §16.34 [BASELINE] horizon; shown load-bearing in §10.5 |
+| Terminal window W | ticks 14,001–20,000 (6,000) | two full `maxAge` spans, leaving the first 14,000 ticks as transient |
+| Halves | E = 14,001–17,000, L = 17,001–20,000 (3,000 each) | each half is one full `maxAge` (3000). Every organism alive at the start of a half has died by its end, so a half-mean is taken over a population that has fully replaced itself. A plateau across both halves is self-replacing, not a surviving cohort. Averaging over a lifespan also damps cohort-timed oscillation |
+| Samples | the standard 200-tick timeseries: 15 samples per half | already recorded for every 20,000-tick result; require ≥ 10 per half |
+| Growth ratio r | mean population over L / mean population over E | a ratio of means, robust to the ±10–15% fluctuation seen in plateaus |
+| Growth criterion | r ≥ 2^(3000/20000) = **1.1096** | at that terminal rate the population would at least double within one more 20,000-tick horizon: no bound has been demonstrated |
+| Decline criterion | r ≤ 2^(−3000/20000) = **0.9013** | the mirror image: the population would at least halve within one more horizon |
+| Level marker | terminal-window mean 200 | only splits `HIGH_BOUNDED` from `BOUNDED_VIABLE`. It is the old cap value (8 x the founding population), kept so reports show how many bounded worlds sit above it. No biological meaning |
+| Safety ceiling | 1000 (§15.5) | EXECUTION SAFETY LIMIT for the default ecology. It sits above the hard food-supply bound (2 items/tick x 25 energy / 0.0607 drain ≈ 824). If food-supply parameters ever change, it must be re-derived the same way before use |
+
+### 16.4 The rule, evaluated in order
+
+1. The run errored → `INCONCLUSIVE (ERROR)`.
+2. Population reached 0 → `EXTINCT`. This holds even after an earlier boom:
+   extinction is the terminal fact.
+3. Population reached the safety ceiling → `RUNAWAY_GROWTH (CEILING)`.
+4. The run ended before 20,000 ticks for any other reason, including the v1
+   cap → `INCONCLUSIVE (TRUNCATED)`.
+5. Fewer than 10 samples in either half → `INCONCLUSIVE (INSUFFICIENT_SAMPLES)`.
+6. r ≥ 1.1096 → `RUNAWAY_GROWTH (GROWING_AT_HORIZON)`.
+7. r ≤ 0.9013 → `INCONCLUSIVE (DECLINING)`.
+8. Otherwise the population plateaued over the terminal window:
+   terminal-window mean ≥ 200 → `HIGH_BOUNDED`, else `BOUNDED_VIABLE`.
+
+Every run is also annotated with its peak population, final population and a
+`v1WouldBeRunaway` flag (peak ≥ 200). The flag makes the v1 → v2 difference
+visible without changing any v1 record.
+
+### 16.5 Food pressure and birth/death balance — confirmatory, not required
+
+Food pressure is **reported, not required**. §15 showed the food stock is not a
+reliable detector of limitation: in 139595 and 123757 consumption matched the
+full supply rate while the stock averaged 38–43. The reference world 210866
+stayed level with a full stock. Boundedness is a demographic property. Requiring
+food scarcity would misclassify plateaus regulated by anything else. Reported per
+run over W: mean food stock, and, where per-tick flux exists, consumption and
+supply utilisation (consumed per tick / `2 x F̄`). No threshold is attached to
+either.
+
+Births and deaths over W are reported too. Their difference is exactly the
+population change, so they cannot be an independent criterion. They show
+turnover: a world that stays level for 6,000 ticks with `maxAge` 3000 must have
+replaced itself at least once.
+
+Neural, mutation, fitness and intelligence measures play no part.
+
+### 16.6 Safety ceiling and late explosions
+
+- **Ceiling.** Reaching it at any tick is `RUNAWAY_GROWTH (CEILING)`. That
+  population is past the scale the food system could feed at measured drain,
+  so boundedness cannot be shown within the run. The ceiling stays an execution
+  limit, not a carrying capacity.
+- **Late explosion.** A rise inside the last 3,000 ticks that lifts the L-mean
+  to at least 1.1096 x the E-mean is `RUNAWAY_GROWTH`. A world that has not
+  settled by the horizon has not demonstrated a bound, which is the
+  conservative reading for a viability gate.
+- **Short spike.** A spike too brief to move a half-window mean that far is
+  fluctuation and does not change the class. The window maximum is reported.
+- **Early explosion that later settles.** It is judged on the terminal window
+  only. That is the case v1 got wrong: 139595 peaked at 215 and then held near
+  190.
+- **The v1 cap as an early stop.** The 200 cap may stay available to stop cheap
+  exploratory runs early. Any run it stops is `INCONCLUSIVE (TRUNCATED)` under
+  v2 and cannot count as viable, bounded or runaway.
+
+### 16.7 Baseline gate under v2
+
+**boundedCompletionRate = (BOUNDED_VIABLE + HIGH_BOUNDED) / N ≥ 0.70**, where N
+is every run of the configuration, INCONCLUSIVE included.
+
+- It is the §16.35 [BASELINE] ~70% gate read with v2's meaning of runaway. The
+  numerical threshold is unchanged. §16.35 counts runs that reach 20,000 ticks
+  "without extinction or runaway termination". Under v2, runaway means
+  demonstrated growth (ceiling or growing at the horizon), not one crossing of
+  200.
+- `HIGH_BOUNDED` counts because a bounded, self-replacing plateau is sustained
+  non-degenerate dynamics in the §16.18 [LOCKED] sense. The height of a bounded
+  plateau is an ecological-scale property, not one of the named degeneracies.
+  The `HIGH_BOUNDED` share is reported next to the rate, so a pass carried by
+  high plateaus is visible. Any limit on plateau height would be a separate
+  precommitted criterion, not part of this gate.
+- `INCONCLUSIVE` runs stay in N and count against the gate. That includes
+  `DECLINING`, conservatively. Gate-eligible runs must therefore run to 20,000
+  ticks with the 200 cap **not** used as an early stop and the safety ceiling on.
+  A configuration evaluated with the cap on would be almost entirely
+  `TRUNCATED` and could not pass.
+- The §17.28 [BASELINE] runaway-frequency figure (~≤ 10%) is neither changed nor
+  adopted as a gate here. The `RUNAWAY_GROWTH` share is reported.
+- Per §14.27 the classifier and gate are frozen with a configuration before any
+  validation run. They may not be tuned afterwards.
+
+### 16.8 Retrospective sanity check — the four §15 trajectories (read-only)
+
+Applied once to `results/diagnostic-food-limitation-v1/timeseries-food-limitation.csv`
+(200-tick samples). The rule was fixed before these numbers were computed.
+**No revision was needed.**
+
+| Seed | Peak | Final | E-mean | L-mean | r | Window mean (min–max) | W births / deaths | W mean food | v1 label | **v2 class** |
+|---:|---:|---:|---:|---:|---:|---|---|---:|---|---|
+| 139595 | 215 | 189 | 193.0 | 195.1 | 1.011 | 194.0 (176–206) | 1083 / 1089 | 39.4 | RUNAWAY | **BOUNDED_VIABLE** |
+| 123757 | 351 | 310 | 316.5 | 308.0 | 0.973 | 312.2 (290–336) | 1240 / 1264 | 35.0 | RUNAWAY | **HIGH_BOUNDED** |
+| 107919 | 478 | 473 | 338.4 | 400.9 | 1.185 | 369.7 (314–476) | 1069 / 927 | 58.4 | RUNAWAY | **RUNAWAY_GROWTH** (growing at horizon) |
+| 210866 | 196 | 170 | 178.3 | 171.1 | 0.960 | 174.7 (161–193) | 506 / 497 | 59.8 | VIABLE | **BOUNDED_VIABLE** |
+
+The same computation from the per-tick flux files gives the same four classes:
+r = 1.006, 0.968, 1.174, 0.963. Supply utilisation over W, confirmatory only:
+1.00, 0.99, 0.64, 0.29.
+
+The classification is coherent with what the trajectories show:
+- the two worlds that settled, one below and one above 200, are bounded;
+- the world still rising at the horizon, with food at capacity, is not shown to
+  be bounded;
+- the never-capped reference stays `BOUNDED_VIABLE`, as under v1.
+
+This is a sanity check of the rule on four pilot worlds. It is not a new
+experiment, not calibration evidence and not a gate evaluation.
+
+### 16.9 Scope of historical results
+
+- Every classification already recorded — every `outcome` field, every
+  extinct/runaway/viable count and every `viableCompletionRate` in §§2–15 — is
+  a **v1 (`peak-cap-outcome-v1`) result** and stays exactly as recorded. No
+  persisted file is edited.
+- The decisions taken under v1 stand as decisions under v1. They are the
+  calibration-v1/v2/v3 determinations, the §14 outcome C and the §15
+  INCONCLUSIVE. Reclassification under v2 is descriptive re-analysis and does
+  not reopen them.
+- Reclassification, when implemented, writes v2 labels to **separate**
+  fields/files tagged with the classifier version.
+- What v2 can say about old data is limited by construction:
+  - runs the cap stopped are `INCONCLUSIVE (TRUNCATED)` under v2;
+  - v1-extinct runs are `EXTINCT`;
+  - only runs that reached 20,000 ticks uncapped can receive a trajectory class;
+  - 10,000-tick results fall below the minimum horizon, and only their
+    extinctions are classifiable.
+- `0A.1.0` and `0A.2.0` results stay separate under both classifiers.
+
+### 16.10 Known limitations
+
+- A population oscillating with a period near 3,000–6,000 ticks could push r
+  across a threshold and be labelled growing or declining. Halves of one full
+  lifespan reduce but do not remove this.
+- A world still slowly rising at the horizon is `RUNAWAY_GROWTH` even if it
+  would have settled later. That is deliberately conservative. The alternative
+  would count an unproven bound as viable.
+- Four trajectories are a sanity check, not a validation of the rule.
+
+Nothing here is a claim about adaptation, intelligence or evolutionary
+advantage.
