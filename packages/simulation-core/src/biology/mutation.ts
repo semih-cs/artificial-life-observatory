@@ -34,6 +34,14 @@ export type MorphologyGeneName = (typeof MORPHOLOGY_GENE_ORDER)[number];
 /** Fixed neural parameter-block order (§20.72, §13.76). Load-bearing for draw order. */
 export const NEURAL_PARAM_ORDER = ['inputHiddenWeights', 'hiddenBiases', 'hiddenOutputWeights', 'outputBiases'] as const;
 
+/**
+ * The recurrent model's (0A.4.0) fifth block. It is APPENDED after the four
+ * historical blocks — draws, mutation and serialization all visit it last —
+ * and exists only on recurrent genomes, so a feed-forward genome's draw
+ * schedule is exactly the historical one.
+ */
+export const RECURRENT_PARAM_BLOCK = 'recurrentHiddenWeights' as const;
+
 function clampTo(v: number, b: { min: number; max: number }): number {
   return Math.max(b.min, Math.min(b.max, v));
 }
@@ -88,7 +96,9 @@ export function mutateMorphology(
 
 /**
  * Neural mutation channel. Parameter blocks are considered in
- * NEURAL_PARAM_ORDER; within a block, ascending index order.
+ * NEURAL_PARAM_ORDER, then (recurrent genomes only) RECURRENT_PARAM_BLOCK;
+ * within a block, ascending index order. Recurrent weights are ordinary
+ * neural parameters: same rate, sigma, bounds and enable flag.
  *
  * When `enabled` is false the full draw schedule is still executed (so that
  * downstream RNG consumers see the same state regardless of the flag), but
@@ -111,12 +121,15 @@ export function mutateNeural(
   };
   // Always execute the full draw schedule in fixed block/index order,
   // consuming the same RNG draws regardless of the enable flag (§15.7).
-  const mutated = {
+  const mutated: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
     inputHiddenWeights: perturb(parent.inputHiddenWeights),
     hiddenBiases: perturb(parent.hiddenBiases),
     hiddenOutputWeights: perturb(parent.hiddenOutputWeights),
     outputBiases: perturb(parent.outputBiases),
   };
+  if (parent.recurrentHiddenWeights !== undefined) {
+    mutated.recurrentHiddenWeights = perturb(parent.recurrentHiddenWeights);
+  }
 
   if (!mutationConfig.neuralMutationEnabled) {
     // Draws consumed above; return exact parent values (§13.7).
@@ -177,12 +190,17 @@ export function perturbNeuralForBootstrap(
     }
     return out;
   };
-  return {
+  const perturbed: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
     inputHiddenWeights: perturb(founder.inputHiddenWeights),
     hiddenBiases: perturb(founder.hiddenBiases),
     hiddenOutputWeights: perturb(founder.hiddenOutputWeights),
     outputBiases: perturb(founder.outputBiases),
   };
+  // Recurrent founders: the appended block is perturbed last, like any neural block.
+  if (founder.recurrentHiddenWeights !== undefined) {
+    perturbed.recurrentHiddenWeights = perturb(founder.recurrentHiddenWeights);
+  }
+  return perturbed;
 }
 
 export { cloneNeural, cloneMorphology };

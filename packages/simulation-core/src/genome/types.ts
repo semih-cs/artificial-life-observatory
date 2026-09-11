@@ -17,15 +17,23 @@ export interface MorphologyGenome {
 }
 
 /**
- * Fixed-topology feedforward network parameters: one hidden layer.
+ * Fixed-topology network parameters: one hidden layer.
  * Parameter order is fixed and load-bearing for deterministic draw order
- * (§13.76): inputHiddenWeights, hiddenBiases, hiddenOutputWeights, outputBiases.
+ * (§13.76): inputHiddenWeights, hiddenBiases, hiddenOutputWeights, outputBiases
+ * — and, for the recurrent model 0A.4.0 only, recurrentHiddenWeights appended
+ * as a fifth block after them. The four historical blocks are never reordered.
+ *
+ * `recurrentHiddenWeights` is ABSENT (the key does not exist) for the
+ * feed-forward models 0A.1.0-0A.3.0 and REQUIRED for 0A.4.0; a feed-forward
+ * genome is never given an empty or zero recurrent matrix.
  */
 export interface NeuralGenome {
   readonly inputHiddenWeights: readonly number[]; // [hiddenSize x inputSize], row-major
   readonly hiddenBiases: readonly number[]; // [hiddenSize]
   readonly hiddenOutputWeights: readonly number[]; // [outputSize x hiddenSize], row-major
   readonly outputBiases: readonly number[]; // [outputSize]
+  /** 0A.4.0 only: W_rec, [hiddenSize x hiddenSize], row-major — row = receiving hidden unit, column = previous hidden unit. */
+  readonly recurrentHiddenWeights?: readonly number[];
 }
 
 export interface Genome {
@@ -49,12 +57,15 @@ export function cloneMorphology(m: MorphologyGenome): MorphologyGenome {
 }
 
 export function cloneNeural(n: NeuralGenome): NeuralGenome {
-  return {
+  const clone: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
     inputHiddenWeights: [...n.inputHiddenWeights],
     hiddenBiases: [...n.hiddenBiases],
     hiddenOutputWeights: [...n.hiddenOutputWeights],
     outputBiases: [...n.outputBiases],
   };
+  // A feed-forward genome stays without the key; a recurrent one keeps its matrix.
+  if (n.recurrentHiddenWeights !== undefined) clone.recurrentHiddenWeights = [...n.recurrentHiddenWeights];
+  return clone;
 }
 
 export function cloneGenome(g: Genome): Genome {

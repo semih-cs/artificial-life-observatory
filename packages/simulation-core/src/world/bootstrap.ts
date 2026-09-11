@@ -3,7 +3,7 @@ import { createRngStreams, RngStream, RngStreams, exportRngStreamsState } from '
 import { generateFounderProfile, FounderProfile } from '../genome/founder.js';
 import { perturbMorphologyForBootstrap, perturbNeuralForBootstrap } from '../biology/mutation.js';
 import { Genome } from '../genome/types.js';
-import { OrganismRuntimeState } from '../organism/types.js';
+import { OrganismRuntimeState, zeroHiddenState } from '../organism/types.js';
 import { WorldState, FoodItem, WorldConfigSnapshot } from './types.js';
 import { generateFertilityField, fertilityAt, FertilityField } from './fertility.js';
 import { simulationModel } from '../model/simulationModel.js';
@@ -84,13 +84,14 @@ export const FERTILITY_PLACEMENT_ATTEMPTS = 8;
  * founder generation is the first thing that consumes that stream.
  */
 export function generateFounderProfiles(rng: RngStream, config: SimulationConfig): FounderProfile[] {
-  // The model fixes the founder controller's input dimension: 6 for 0A.1.0 /
-  // 0A.2.0 (unchanged draws), 10 for 0A.3.0 (drawn natively at full size).
-  const inputSize = simulationModel(config.simulationVersion).neuralInputSize;
+  // The model fixes the founder controller's layout: 6 inputs for 0A.1.0 /
+  // 0A.2.0 (unchanged draws), 10 for 0A.3.0 and 0A.4.0 (drawn natively at
+  // full size), plus the appended recurrent block for 0A.4.0.
+  const model = simulationModel(config.simulationVersion);
   const founders: FounderProfile[] = [];
   for (let group = 0; group < effectiveFounderGroupCount(config); group++) {
     founders.push(
-      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap, inputSize)
+      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap, model.neuralInputSize, model.recurrent)
     );
   }
   return founders;
@@ -155,6 +156,7 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
   const groupCount = founders.length;
 
   // 2. Bootstrap population
+  const recurrent = simulationModel(config.simulationVersion).recurrent;
   const organisms: OrganismRuntimeState[] = [];
   const placed: Point[] = [];
   let nextOrganismId = 1;
@@ -183,7 +185,7 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
 
     const heading = boot.nextInRange(0, 2 * Math.PI);
 
-    organisms.push({
+    const organism: OrganismRuntimeState = {
       id,
       genome,
       parentId: null, // founder/bootstrap organism (§9.44-§9.45)
@@ -198,7 +200,10 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
       alive: true,
       deathCause: null,
       deathTick: null,
-    });
+    };
+    // Recurrent model: runtime memory starts empty (all zeros). No RNG draw.
+    if (recurrent) organism.hiddenState = zeroHiddenState(config.neural.hiddenLayerSize);
+    organisms.push(organism);
   }
 
   // 3. Static seeded fertility field

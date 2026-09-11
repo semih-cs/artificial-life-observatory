@@ -32,6 +32,17 @@ export interface OrganismRuntimeState {
   alive: boolean;
   deathCause: DeathCause | null;
   deathTick: number | null;
+  /**
+   * Recurrent model 0A.4.0 only: the controller's runtime memory h_(t-1), one
+   * value per hidden unit. Runtime state, NOT genome: it starts at all zeros
+   * for founders and newborns, is never inherited, never mutated by the
+   * mutation channels, and is advanced only by the Decide phase — once per
+   * tick in which the organism acts. It is future-affecting, so it is part of
+   * the canonical state and of snapshot format v2. Feed-forward models
+   * (0A.1.0-0A.3.0) do not have this key at all. Never a sensory input, never
+   * visible to other organisms, never in observer frames.
+   */
+  hiddenState?: number[];
 }
 
 /**
@@ -40,7 +51,7 @@ export interface OrganismRuntimeState {
  * writes to fresh objects and the pre-tick state S_t is never modified.
  */
 export function cloneRuntimeState(o: OrganismRuntimeState): OrganismRuntimeState {
-  return {
+  const clone: OrganismRuntimeState = {
     id: o.id,
     genome: o.genome,
     parentId: o.parentId,
@@ -56,6 +67,14 @@ export function cloneRuntimeState(o: OrganismRuntimeState): OrganismRuntimeState
     deathCause: o.deathCause,
     deathTick: o.deathTick,
   };
+  // Only a recurrent organism carries memory; the copy is detached from S_t.
+  if (o.hiddenState !== undefined) clone.hiddenState = [...o.hiddenState];
+  return clone;
+}
+
+/** A fresh all-zero recurrent hidden state (founders and newborns of a recurrent model). */
+export function zeroHiddenState(hiddenSize: number): number[] {
+  return new Array<number>(hiddenSize).fill(0);
 }
 
 export function isAlive(o: OrganismRuntimeState): boolean {

@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-11 (V2 started — V2.1 done: organism sensing, model `0A.3.0`; v1 frozen)
+**Last updated:** 2026-09-11 (V2.2 done: recurrent memory, model `0A.4.0`; V2.1 organism sensing `0A.3.0`; v1 frozen)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -19,6 +19,7 @@
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
 | **V2.1** — other organisms enter the sensory world | **DONE** (below): new model `simulationVersion 0A.3.0`, 10 → 8 → 4 — the `0A.2.0` model plus four inputs for the nearest visible other living organism. Perception only. Golden hash `e54d0c11249b7849`. `0A.1.0` / `0A.2.0` unchanged. Snapshot format v1 and observer protocol v1 unchanged. Observatory: selected-organism vision cone |
+| **V2.2** — recurrent memory | **DONE** (below): new model `simulationVersion 0A.4.0`, 10 → 8 recurrent → 4 — the `0A.3.0` model with an Elman hidden layer (+64 inherited recurrent weights, 188 parameters), runtime memory (8 values, zero at birth, never inherited), no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0`; format v1 unchanged; observer protocol v1 unchanged; no new UI |
 | **Phase 0D** — Observatory / visualisation | **COMPLETE / FROZEN FOR V1** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. The final polish adds an organism quick-jump, the first-run card, `npm run demo:new` / `demo:resume` with DEMO seed `31415926`, and a help hint. **V1 COMPLETE.** Further work is v2 unless it is a genuine v1 bug |
 
 **Frozen v1 biological model:**
@@ -43,6 +44,16 @@ This is a **product freeze, not a research baseline qualification**.
 | topology | 10 → 8 → 4 (v1 models: 6 → 8 → 4) |
 | configuration | `DEFAULT_SIMULATION_CONFIG` with only the version changed |
 | golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `e54d0c11249b7849` |
+
+**V2.2 model (new, separately versioned):**
+
+| Setting | Value |
+|---|---|
+| `simulationVersion` | `0A.4.0` (`recurrentMemoryModelConfig()`, `--model 0A.4.0`) |
+| controller | 10 → 8 recurrent → 4 (Elman), 188 neural parameters, 8 runtime memory values |
+| configuration | the `0A.3.0` configuration with only the version changed |
+| snapshot format | v2 (older models: v1) |
+| golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `436a377506063609` |
 
 **DEMO seed (presentation only): `31415926`** — used by `npm run demo:new`
 (`worlds/demo`, 10 ticks/s, observer on 8787). Chosen from a 40,000-tick
@@ -119,11 +130,12 @@ has been chosen yet.
 ## Git state
 
 Branch: `main` (tracking `origin/main`). `git log -1` is authoritative. The
-most recent work is the V2.1 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
+most recent work is the V2.2 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
-(HEAD)  V2.1: other organisms enter the sensory world — model 0A.3.0 (10→8→4), vision-cone overlay — see `git log -1`
+(HEAD)  V2.2: recurrent memory — model 0A.4.0 (10→8 recurrent→4), snapshot format v2 — see `git log -1`
+ceecbc8 V2.1: other organisms enter the sensory world — model 0A.3.0 (10→8→4), selected-organism vision cone
 cb29594 demo scripts: demo:new:settled (fast-forward to tick 5000, then stream) and demo:resume:slow (3 ticks/s); document the 25-founder opening burst
 5ea6ee4 (tag: v1.0.0) v1 complete: Observatory final polish (quick-jump, first-run card, help), demo scripts and DEMO seed, Phase 0D frozen
 f21d072 Phase 0D slice 4: Observatory compact ancestry strip — observed parent chain, Δ per hop, honest boundaries
@@ -153,7 +165,36 @@ artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
 
 ---
 
-## Verification — V2.1 checkpoint (this session)
+## Verification — V2.2 checkpoint (this session)
+
+Development VM (linux-arm64, Node 22.23.2), package by package (one shell
+command is limited to 3 minutes there):
+
+```text
+simulation-core tests:    233 / 233 passed   (+24: recurrentMemory)
+experiment-harness tests: 138 / 138 passed   (unchanged)
+persistence tests:         92 / 92  passed   (+11: recurrentSnapshot)
+world-runner tests:        50 / 50  passed   (+4: recurrentMemoryModel)
+observatory tests:         87 / 87  passed   (unchanged; the built bundle is byte-identical in name/hash to V2.1's)
+workspace total:          600 / 600 passed   (V2.1: 561)
+workspace build:          PASS (`npm run build`)
+
+golden hashes, seed 20260910, 10000 ticks (linux-arm64):
+  0A.1.0 single-founder (frozen):    6a6576bd49e86b27  UNCHANGED
+  0A.2.0 multi-founder (frozen v1):  b95a0b4ef7dd8449  UNCHANGED  (also `npm run simulate` with no --model)
+  0A.3.0 organism sensing (frozen):  e54d0c11249b7849  UNCHANGED
+  0A.4.0 recurrent memory (V2.2):    436a377506063609  NEW (several processes; twice in-test; checkpoints 1,000 = 321c43755adfa040, 2,000 = 1215b0df8338e59e)
+  0A.4.0 coverage checkpoint, seed 8, tick 2,500: 6560783d7e9c5086 (113 births) — not a golden reference
+```
+
+Also on the x86_64 cloud container (Node 22.22.2), `npm ci && npm test` on
+the same code tree: 571 / 600 pass; all 29 failures are assertions of a
+pinned linux-arm64 value (28 hashes incl. the new `0A.4.0` ones and the
+fixture continuations, plus the seed-8 birth count, 130 there vs 113) — Known
+gap 13. Every same-platform equivalence (continuous == resumed, observed ==
+unobserved) passes there. The browser live check ran there (19 / 19).
+
+## Verification — V2.1 checkpoint (historical)
 
 Run on the development VM (linux-arm64, Node 22.23.2) — the platform the
 golden hashes belong to — package by package (the VM's shell limits one
@@ -619,6 +660,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED (Phase 0D slice 1) — five packages, quick start, status table, repository structure, the *Observatory (Phase 0D)* section (stack, run commands, WebSocket default and `VITE_OBSERVER_WS_URL`, what you see, controls, inspector, HUD, connection behaviour, read-only guarantee, frames and performance, tests, limitations), the observatory test table, phase boundaries |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `docs/V2.1 Amendment - Organism Sensing (0A.3.0).md` | CREATED (V2.1) — the `0A.3.0` sensory contract, model dimensions, founders, mutation, persistence, Observatory scope, non-goals, platform note |
+| `docs/V2.2 Amendment - Recurrent Memory (0A.4.0).md` | CREATED (V2.2) — the `0A.4.0` Elman controller, genome vs runtime memory, founders, mutation, canonical state and snapshot format v2, Observatory scope, non-goals |
 | `README.md`, `AGENTS.md`, `PROJECT_STATUS.md` | UPDATED (V2.1) — V2 started; model table and hashes; the V2.1 section; model registry and V2 rules; the clarified snapshot rule; the vision-cone frontend rule; known gaps 13–15 |
 
 ---
@@ -684,7 +726,8 @@ implemented as specified. **The model was not modified.**
    On an x86_64 container (Node 22.22.2) the frozen `v1.0.0` code itself
    gives `0A.2.0` = `ea689a61d2fd4b38` instead of `b95a0b4ef7dd8449`; with the
    V2.1 code `0A.3.0` gives `472d6bc8c8b9dacd` instead of `e54d0c11249b7849`
-   (`0A.1.0` happens to match: that world dies out early). Every recorded hash
+   (`0A.1.0` happens to match: that world dies out early). V2.2: `0A.4.0` gives
+   `3e20f7588750822d` there instead of `436a377506063609`. Every recorded hash
    is confirmed on linux-arm64 (development VM, Node 22.23.2). All
    same-platform equivalence tests pass on x86_64; only the 22 tests that pin
    an arm64 hash fail there. Likely cause: platform-dependent last-bit results
@@ -696,7 +739,11 @@ implemented as specified. **The model was not modified.**
    `0A.2.0` tick cost at 400 organisms, ≈ 8× at 1,000. Not optimised.
 15. **The experiment harness is v1-only.** Its probe set and movement
    policies are six-input (`NEURAL_INPUT_SIZE`); it was not extended to
-   `0A.3.0` (Phase 0B is frozen). Evaluating a 10-input genome with it throws.
+   `0A.3.0` or `0A.4.0` (Phase 0B is frozen). Evaluating a 10-input or recurrent genome with it throws.
+16. **Many `0A.4.0` worlds die out early** (canonical seed at tick 2,474 with
+   one birth; seeds 1–7 by tick 5,042). Recorded, not tuned; extinction is a
+   valid outcome. The golden regression still fingerprints the whole run and
+   pins checkpoints while alive; seed 8 supplies birth coverage in tests.
 
 ## Scientific caution
 
@@ -2451,23 +2498,111 @@ population of 1–15 through 20,000 ticks under `0A.3.0`. These are single
 trajectories of a new model, not evidence about organism sensing. No DEMO
 seed was chosen for `0A.3.0` and no seed shopping or tuning was done.
 
+## V2.2 — RESULT: DONE (recurrent memory, model `0A.4.0`)
+
+Contract: `docs/V2.2 Amendment - Recurrent Memory (0A.4.0).md`. Memory only —
+no learning, no new inputs, outputs, actions, genes or interactions.
+
+**Controller.** `evaluateRecurrentNetwork` (`simulation-core/src/neural/network.ts`):
+h_t = tanh(W_in x_t + W_rec h_(t−1) + b_hidden), sums formed bias → inputs →
+previous hidden units; the unchanged hidden → output layer and activations.
+The feed-forward `evaluateNetwork` is arithmetically unchanged (refactored
+only to share the output layer) and refuses recurrent genomes; each
+evaluator refuses the other's genomes, `decideAction` refuses organisms with
+memory, `decideRecurrentAction` requires it.
+
+**Model protection.** Registry flag `recurrent` (only `0A.4.0`). Feed-forward
+genomes/organisms have no recurrent key at all; canonical records of
+`0A.1.0`–`0A.3.0` are byte-identical to before (all three hashes unchanged),
+and canonicalization refuses a world whose organisms do not match its model.
+Every founder/mutation function takes `recurrent` (default false), so every
+historical draw and mutation schedule is untouched (tested: 92 / 124 uniforms
+per mutation, no recurrent block).
+
+**Genome.** `recurrentHiddenWeights` (64 = 8²) appended as the fifth block:
+founder draw (existing `initSigma`, bounds), bootstrap perturbation,
+mutation (existing rate/sigma/bounds/flag) and storage all visit it last.
+188 parameters per `0A.4.0` controller.
+
+**Memory lifecycle.** `hiddenState`: zeros for founders (`bootstrapWorld`) and
+newborns (`createOffspring`; never the parent's); in `stepWorld` every living
+organism decides from its S_t copy, the new states are buffered and written
+after all have decided — once per acting tick; newborns are not in `living`,
+so they stay zero through their birth tick; memory ends with death.
+
+**Founders.** Probes each from a fresh zero memory; tested that the screen's
+result is identical for any recurrent weights (zeros, ±2, arbitrary) and
+equal to the `0A.3.0` screen of the feed-forward part; a founder with all-zero
+recurrent weights is valid.
+
+**Persistence.** Snapshot format v2 (`persistence/src/snapshot.ts`):
+`snapshotFormatVersionFor(model)` = 2 for `0A.4.0`, 1 otherwise; the format is
+checked against the model before the checksum; v2 requires `hiddenState`
+(length `hiddenLayerSize`, finite) and `recurrentHiddenWeights`
+(hiddenSize²), v1 forbids both. Fixtures: `tests/fixtures/v2.1/` — a `0A.3.0`
+snapshot written by the accepted V2.1 commit `ceecbc8` (continuation hashes to
+tick 1,500 recorded by that code) — plus the existing `v1.0.0` fixtures; all
+load byte-exactly and continue exactly. A copy of the user's current v1 world
+`worlds/demo` (tick 1,125) resumed by the V2.2 code and by the `v1.0.0` code
+reached the same hash (`eeda96b73d45a314` at 2,125); the folder was verified
+unchanged. `0A.4.0` exact resume: seed 8, saved at 500 / 1,000 / 1,500 /
+2,000, each resumed from file to 2,500 hash-equal every 250 ticks; golden
+seed saved at 1,000 → `436a377506063609`; separate process.
+
+**Tests changed, not weakened.** V2.1 tests that pinned the registry now also
+pin `recurrent: false` for the old models and the four-model list; the
+"unknown version" examples moved from `0A.4.0` (now real) to `0A.9.0`;
+`persistence/tests/snapshot.test.ts` pins the four supported versions.
+
+**Live verification.**
+
+1. *Development VM (arm64), real CLI:* `--new --seed 8 --model 0A.4.0
+   --until-tick 3000` → resume with `--observe 8799 --ticks-per-second 100`
+   and a WebSocket client (61 frames, protocol 1, `0A.4.0`, 104 births and
+   35 deaths seen between frames, no memory/weights in frames) → SIGINT at
+   3,602 (saved 3,602) → resume `--until-tick 10000` → recovered 3,602,
+   final hash `d61e69c30f279993` = the uninterrupted direct run; format v2;
+   all 230 organisms carry 8-value memory and 64 recurrent weights, all
+   memories non-zero, max generation 12, no founders left.
+2. *Browser (x86_64 cloud container, production build, headless Chromium,
+   Playwright), 19 / 19:* a seed-8 `0A.4.0` world resumed at 10 ticks/s with
+   `--observe`; live, HUD `0A.4.0`, organisms move, frames protocol 1 with no
+   memory/weights/intents; selection via quick-jump; after a graceful stop
+   the page shows exactly the last delivered frame (the runner saves one tick
+   after its last broadcast — pre-existing, frames are a view); the vision
+   cone adds exactly the cone (≈ 99.7% of interior pixels changed, 0 outside);
+   `Esc` restores the canvas; selection change moves it; stop → resume
+   recovers the exact tick and the page reconnects; 0 WebSocket frames sent;
+   no application console errors.
+
+**Performance.** Recurrence is negligible next to O(N²) sensing: fixed
+population, ms/tick `0A.3.0` vs `0A.4.0` — 25: 0.160 vs 0.171; 230: 4.65 vs
+5.14; 400: 11.5 vs 11.5. The seed-8 world ran at ≈ 330–370 ticks/s unpaced
+at population ≈ 230.
+
+**Observed, not interpreted.** Canonical seed: one birth, extinct at tick
+2,474. Seeds 1–7 die out by tick 5,042; seed 8 lives (≈ 230 at 10,000).
+Single trajectories of a new model — not evidence about memory. No seed is
+chosen as a DEMO seed; no tuning.
+
 ## V2 backlog (deferred)
 
-Richer senses — **started** (V2.1 above). Neural fingerprint / neural mutation visualisation; memory /
-recurrent neural state; lifetime learning, plasticity and RL experiments;
+Richer senses — **started** (V2.1 above). Memory / recurrent neural state —
+**started** (V2.2 above). Neural fingerprint / neural mutation visualisation;
+lifetime learning, plasticity and RL experiments;
 richer morphology; full genealogy; persistent analytics; cloud / database /
 remote observers; mobile polish; richer ecosystem and environmental
 complexity. Any of these is a new phase with its own spec.
 
 ## NEXT EXACT STEP
 
-**None pending — V2.1 is complete.** The next task, if any, is either a
+**None pending — V2.2 is complete.** The next task, if any, is either a
 genuine bug fix (focused failing test, smallest correction, rerun the
-affected package and all three golden hashes on arm64) or the next V2 slice
+affected package and all four golden hashes on arm64) or the next V2 slice
 under its own approved specification, as a new model version (never an edit
-of `0A.1.0`, `0A.2.0` or `0A.3.0`). Open decisions for the owner, not for an
-agent: whether new product worlds should default to `0A.3.0`, a DEMO seed
-for `0A.3.0`, and whether the platform dependence of the hashes (Known gap
-13) should be addressed.
+of `0A.1.0`–`0A.4.0`). Open decisions for the owner, not for an agent:
+whether new product worlds should default to a V2 model, DEMO seeds for
+`0A.3.0` / `0A.4.0`, and whether the platform dependence of the hashes
+(Known gap 13) should be addressed.
 
 Backend work stays limited to what the frontend demonstrably needs.

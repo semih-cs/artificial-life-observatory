@@ -1,5 +1,17 @@
 /**
- * Canonical world snapshot, format v1 (Phase 0C slice 1).
+ * Canonical world snapshot — format v1 (Phase 0C slice 1) and format v2 (V2.2).
+ *
+ * Two formats, one per controller kind, chosen by the snapshot's model:
+ *   - format v1: the feed-forward models 0A.1.0, 0A.2.0, 0A.3.0 — exactly the
+ *     historical format; every existing v1 file reads, re-serialises and
+ *     resumes as before.
+ *   - format v2: the recurrent model 0A.4.0. Its canonical state additionally
+ *     stores each organism's runtime memory `hiddenState` and its genome's
+ *     `recurrentHiddenWeights`. Memory is future-affecting runtime state, so a
+ *     recurrent world is never stored without it — hence a new format rather
+ *     than a silent extension of v1.
+ * A snapshot's format must match its model (checked before anything else is
+ * trusted); nothing is ever converted between formats or models.
  *
  * Invariant (Spec v4 §18.60, §19.27 [LOCKED]): a world restored from a
  * snapshot continues bit-for-bit as if it had never stopped.
@@ -48,27 +60,38 @@ import {
   MULTI_FOUNDER_MODEL_VERSION,
   SINGLE_FOUNDER_MODEL_VERSION,
   ORGANISM_SENSING_MODEL_VERSION,
+  RECURRENT_MEMORY_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
-  neuralInputSizeFor,
+  simulationModel,
 } from '@alo/simulation-core';
 import type { SimulationConfig, WorldState, OrganismRuntimeState, Xoshiro128State } from '@alo/simulation-core';
 import { stableStringify } from './stableStringify.js';
 import { SnapshotError } from './errors.js';
 
 export const SNAPSHOT_FORMAT_ID = 'alo-canonical-world-snapshot' as const;
+/** Format v1: the feed-forward models (0A.1.0, 0A.2.0, 0A.3.0). */
 export const SNAPSHOT_FORMAT_VERSION = 1;
+/** Format v2: the recurrent model 0A.4.0 — v1 plus per-organism memory and recurrent weights. */
+export const RECURRENT_SNAPSHOT_FORMAT_VERSION = 2;
+/** Every format this loader reads. */
+export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION];
 
 /**
- * Simulation versions this format can restore. `0A.3.0` is the V2.1
- * organism-sensing model (10-input controllers); `0A.2.0` is the frozen v1
- * canonical model; `0A.1.0` is the historical single-founder model, still
- * runnable by the same core for regression. Adding 0A.3.0 did not change the
- * stored shape, so the format version stays 1 and every existing v1 snapshot
- * reads exactly as before.
+ * Simulation versions this package can restore. `0A.4.0` is the V2.2
+ * recurrent-memory model (format v2); `0A.3.0` is the V2.1 organism-sensing
+ * model (10-input feed-forward controllers); `0A.2.0` is the frozen v1
+ * canonical model; `0A.1.0` is the historical single-founder model. Adding
+ * 0A.3.0 did not change the stored shape (format v1); adding 0A.4.0 did
+ * (format v2).
  */
 export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
-  ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+  RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
 ];
+
+/** The one format a supported model is stored in: 2 for the recurrent model, 1 for the feed-forward ones. */
+export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 {
+  return simulationModel(simulationVersion).recurrent ? 2 : 1;
+}
 
 /** The world record stored in a v1 snapshot: `canonicalizeWorldState` output. */
 export interface CanonicalWorldStateV1 {
@@ -101,6 +124,30 @@ export interface CanonicalWorldStateV1 {
   rng: { bootstrap: Xoshiro128State; canonical: Xoshiro128State };
 }
 
+/**
+ * The world record stored in a v2 snapshot (model 0A.4.0): the v1 record,
+ * with every organism also carrying `hiddenState` and its neural genome
+ * `recurrentHiddenWeights` — exactly `canonicalizeWorldState` for a recurrent
+ * world.
+ */
+export interface CanonicalWorldStateV2 extends Omit<CanonicalWorldStateV1, 'organisms'> {
+  organisms: Array<CanonicalWorldStateV1['organisms'][number] & {
+    genome: {
+      morphology: CanonicalWorldStateV1['organisms'][number]['genome']['morphology'];
+      neural: CanonicalWorldStateV1['organisms'][number]['genome']['neural'] & { recurrentHiddenWeights: number[] };
+    };
+    hiddenState: number[];
+  }>;
+}
+
+export interface WorldSnapshotV2 extends Omit<WorldSnapshotV1, 'snapshotFormatVersion' | 'state'> {
+  snapshotFormatVersion: 2;
+  state: CanonicalWorldStateV2;
+}
+
+/** A snapshot of either format; `snapshotFormatVersion` discriminates. */
+export type WorldSnapshot = WorldSnapshotV1 | WorldSnapshotV2;
+
 export interface WorldSnapshotV1 {
   format: typeof SNAPSHOT_FORMAT_ID;
   snapshotFormatVersion: 1;
@@ -127,7 +174,7 @@ export function configHash(config: SimulationConfig): string {
 }
 
 /** The checksum a snapshot should carry, computed over every field except `checksum`. */
-export function computeSnapshotChecksum(snapshot: Omit<WorldSnapshotV1, 'checksum'> | Record<string, unknown>): string {
+export function computeSnapshotChecksum(snapshot: Omit<WorldSnapshot, 'checksum'> | Record<string, unknown>): string {
   const { checksum: _ignored, ...payload } = snapshot as Record<string, unknown>;
   return createHash('sha256').update(stableStringify(payload)).digest('hex');
 }
@@ -139,20 +186,21 @@ function detach<T>(value: T): T {
 
 /**
  * Capture a world and the configuration it runs under. Reads only; the world
- * and config are never modified, and no RNG is touched.
+ * and config are never modified, and no RNG is touched. The format follows
+ * the model: v2 (with memory) for 0A.4.0, v1 for the feed-forward models.
  */
-export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshotV1 {
+export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshot {
   if (world.simulationVersion !== config.simulationVersion) {
     throw new SnapshotError('INCOMPATIBLE_SIMULATION_VERSION',
       `world is ${world.simulationVersion} but config is ${config.simulationVersion}`);
   }
   if (!SUPPORTED_SIMULATION_VERSIONS.includes(world.simulationVersion)) {
-    throw new SnapshotError('INCOMPATIBLE_SIMULATION_VERSION', `simulation version ${world.simulationVersion} is not supported by snapshot format v1`);
+    throw new SnapshotError('INCOMPATIBLE_SIMULATION_VERSION', `simulation version ${world.simulationVersion} is not supported by this snapshot loader`);
   }
   validateConfig(config);
   const payload = {
     format: SNAPSHOT_FORMAT_ID,
-    snapshotFormatVersion: 1 as const,
+    snapshotFormatVersion: snapshotFormatVersionFor(world.simulationVersion),
     simulationVersion: world.simulationVersion,
     tick: world.tick,
     config: detach(config),
@@ -160,16 +208,16 @@ export function createSnapshot(world: WorldState, config: SimulationConfig): Wor
     state: detach(canonicalizeWorldState(world)) as CanonicalWorldStateV1,
     stateHash: canonicalStateHash(world),
   };
-  return { ...payload, checksum: computeSnapshotChecksum(payload) };
+  return { ...payload, checksum: computeSnapshotChecksum(payload) } as WorldSnapshot;
 }
 
 /** Deterministic text form: sorted keys, no whitespace, trailing newline. */
-export function serializeSnapshot(snapshot: WorldSnapshotV1): string {
+export function serializeSnapshot(snapshot: WorldSnapshot): string {
   return stableStringify(snapshot) + '\n';
 }
 
 /** Parse and fully validate. Throws SnapshotError on any problem; never repairs. */
-export function parseSnapshot(serialized: string): WorldSnapshotV1 {
+export function parseSnapshot(serialized: string): WorldSnapshot {
   let raw: unknown;
   try {
     raw = JSON.parse(serialized);
@@ -189,16 +237,16 @@ export function parseSnapshot(serialized: string): WorldSnapshotV1 {
 }
 
 /** Validate a candidate snapshot object. Throws SnapshotError; returns it typed on success. */
-export function validateSnapshot(candidate: unknown): WorldSnapshotV1 {
+export function validateSnapshot(candidate: unknown): WorldSnapshot {
   validateAndRestore(candidate);
-  return candidate as WorldSnapshotV1;
+  return candidate as WorldSnapshot;
 }
 
 /**
  * Rebuild the live world and its configuration. Validates first; the result is
  * made of fresh objects that share nothing with the snapshot.
  */
-export function restoreSnapshot(snapshot: WorldSnapshotV1): RestoredWorld {
+export function restoreSnapshot(snapshot: WorldSnapshot): RestoredWorld {
   return validateAndRestore(snapshot);
 }
 
@@ -212,12 +260,20 @@ function validateAndRestore(candidate: unknown): RestoredWorld {
   if (!isObject(candidate) || candidate['format'] !== SNAPSHOT_FORMAT_ID) {
     throw new SnapshotError('MALFORMED_SNAPSHOT', `not a ${SNAPSHOT_FORMAT_ID} document`);
   }
-  if (candidate['snapshotFormatVersion'] !== SNAPSHOT_FORMAT_VERSION) {
+  const formatVersion = candidate['snapshotFormatVersion'];
+  if (typeof formatVersion !== 'number' || !SUPPORTED_SNAPSHOT_FORMAT_VERSIONS.includes(formatVersion)) {
     throw new SnapshotError('UNSUPPORTED_FORMAT_VERSION',
-      `snapshot format version ${String(candidate['snapshotFormatVersion'])} is not supported (this loader reads ${SNAPSHOT_FORMAT_VERSION})`);
+      `snapshot format version ${String(formatVersion)} is not supported (this loader reads ${SUPPORTED_SNAPSHOT_FORMAT_VERSIONS.join(', ')})`);
   }
   const s = candidate;
   if (typeof s['simulationVersion'] !== 'string') throw new SnapshotError('MALFORMED_SNAPSHOT', 'simulationVersion missing or not a string');
+  // Each model has exactly one format: a feed-forward model is never stored as
+  // v2 and the recurrent model never as v1 (it would lose its memory).
+  if (SUPPORTED_SIMULATION_VERSIONS.includes(s['simulationVersion'])
+    && snapshotFormatVersionFor(s['simulationVersion']) !== formatVersion) {
+    throw new SnapshotError('UNSUPPORTED_FORMAT_VERSION',
+      `model ${s['simulationVersion']} is stored in snapshot format v${snapshotFormatVersionFor(s['simulationVersion'])}, not v${formatVersion}`);
+  }
   if (!isInt(s['tick']) || s['tick'] < 0) throw new SnapshotError('MALFORMED_SNAPSHOT', 'tick missing or not a non-negative integer');
   if (!isObject(s['config'])) throw new SnapshotError('MALFORMED_SNAPSHOT', 'config missing or not an object');
   if (typeof s['configHash'] !== 'string') throw new SnapshotError('MALFORMED_SNAPSHOT', 'configHash missing or not a string');
@@ -315,9 +371,11 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
   if (!Array.isArray(state['food'])) malformed('state.food');
 
   const hidden = config.neural.hiddenLayerSize;
-  // The model's own input dimension — never one global count. The caller has
-  // already checked that snapshot, config and state agree on the version.
-  const inputSize = neuralInputSizeFor(config.simulationVersion);
+  // The model's own layout — never one global count. The caller has already
+  // checked that snapshot, config and state agree on the version, and that the
+  // format matches it.
+  const model = simulationModel(config.simulationVersion);
+  const inputSize = model.neuralInputSize;
   const organisms: OrganismRuntimeState[] = (state['organisms'] as unknown[]).map((raw, i) => {
     if (!isObject(raw)) malformed(`organism[${i}]`);
     const o = raw;
@@ -332,7 +390,19 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
     const m = g['morphology'] as Record<string, unknown>;
     for (const k of ['size', 'maxSpeed', 'visionRange', 'visionAngle', 'metabolism'] as const) if (!isNum(m[k])) malformed(`organism[${i}].genome.morphology.${k}`);
     const n = g['neural'] as Record<string, unknown>;
-    return {
+    // Recurrent (format v2): memory and recurrent weights are required, with
+    // the configured sizes and finite values. Feed-forward (format v1): they
+    // must be absent — an old model never carries memory, and a recurrent
+    // record can never pass as feed-forward.
+    let hiddenState: number[] | undefined;
+    let recurrentHiddenWeights: number[] | undefined;
+    if (model.recurrent) {
+      hiddenState = numArray(o['hiddenState'], `organism[${i}] hiddenState`, hidden);
+      recurrentHiddenWeights = numArray(n['recurrentHiddenWeights'], `organism[${i}] recurrentHiddenWeights`, hidden * hidden);
+    } else if ('hiddenState' in o || 'recurrentHiddenWeights' in n) {
+      malformed(`organism[${i}] carries recurrent state, but model ${config.simulationVersion} is feed-forward`);
+    }
+    const organism: OrganismRuntimeState = {
       id: o['id'] as number,
       parentId: o['parentId'] as number | null,
       generationDepth: o['generationDepth'] as number,
@@ -359,9 +429,12 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
           hiddenBiases: numArray(n['hiddenBiases'], `organism[${i}] hiddenBiases`, hidden),
           hiddenOutputWeights: numArray(n['hiddenOutputWeights'], `organism[${i}] hiddenOutputWeights`, NEURAL_OUTPUT_SIZE * hidden),
           outputBiases: numArray(n['outputBiases'], `organism[${i}] outputBiases`, NEURAL_OUTPUT_SIZE),
+          ...(recurrentHiddenWeights !== undefined ? { recurrentHiddenWeights } : {}),
         },
       },
     };
+    if (hiddenState !== undefined) organism.hiddenState = hiddenState;
+    return organism;
   });
   const food = (state['food'] as unknown[]).map((raw, i) => {
     if (!isObject(raw) || !isInt(raw['id']) || !isNum(raw['x']) || !isNum(raw['y'])) malformed(`food[${i}]`);

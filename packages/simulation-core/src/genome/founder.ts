@@ -1,7 +1,7 @@
 import { Genome, MorphologyGenome, NeuralGenome, NEURAL_INPUT_SIZE, NEURAL_OUTPUT_SIZE } from './types.js';
 import { RngStream } from '../rng/rngStream.js';
 import { NeuralConfig, BootstrapConfig } from '../config/types.js';
-import { evaluateNetwork } from '../neural/network.js';
+import { evaluateNetwork, evaluateRecurrentNetwork, RawNetworkOutputs } from '../neural/network.js';
 import { V1_NEURAL_INPUT_SIZE, ORGANISM_SENSING_NEURAL_INPUT_SIZE } from '../model/simulationModel.js';
 
 /**
@@ -21,6 +21,15 @@ import { V1_NEURAL_INPUT_SIZE, ORGANISM_SENSING_NEURAL_INPUT_SIZE } from '../mod
  * as a 10-input controller through the same procedure (it is never a 6-input
  * controller migrated to 10); the larger input->hidden block consumes more
  * BootstrapRNG draws, so 0A.3.0 bootstrap diverges from v1 under the same seed.
+ *
+ * Recurrent model (0A.4.0): `recurrent = true` (default false) appends the
+ * hiddenSize x hiddenSize recurrent block — drawn last, from the same
+ * `initSigma`, checked and clamped to the same `neuralParamBounds`. The
+ * viability screen evaluates EVERY probe from a fresh all-zero hidden state,
+ * independently: no memory is carried from one probe to the next, so probe
+ * order is never a temporal sequence, and with zero memory the recurrent
+ * weights contribute nothing — the screen cannot require, reward or even
+ * detect any use of memory.
  */
 
 /**
@@ -32,21 +41,25 @@ export function drawNeuralGenome(
   rng: RngStream,
   hiddenSize: number,
   sigma: number,
-  inputSize: number = NEURAL_INPUT_SIZE
+  inputSize: number = NEURAL_INPUT_SIZE,
+  recurrent = false
 ): NeuralGenome {
   // Fixed parameter order (§13.76 step 1): input->hidden weights, hidden
-  // biases, hidden->output weights, output biases.
+  // biases, hidden->output weights, output biases — then, for a recurrent
+  // model only, the appended recurrent hidden->hidden block.
   const draw = (n: number): number[] => {
     const out: number[] = new Array(n);
     for (let i = 0; i < n; i++) out[i] = rng.gaussian(0, sigma);
     return out;
   };
-  return {
+  const genome: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
     inputHiddenWeights: draw(hiddenSize * inputSize),
     hiddenBiases: draw(hiddenSize),
     hiddenOutputWeights: draw(NEURAL_OUTPUT_SIZE * hiddenSize),
     outputBiases: draw(NEURAL_OUTPUT_SIZE),
   };
+  if (recurrent) genome.recurrentHiddenWeights = draw(hiddenSize * hiddenSize);
+  return genome;
 }
 
 export interface MechanicalValidity {
@@ -74,7 +87,8 @@ export function mechanicalValidityCheck(
   genome: NeuralGenome,
   hiddenSize: number,
   bounds: { min: number; max: number },
-  inputSize: number = NEURAL_INPUT_SIZE
+  inputSize: number = NEURAL_INPUT_SIZE,
+  recurrent = false
 ): MechanicalValidity {
   if (genome.inputHiddenWeights.length !== hiddenSize * inputSize) {
     throw new Error('founder: dimensionality mismatch (input->hidden weights)');
@@ -88,12 +102,20 @@ export function mechanicalValidityCheck(
   if (genome.outputBiases.length !== NEURAL_OUTPUT_SIZE) {
     throw new Error('founder: dimensionality mismatch (output biases)');
   }
+  const recurrentBlock = genome.recurrentHiddenWeights;
+  if (recurrent && (recurrentBlock === undefined || recurrentBlock.length !== hiddenSize * hiddenSize)) {
+    throw new Error('founder: dimensionality mismatch (recurrent hidden->hidden weights)');
+  }
+  if (!recurrent && recurrentBlock !== undefined) {
+    throw new Error('founder: a feed-forward genome must not carry recurrent weights');
+  }
 
   const blocks: readonly (readonly number[])[] = [
     genome.inputHiddenWeights,
     genome.hiddenBiases,
     genome.hiddenOutputWeights,
     genome.outputBiases,
+    ...(recurrentBlock !== undefined ? [recurrentBlock] : []),
   ];
   for (const block of blocks) {
     for (const v of block) {
@@ -106,16 +128,14 @@ export function mechanicalValidityCheck(
   const clampArr = (arr: readonly number[]): number[] =>
     arr.map((v) => Math.max(bounds.min, Math.min(bounds.max, v)));
 
-  return {
-    valid: true,
-    reason: null,
-    genome: {
-      inputHiddenWeights: clampArr(genome.inputHiddenWeights),
-      hiddenBiases: clampArr(genome.hiddenBiases),
-      hiddenOutputWeights: clampArr(genome.hiddenOutputWeights),
-      outputBiases: clampArr(genome.outputBiases),
-    },
+  const clamped: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
+    inputHiddenWeights: clampArr(genome.inputHiddenWeights),
+    hiddenBiases: clampArr(genome.hiddenBiases),
+    hiddenOutputWeights: clampArr(genome.hiddenOutputWeights),
+    outputBiases: clampArr(genome.outputBiases),
   };
+  if (recurrentBlock !== undefined) clamped.recurrentHiddenWeights = clampArr(recurrentBlock);
+  return { valid: true, reason: null, genome: clamped };
 }
 
 export interface FounderProbe {
@@ -206,12 +226,17 @@ export function minimalViabilityScreen(
   hiddenSize: number,
   neuralConfig: NeuralConfig,
   probeConfig: BootstrapConfig['founderProbe'],
-  inputSize: number = NEURAL_INPUT_SIZE
+  inputSize: number = NEURAL_INPUT_SIZE,
+  recurrent = false
 ): ViabilityResult {
   const probes = founderProbeSet(probeConfig, inputSize);
-  const out = new Map<string, ReturnType<typeof evaluateNetwork>>();
+  const out = new Map<string, RawNetworkOutputs>();
   for (const p of probes) {
-    out.set(p.name, evaluateNetwork(genome, p.input, hiddenSize, inputSize));
+    // Recurrent: a FRESH zero hidden state for every probe — probes are
+    // independent single evaluations, never a sequence.
+    out.set(p.name, recurrent
+      ? evaluateRecurrentNetwork(genome, p.input, new Array<number>(hiddenSize).fill(0), hiddenSize, inputSize).outputs
+      : evaluateNetwork(genome, p.input, hiddenSize, inputSize));
   }
   const get = (name: string) => {
     const o = out.get(name);
@@ -282,21 +307,22 @@ export function generateFounderNeuralGenome(
   hiddenSize: number,
   neuralConfig: NeuralConfig,
   bootstrapConfig: BootstrapConfig,
-  inputSize: number = NEURAL_INPUT_SIZE
+  inputSize: number = NEURAL_INPUT_SIZE,
+  recurrent = false
 ): FounderGenerationResult {
   let lastViability: ViabilityResult | null = null;
   let rejectedNonFinite = 0;
 
   for (let attempt = 1; attempt <= bootstrapConfig.maxFounderAttempts; attempt++) {
-    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma, inputSize);
+    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma, inputSize, recurrent);
 
-    const validity = mechanicalValidityCheck(raw, hiddenSize, neuralConfig.neuralParamBounds, inputSize);
+    const validity = mechanicalValidityCheck(raw, hiddenSize, neuralConfig.neuralParamBounds, inputSize, recurrent);
     if (!validity.valid || validity.genome === null) {
       rejectedNonFinite += 1;
       continue; // structurally invalid candidate; draw the next one
     }
 
-    const viability = minimalViabilityScreen(validity.genome, hiddenSize, neuralConfig, bootstrapConfig.founderProbe, inputSize);
+    const viability = minimalViabilityScreen(validity.genome, hiddenSize, neuralConfig, bootstrapConfig.founderProbe, inputSize, recurrent);
     lastViability = viability;
     if (viability.pass) {
       return { neural: validity.genome, attempts: attempt, lastViability: viability };
@@ -337,9 +363,10 @@ export function generateFounderProfile(
   hiddenSize: number,
   neuralConfig: NeuralConfig,
   bootstrapConfig: BootstrapConfig,
-  inputSize: number = NEURAL_INPUT_SIZE
+  inputSize: number = NEURAL_INPUT_SIZE,
+  recurrent = false
 ): FounderProfile {
-  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig, inputSize);
+  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig, inputSize, recurrent);
   const morphology = founderMorphology(bootstrapConfig.geneBounds);
   return { genome: { morphology, neural }, attempts };
 }

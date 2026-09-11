@@ -1,5 +1,5 @@
 import { OrganismRuntimeState } from '../organism/types.js';
-import { evaluateNetwork } from '../neural/network.js';
+import { evaluateNetwork, evaluateRecurrentNetwork, RawNetworkOutputs } from '../neural/network.js';
 import { senseOrganism, SenseContext } from '../perception/sense.js';
 import { NeuralConfig } from '../config/types.js';
 import { ActionIntent } from './types.js';
@@ -13,6 +13,10 @@ import { NEURAL_INPUT_SIZE } from '../genome/types.js';
  * `inputSize` is the model's neural input dimension (6 by default — the v1
  * models; 10 for 0A.3.0, whose `ctx` carries organism sensing). The sensed
  * vector and the genome must both match it or evaluation throws.
+ *
+ * This is the FEED-FORWARD decision (0A.1.0-0A.3.0). An organism that carries
+ * memory (a recurrent-model organism) is refused here; see
+ * `decideRecurrentAction`.
  */
 export function decideAction(
   organism: OrganismRuntimeState,
@@ -21,9 +25,45 @@ export function decideAction(
   hiddenSize: number,
   inputSize: number = NEURAL_INPUT_SIZE
 ): ActionIntent {
+  if (organism.hiddenState !== undefined) {
+    throw new Error(`decideAction: organism ${organism.id} carries a recurrent hidden state; only the recurrent controller may use it`);
+  }
   const input = senseOrganism(organism, ctx);
   const raw = evaluateNetwork(organism.genome.neural, input, hiddenSize, inputSize);
+  return intentFromOutputs(organism, raw, neuralConfig);
+}
 
+export interface RecurrentDecision {
+  intent: ActionIntent;
+  /** h_t: the organism's memory after this decision. Returned, never written — the caller applies it only after every organism has decided. */
+  hiddenState: number[];
+}
+
+/**
+ * Decide phase for the recurrent model 0A.4.0 (V2.2): the same sensory vector
+ * as 0A.3.0, the organism's previous hidden state h_(t-1) read from the
+ * pre-decision state, the recurrent controller, and the unchanged output ->
+ * ActionIntent mapping. Pure: nothing is modified — not the organism, not its
+ * hidden state, not the world.
+ */
+export function decideRecurrentAction(
+  organism: OrganismRuntimeState,
+  ctx: SenseContext,
+  neuralConfig: NeuralConfig,
+  hiddenSize: number,
+  inputSize: number
+): RecurrentDecision {
+  const previous = organism.hiddenState;
+  if (previous === undefined) {
+    throw new Error(`decideRecurrentAction: organism ${organism.id} has no hidden state; only a recurrent-model organism can use the recurrent controller`);
+  }
+  const input = senseOrganism(organism, ctx);
+  const { outputs, hiddenState } = evaluateRecurrentNetwork(organism.genome.neural, input, previous, hiddenSize, inputSize);
+  return { intent: intentFromOutputs(organism, outputs, neuralConfig), hiddenState };
+}
+
+/** The unchanged §11.59 output -> ActionIntent mapping, shared by both controllers. */
+function intentFromOutputs(organism: OrganismRuntimeState, raw: RawNetworkOutputs, neuralConfig: NeuralConfig): ActionIntent {
   const requestedForwardSpeed = clamp01(raw.forward) * organism.genome.morphology.maxSpeed;
   const requestedTurnRate = raw.turn * neuralConfig.maxTurnRate;
   const eatRequested = raw.eat >= neuralConfig.eatThreshold;

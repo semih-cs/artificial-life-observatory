@@ -11,7 +11,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { serializeSnapshot, parseSnapshot, validateSnapshot, WorldSnapshotV1 } from './snapshot.js';
+import { serializeSnapshot, parseSnapshot, validateSnapshot, WorldSnapshot } from './snapshot.js';
 import { SnapshotError } from './errors.js';
 
 let tmpCounter = 0;
@@ -46,7 +46,7 @@ export function writeFileAtomic(filePath: string, text: string): void {
   } catch { /* directory fsync is unsupported on some platforms */ }
 }
 
-export function saveSnapshotAtomic(filePath: string, snapshot: WorldSnapshotV1): void {
+export function saveSnapshotAtomic(filePath: string, snapshot: WorldSnapshot): void {
   // Never write a snapshot that would not load.
   validateSnapshot(snapshot);
   const text = serializeSnapshot(snapshot);
@@ -57,7 +57,7 @@ export function saveSnapshotAtomic(filePath: string, snapshot: WorldSnapshotV1):
   }
 }
 
-export function loadSnapshot(filePath: string): WorldSnapshotV1 {
+export function loadSnapshot(filePath: string): WorldSnapshot {
   let text: string;
   try {
     text = fs.readFileSync(filePath, 'utf-8');

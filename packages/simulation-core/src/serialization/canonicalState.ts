@@ -1,4 +1,5 @@
 import { WorldState } from '../world/types.js';
+import { simulationModel } from '../model/simulationModel.js';
 
 /**
  * Canonical, deterministically-ordered serialization of a WorldState
@@ -23,40 +24,60 @@ import { WorldState } from '../world/types.js';
  * death metadata are included because they are canonical persisted state that
  * a snapshot must restore (§19.4), not observational telemetry — even though
  * they do not themselves feed the tick equations.
+ *
+ * Recurrent model 0A.4.0 (V2.2): each organism record additionally carries
+ * `genome.neural.recurrentHiddenWeights` (appended after `outputBiases`) and
+ * the runtime memory `hiddenState` (appended after `genome`) — both
+ * future-affecting, so two worlds that differ only in memory hash
+ * differently. For the feed-forward models neither key is emitted, so their
+ * canonical string and hash are exactly the historical ones. The model
+ * decides; a world whose organisms do not match their model's layout is
+ * refused rather than canonicalized.
  */
 export function canonicalizeWorldState(world: WorldState): unknown {
+  const recurrent = simulationModel(world.simulationVersion).recurrent;
   const organisms = [...world.organisms]
     .sort((a, b) => a.id - b.id)
-    .map((o) => ({
-      id: o.id,
-      parentId: o.parentId,
-      generationDepth: o.generationDepth,
-      lineageRootId: o.lineageRootId,
-      birthTick: o.birthTick,
-      x: o.x,
-      y: o.y,
-      heading: o.heading,
-      energy: o.energy,
-      age: o.age,
-      alive: o.alive,
-      deathCause: o.deathCause,
-      deathTick: o.deathTick,
-      genome: {
-        morphology: {
-          size: o.genome.morphology.size,
-          maxSpeed: o.genome.morphology.maxSpeed,
-          visionRange: o.genome.morphology.visionRange,
-          visionAngle: o.genome.morphology.visionAngle,
-          metabolism: o.genome.morphology.metabolism,
+    .map((o) => {
+      const neural = o.genome.neural;
+      if (recurrent !== (neural.recurrentHiddenWeights !== undefined) || recurrent !== (o.hiddenState !== undefined)) {
+        throw new Error(
+          `canonicalizeWorldState: organism ${o.id} does not match the ${recurrent ? 'recurrent' : 'feed-forward'} layout of model ${world.simulationVersion}`
+        );
+      }
+      const record = {
+        id: o.id,
+        parentId: o.parentId,
+        generationDepth: o.generationDepth,
+        lineageRootId: o.lineageRootId,
+        birthTick: o.birthTick,
+        x: o.x,
+        y: o.y,
+        heading: o.heading,
+        energy: o.energy,
+        age: o.age,
+        alive: o.alive,
+        deathCause: o.deathCause,
+        deathTick: o.deathTick,
+        genome: {
+          morphology: {
+            size: o.genome.morphology.size,
+            maxSpeed: o.genome.morphology.maxSpeed,
+            visionRange: o.genome.morphology.visionRange,
+            visionAngle: o.genome.morphology.visionAngle,
+            metabolism: o.genome.morphology.metabolism,
+          },
+          neural: {
+            inputHiddenWeights: [...neural.inputHiddenWeights],
+            hiddenBiases: [...neural.hiddenBiases],
+            hiddenOutputWeights: [...neural.hiddenOutputWeights],
+            outputBiases: [...neural.outputBiases],
+            ...(recurrent ? { recurrentHiddenWeights: [...neural.recurrentHiddenWeights!] } : {}),
+          },
         },
-        neural: {
-          inputHiddenWeights: [...o.genome.neural.inputHiddenWeights],
-          hiddenBiases: [...o.genome.neural.hiddenBiases],
-          hiddenOutputWeights: [...o.genome.neural.hiddenOutputWeights],
-          outputBiases: [...o.genome.neural.outputBiases],
-        },
-      },
-    }));
+      };
+      return recurrent ? { ...record, hiddenState: [...o.hiddenState!] } : record;
+    });
 
   const food = [...world.food].sort((a, b) => a.id - b.id).map((f) => ({ id: f.id, x: f.x, y: f.y }));
 

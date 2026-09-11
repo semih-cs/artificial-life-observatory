@@ -54,7 +54,7 @@ function fixtureGenome(inputSize: number, hidden = 8): NeuralGenome {
 describe('model registry — neural dimensions by simulationVersion', () => {
   it('(15) 0A.1.0 and 0A.2.0 remain six-input models: 6 → 8 → 4', () => {
     for (const version of [SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION]) {
-      expect(simulationModel(version)).toEqual({ simulationVersion: version, neuralInputSize: 6, organismSensing: false });
+      expect(simulationModel(version)).toEqual({ simulationVersion: version, neuralInputSize: 6, organismSensing: false, recurrent: false });
       const c = modelConfig(version);
       c.rootSeed = SEED;
       const w = bootstrapWorld(c);
@@ -72,9 +72,9 @@ describe('model registry — neural dimensions by simulationVersion', () => {
 
   it('(16) 0A.3.0 is a ten-input model: 10 → 8 → 4', () => {
     expect(ORGANISM_SENSING_MODEL_VERSION).toBe('0A.3.0');
-    expect(simulationModel('0A.3.0')).toEqual({ simulationVersion: '0A.3.0', neuralInputSize: 10, organismSensing: true });
+    expect(simulationModel('0A.3.0')).toEqual({ simulationVersion: '0A.3.0', neuralInputSize: 10, organismSensing: true, recurrent: false });
     expect(ORGANISM_SENSING_NEURAL_INPUT_SIZE).toBe(10);
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0']); // V2.2 appended 0A.4.0
     const c = v3();
     const w = bootstrapWorld(c);
     expect(w.simulationVersion).toBe('0A.3.0');
@@ -118,14 +118,14 @@ describe('model registry — neural dimensions by simulationVersion', () => {
 
   it('(17) unknown model versions are refused, never guessed; a world is never stepped under another model', () => {
     expect(() => simulationModel('0A.9.0')).toThrow(/unknown simulationVersion/);
-    expect(isSupportedSimulationVersion('0A.4.0')).toBe(false);
+    expect(isSupportedSimulationVersion('0A.9.0')).toBe(false);
     expect(neuralInputSizeFor('0A.2.0')).toBe(6);
     expect(neuralInputSizeFor('0A.3.0')).toBe(10);
     const bad = cloneConfig(DEFAULT_SIMULATION_CONFIG);
-    bad.simulationVersion = '0A.4.0';
+    bad.simulationVersion = '0A.9.0';
     expect(() => validateConfig(bad)).toThrow(/not a supported model/);
     expect(() => bootstrapWorld(bad)).toThrow(/not a supported model/);
-    expect(() => modelConfig('0A.4.0')).toThrow();
+    expect(() => modelConfig('0A.9.0')).toThrow();
     // a 0A.2.0 world stepped with a 0A.3.0 config (and vice versa) is refused before any evaluation
     const w2 = bootstrapWorld({ ...cloneConfig(DEFAULT_SIMULATION_CONFIG), rootSeed: 5 });
     const w3 = bootstrapWorld(v3(5));

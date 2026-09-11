@@ -3,7 +3,7 @@ import { SimulationConfig } from '../config/types.js';
 import { RngStream, RngStreams } from '../rng/rngStream.js';
 import { Xoshiro128State } from '../rng/xoshiro128starstar.js';
 import { SenseContext } from '../perception/sense.js';
-import { decideAction } from '../actions/decide.js';
+import { decideAction, decideRecurrentAction } from '../actions/decide.js';
 import { ActionIntent } from '../actions/types.js';
 import { resolveMovement, movementEnergyCost } from '../biology/movement.js';
 import { basalEnergyCost, applyEnergyDelta, evaluateDeath } from '../biology/energy.js';
@@ -114,9 +114,28 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
 
   // ---- Phases 2-3: Sense, Decide, buffer ActionIntent --------------------
   // Pure. No world/organism state is mutated here and no RNG is consumed.
+  //
+  // Recurrent model (0A.4.0): each organism's previous hidden state is read
+  // from its pre-decision copy (equal to S_t — nothing has been modified yet),
+  // and its new hidden state is BUFFERED with its intent. Only after every
+  // living organism has decided are the new states written to the working
+  // copies — once per acting tick. No organism can see another's updated
+  // memory (hidden state is never a sensory input anyway), and newborns,
+  // who are not in `living`, keep their zero state until their first tick.
   const intents = new Map<number, ActionIntent>();
-  for (const o of living) {
-    intents.set(o.id, decideAction(o, senseCtx, config.neural, config.neural.hiddenLayerSize, model.neuralInputSize));
+  const hiddenSize = config.neural.hiddenLayerSize;
+  if (model.recurrent) {
+    const nextHidden = new Map<number, number[]>();
+    for (const o of living) {
+      const decision = decideRecurrentAction(o, senseCtx, config.neural, hiddenSize, model.neuralInputSize);
+      intents.set(o.id, decision.intent);
+      nextHidden.set(o.id, decision.hiddenState);
+    }
+    for (const o of living) o.hiddenState = nextHidden.get(o.id)!;
+  } else {
+    for (const o of living) {
+      intents.set(o.id, decideAction(o, senseCtx, config.neural, hiddenSize, model.neuralInputSize));
+    }
   }
 
   // ---- Phases 4-5: Movement resolution, then movement energy expenditure --

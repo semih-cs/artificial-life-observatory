@@ -41,7 +41,7 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import {
   parseSnapshot, restoreSnapshot, serializeSnapshot, validateSnapshot, computeSnapshotChecksum,
-  SNAPSHOT_FORMAT_ID, WorldSnapshotV1, RestoredWorld,
+  SNAPSHOT_FORMAT_ID, WorldSnapshot, RestoredWorld,
 } from './snapshot.js';
 import { writeFileAtomic } from './file.js';
 import { stableStringify } from './stableStringify.js';
@@ -99,13 +99,13 @@ export interface RecoveryReport {
 }
 
 export interface RecoveredWorld extends RestoredWorld {
-  snapshot: WorldSnapshotV1;
+  snapshot: WorldSnapshot;
   report: RecoveryReport;
 }
 
 // ---- identity --------------------------------------------------------------
 
-export function worldIdentityOf(snapshot: WorldSnapshotV1): WorldIdentity {
+export function worldIdentityOf(snapshot: WorldSnapshot): WorldIdentity {
   return { simulationVersion: snapshot.simulationVersion, configHash: snapshot.configHash };
 }
 
@@ -218,7 +218,7 @@ function deleteBeyond(entries: StoredSnapshotEntry[], keep: number): string[] {
  * byte-identical snapshot for an existing tick is a no-op. Older snapshots are
  * deleted only after the new file is committed and read back byte-identical.
  */
-export function saveToStore(dir: string, snapshot: WorldSnapshotV1, options: SaveToStoreOptions = {}): SaveToStoreResult {
+export function saveToStore(dir: string, snapshot: WorldSnapshot, options: SaveToStoreOptions = {}): SaveToStoreResult {
   const keep = checkRetention(options.keep ?? DEFAULT_SNAPSHOT_RETENTION);
   validateSnapshot(snapshot); // never store a snapshot that would not load
   const fileName = snapshotFileName(snapshot.tick);
@@ -303,7 +303,7 @@ export function pruneSnapshots(dir: string, keep: number = DEFAULT_SNAPSHOT_RETE
 
 // ---- recovery --------------------------------------------------------------
 
-type Inspection = { ok: true; snapshot: WorldSnapshotV1 } | { ok: false; skip: SkippedSnapshot };
+type Inspection = { ok: true; snapshot: WorldSnapshot } | { ok: false; skip: SkippedSnapshot };
 
 /**
  * The identity of an intact snapshot of ANOTHER world, else null. Identity
@@ -349,7 +349,7 @@ function inspectText(e: StoredSnapshotEntry, text: string, identity: WorldIdenti
     throw new SnapshotStoreError('WORLD_IDENTITY_MISMATCH',
       `${e.fileName} is an intact snapshot of world ${describeIdentity(foreign)}, but this store belongs to ${describeIdentity(identity)}; refusing the mixed directory`);
   }
-  let snapshot: WorldSnapshotV1;
+  let snapshot: WorldSnapshot;
   try {
     snapshot = parseSnapshot(text);
   } catch (err) {

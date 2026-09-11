@@ -68,6 +68,11 @@ amended by**:
   the nearest visible other living organism (10 → 8 → 4). It extends §11.58
   for `0A.3.0` only; `0A.1.0` and `0A.2.0` keep their exact six-input
   meaning.
+- `docs/V2.2 Amendment - Recurrent Memory (0A.4.0).md` — V2.2 adds a NEW
+  model, `0A.4.0`: the `0A.3.0` model with an Elman recurrent hidden layer
+  (10 → 8 recurrent → 4), inherited recurrent weights, runtime memory that
+  starts at zero and is never inherited, and snapshot format v2. It changes
+  none of `0A.1.0`–`0A.3.0`.
 
 An adopted amendment wins over the base document where they conflict.
 
@@ -187,6 +192,12 @@ observer invariants are proven by test and must hold from now on:
   10) — so format v1 was kept, and old snapshots read exactly as before
   (proved by snapshots written by tag `v1.0.0`, committed as fixtures). A
   snapshot is never converted between models.
+  *Applied in V2.2:* model `0A.4.0` DOES change the stored shape (runtime
+  memory and recurrent weights), so it has its own **snapshot format v2**
+  with an explicit loader path. Each model has exactly one format, checked
+  before anything else is trusted; format v1 is unchanged for
+  `0A.1.0`–`0A.3.0` (proved by fixtures written by `v1.0.0` and by the V2.1
+  commit `ceecbc8`).
 - **Tick convention.** Snapshot tick N = the world after tick N completed.
 - **Refuse, never repair.** A snapshot that fails any check is rejected with a
   coded `SnapshotError`. There is no automatic fresh world or approximate
@@ -331,10 +342,10 @@ Frontend rules that hold from now on:
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
 
-### V2 — started (V2.1 done: other organisms enter the sensory world)
+### V2 — started (V2.1 done: organism sensing; V2.2 done: recurrent memory)
 
 V2 is the next product phase. It changes biology only through NEW, versioned
-models; `0A.1.0` and `0A.2.0` stay frozen historical ground truth and are
+models; `0A.1.0`, `0A.2.0` and `0A.3.0` stay frozen historical ground truth and are
 never redefined, re-hashed or silently upgraded.
 
 **V2.1 — model `0A.3.0` (done).** Organisms of `0A.3.0` additionally perceive
@@ -365,6 +376,32 @@ hold from now on:
   or approximations without a measured need and a decision recorded in
   `PROJECT_STATUS.md` (measurements are there).
 
+**V2.2 — model `0A.4.0` (done).** Recurrent memory:
+h_t = tanh(W_in x_t + W_rec h_(t−1) + b), same ten inputs, same four outputs,
+hidden width 8. Contract: `docs/V2.2 Amendment - Recurrent Memory (0A.4.0).md`.
+Rules that hold from now on:
+
+- **Feed-forward vs recurrent is a model property** (`recurrent` in the
+  registry). Feed-forward genomes have no `recurrentHiddenWeights` key and
+  feed-forward organisms no `hiddenState` key — never an empty or zero
+  stand-in. `evaluateNetwork` / `decideAction` refuse recurrent genomes and
+  memory; `evaluateRecurrentNetwork` / `decideRecurrentAction` refuse
+  feed-forward ones; canonicalization refuses a world whose organisms do not
+  match its model.
+- **Genome vs memory.** Recurrent weights are genome: drawn natively with the
+  existing `initSigma` and bounds, appended as the fifth parameter block
+  (never interleaved), inherited, mutated only at birth with the unchanged
+  neural settings. `hiddenState` is runtime memory: zero for founders and
+  newborns, never inherited, never mutated, advanced only by the Decide phase
+  once per acting tick from S_t and written after all organisms have decided.
+- **No learning.** No weight ever changes during a life — no
+  backpropagation, Hebbian or other plasticity, reward, RL.
+- **Founder screen stays memoryless.** Every probe from a fresh zero memory,
+  independently; no probe sequence, no memory requirement.
+- **Memory is canonical state** for `0A.4.0` (in the hash, in snapshot format
+  v2); feed-forward canonical records are unchanged.
+- **Observer protocol v1** carries no memory, weights, inputs or intents.
+
 ---
 
 ## 5. Phase 0A invariants that must be preserved
@@ -382,9 +419,10 @@ Do not change these casually.
 - Morphology and neural mutation channels are independently controllable.
 - Disabled mutation channels still consume their fixed RNG draw schedule so paired experiments retain RNG isolation.
 - Phase 0A neural topology is fixed and feedforward.
-- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
+- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
 - Sensing (every model) is a pure read of the pre-decision snapshot S_t; in `0A.3.0` it includes the nearest visible other living organism and nothing else about other organisms.
-- No RNN, memory, learning, plasticity, backpropagation, reinforcement learning or stochastic policy in Phase 0A.
+- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The one recurrent model, `0A.4.0` (V2.2), has an Elman hidden state whose weights are genome and whose memory is runtime state.
+- No learning, plasticity, backpropagation, reinforcement learning or stochastic policy in ANY model: genomes are fixed for life.
 - Neural evaluation is deterministic, pure and RNG-free.
 - Decision logic returns `ActionIntent`; it does not directly mutate shared world state.
 - Canonical lifecycle follows **Sense → Decide → Resolve**.
@@ -535,6 +573,7 @@ npm run simulate -- --seed 20260910 --ticks 10000
 ```bash
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.3.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.1.0
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.4.0
 ```
 
 Expected hash depends on the model version, and models must never be conflated:
@@ -544,6 +583,7 @@ Expected hash depends on the model version, and models must never be conflated:
 | `0A.2.0` amended multi-founder (default, frozen v1) | `DEFAULT_SIMULATION_CONFIG` | 6 → 8 → 4 | `b95a0b4ef7dd8449` |
 | `0A.1.0` historical single-founder (frozen) | `singleFounderModelConfig()` | 6 → 8 → 4 | `6a6576bd49e86b27` |
 | `0A.3.0` V2.1 organism sensing | `organismSensingModelConfig()` | 10 → 8 → 4 | `e54d0c11249b7849` |
+| `0A.4.0` V2.2 recurrent memory | `recurrentMemoryModelConfig()` | 10 → 8 ↺ → 4 | `436a377506063609` |
 
 Results from different models must not be pooled or compared numerically.
 Never "update" a historical hash to match changed behaviour — a changed
@@ -579,6 +619,13 @@ V2.1 regressions, part of `npm test`: `simulation-core/tests/organismSensing.tes
 (frozen v1 snapshot fixtures, `0A.3.0` exact resume, per-model dimension
 validation); `world-runner/tests/organismSensingModel.test.ts` (runner,
 `--model`, observer purity for `0A.3.0`); `observatory/tests/visionCone.test.ts`.
+
+V2.2 regressions, part of `npm test`: `simulation-core/tests/recurrentMemory.test.ts`
+(layouts, memory lifecycle, history dependence, founders, mutation, the
+`0A.4.0` golden hash with checkpoints at ticks 1,000 / 2,000 and a seed-8
+coverage checkpoint); `persistence/tests/recurrentSnapshot.test.ts` (format
+v2, V2.1-written `0A.3.0` fixtures, refusals, exact resume);
+`world-runner/tests/recurrentMemoryModel.test.ts`.
 
 Observatory regression, part of `npm test`: `npm test -w packages/observatory`
 (vitest, about 1 s, no browser). It covers protocol parsing, the connection

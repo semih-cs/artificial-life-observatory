@@ -1,0 +1,21 @@
+{
+  "generatedBy": "commit ceecbc8 (V2.1) — the accepted 0A.3.0 simulation-core and persistence, built and run unchanged",
+  "seed": 20260910,
+  "saveTick": 150,
+  "continueToTick": 1500,
+  "models": {
+    "0A.3.0": {
+      "file": "v2.1-0A.3.0-seed20260910-tick150.snapshot.json",
+      "bytes": 80462,
+      "v21ContinuousHashes": {
+        "150": "817f1d4f489c2439",
+        "250": "915a21f789a26cc9",
+        "500": "55f36dbfdaf286bd",
+        "750": "701ed4f36d6a4484",
+        "1000": "5711a2a1959de560",
+        "1250": "76be04a63b1dae78",
+        "1500": "15e21029bc43f922"
+      }
+    }
+  }
+}

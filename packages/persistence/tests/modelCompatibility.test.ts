@@ -195,7 +195,8 @@ describe('neural dimensions are validated per model, and snapshots are never con
   });
 
   it('an unknown future model version is still refused', () => {
-    const future = resealed(v3, (o) => { o.simulationVersion = o.config.simulationVersion = o.state.simulationVersion = '0A.4.0'; });
+    // (V2.2 made 0A.4.0 a real model, so the "future" example is now 0A.9.0.)
+    const future = resealed(v3, (o) => { o.simulationVersion = o.config.simulationVersion = o.state.simulationVersion = '0A.9.0'; });
     expectCode(() => validateSnapshot(future), 'INCOMPATIBLE_SIMULATION_VERSION');
   });
 });

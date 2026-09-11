@@ -3,6 +3,7 @@ import {
   SINGLE_FOUNDER_MODEL_VERSION,
   MULTI_FOUNDER_MODEL_VERSION,
   ORGANISM_SENSING_MODEL_VERSION,
+  RECURRENT_MEMORY_MODEL_VERSION,
 } from '../model/simulationModel.js';
 
 /**
@@ -13,11 +14,14 @@ import {
  *   0A.1.0 vs 0A.2.0: the bootstrap rule is the only difference.
  *   0A.2.0 vs 0A.3.0: 0A.3.0 appends four nearest-visible-organism inputs
  *   (10 -> 8 -> 4 instead of 6 -> 8 -> 4); everything else is 0A.2.0.
+ *   0A.3.0 vs 0A.4.0: 0A.4.0 makes the hidden layer recurrent (Elman:
+ *   10 -> 8 recurrent -> 4, +64 recurrent weights, runtime memory);
+ *   everything else is 0A.3.0.
  *
  * Each changes the canonical trajectory, so they are different models and must
  * never share a regression reference or be mixed in one analysis.
  */
-export { SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION };
+export { SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION };
 
 /**
  * The historical single-founder model's deterministic regression reference:
@@ -38,6 +42,15 @@ export const SINGLE_FOUNDER_GOLDEN_HASH = '6a6576bd49e86b27';
  * unchanged and must never be replaced by it.
  */
 export const ORGANISM_SENSING_GOLDEN_HASH = 'e54d0c11249b7849';
+
+/**
+ * The V2.2 recurrent-memory model's deterministic regression reference:
+ * `recurrentMemoryModelConfig()`, seed 20260910, 10,000 ticks, confirmed on
+ * linux-arm64 (the canonical development platform; see PROJECT_STATUS.md,
+ * known gap 13). Evidence of trajectory stability for 0A.4.0 only — not that
+ * memory is biologically useful.
+ */
+export const RECURRENT_MEMORY_GOLDEN_HASH = '436a377506063609';
 
 const DEG = Math.PI / 180;
 
@@ -212,16 +225,30 @@ export function organismSensingModelConfig(): SimulationConfig {
 }
 
 /**
+ * The V2.2 recurrent-memory model `0A.4.0`: the 0A.3.0 configuration (itself
+ * the frozen v1 defaults) with only the model identity changed. The version
+ * selects the recurrent controller; no new configuration value exists — the
+ * recurrent weights use the existing `initSigma`, `neuralParamBounds`,
+ * `neuralBootstrapSigma` and neural mutation settings.
+ */
+export function recurrentMemoryModelConfig(): SimulationConfig {
+  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  config.simulationVersion = RECURRENT_MEMORY_MODEL_VERSION;
+  return config;
+}
+
+/**
  * The configuration of a supported model by version: 0A.1.0 →
  * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
- * `organismSensingModelConfig()`. Always a fresh copy. Throws for any other
- * version.
+ * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`.
+ * Always a fresh copy. Throws for any other version.
  */
 export function modelConfig(simulationVersion: string): SimulationConfig {
   switch (simulationVersion) {
     case SINGLE_FOUNDER_MODEL_VERSION: return singleFounderModelConfig();
     case MULTI_FOUNDER_MODEL_VERSION: return cloneConfig(DEFAULT_SIMULATION_CONFIG);
     case ORGANISM_SENSING_MODEL_VERSION: return organismSensingModelConfig();
+    case RECURRENT_MEMORY_MODEL_VERSION: return recurrentMemoryModelConfig();
     default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
   }
 }
