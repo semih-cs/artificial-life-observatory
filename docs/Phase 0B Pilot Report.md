@@ -1169,6 +1169,7 @@ condition, it does not make an organism better at anything.
 | The default `0A.2.0` failure is extinction-dominated | Yes, at pilot level | §18.7: the 5 extinct worlds never exceeded 37 organisms; all 10 others reached at least 196, and 8 of those 10 plateaued |
 | `0A.2.0` extinction is already determined by the end of the first founder lifespan | **Partly** | §19.6: all 7 worlds that doubled by tick 3000 established; the 8 that did not include all 5 extinct worlds and 3 later establishers, indistinguishable at tick 3000 on population, births and energy |
 | Stalled worlds that recover diverge from those that die soon after tick 3000 | Yes, at pilot level | §20.6: population separates the 3 late establishers from the 4 extinct worlds alive at 3000 with 0 misclassified at every checkpoint 4000–9000; births from 5000; mean energy never |
+| The stalled-cohort split is repeat reproduction rather than participation | Yes, at pilot level, lifetime and founder-inclusive | §21.6: births per reproducer CLEAR from 6000 (1.81–2.24 vs 2.25–2.41); the fraction ever reproducing never separates; descendant-only figures are not derivable |
 
 ---
 
@@ -2841,4 +2842,113 @@ on reproductive dynamics.
 
 ### 21.6 Results
 
-*(empty at precommitment)*
+The analysis code is in commit `8cf1759`. It ran read-only from that clean
+commit (`sourceIdentity 4a476fd7423143bd`) and simulated nothing. All 303
+source JSON/CSV files were byte-identical before and after. `R` was integral in
+every sample used. Output:
+`results/analysis-reproduction-participation-v1/reproduction-participation.json`.
+
+#### Per seed: f / births / distinct reproducers R / births per reproducer I
+
+| Seed | Group | 3000 | 5000 | 7000 | 9000 |
+|---:|---|---|---|---|---|
+| 131676 | E\* | 0.300 / 45 / 21 / 2.14 | 0.329 / 60 / 28 / 2.14 | 0.362 / 80 / 38 / 2.11 | 0.355 / 99 / 44 / 2.25 |
+| 147514 | E\* | 0.313 / 42 / 21 / 2.00 | 0.351 / 52 / 27 / 1.93 | 0.366 / 57 / 30 / 1.90 | 0.366 / 57 / 30 / 1.90 |
+| 187109 | E\* | 0.233 / 35 / 14 / 2.50 | 0.308 / 53 / 24 / 2.21 | 0.322 / 65 / 29 / 2.24 | 0.316 / 73 / 31 / 2.35 |
+| 195028 | E\* | 0.309 / 43 / 21 / 2.05 | 0.349 / 58 / 29 / 2.00 | 0.402 / 67 / 37 / 1.81 | 0.400 / 70 / 38 / 1.84 |
+| 107919 | L | 0.273 / 30 / 15 / 2.00 | 0.360 / 86 / 40 / 2.15 | 0.380 / 167 / 73 / 2.29 | 0.391 / 325 / 137 / 2.37 |
+| 202947 | L | 0.317 / 57 / 26 / 2.19 | 0.372 / 147 / 64 / 2.30 | 0.385 / 237 / 101 / 2.35 | 0.402 / 378 / 162 / 2.33 |
+| 210866 | L | 0.342 / 48 / 25 / 1.92 | 0.349 / 101 / 44 / 2.30 | 0.390 / 185 / 82 / 2.26 | 0.395 / 289 / 124 / 2.33 |
+
+All seven checkpoints are in the output file.
+
+#### Group comparison — E\* (n = 4) against L (n = 3)
+
+Median [range]; misclassified is the best single cut, out of 7.
+
+| Metric | Tick | Extinct E\* | Late establishers L | Misclassified |
+|---|---:|---|---|---:|
+| M1 fractionEverReproduced | 3000 | 0.304 [0.233–0.313] | 0.317 [0.273–0.342] | 1 |
+| | 4000 | 0.324 [0.286–0.333] | 0.320 [0.267–0.333] | 2 |
+| | 5000 | 0.339 [0.308–0.351] | 0.360 [0.349–0.372] | 1 |
+| | 6000 | 0.357 [0.329–0.379] | 0.366 [0.351–0.380] | 2 |
+| | 7000 | 0.364 [0.322–0.402] | 0.385 [0.380–0.390] | 1 |
+| | 8000 | 0.365 [0.330–0.400] | 0.387 [0.383–0.391] | 1 |
+| | 9000 | 0.360 [0.316–0.400] | 0.395 [0.391–0.402] | 1 |
+| M2 cumulative births | 3000 | 42.5 [35–45] | 48 [30–57] | 1 |
+| | 4000 | 47.5 [45–53] | 71 [50–100] | 1 |
+| | 5000 | 55.5 [52–60] | 101 [86–147] | **0** |
+| | 6000 | 61 [54–73] | 146 [126–188] | 0 |
+| | 7000 | 66 [57–80] | 185 [167–237] | 0 |
+| | 8000 | 69.5 [57–85] | 236 [228–301] | 0 |
+| | 9000 | 71.5 [57–99] | 325 [289–378] | 0 |
+| M3 births per reproducer | 3000 | 2.10 [2.00–2.50] | 2.00 [1.92–2.19] | 2 (E higher) |
+| | 4000 | 2.04 [2.00–2.25] | 2.50 [2.22–2.50] | 1 |
+| | 5000 | 2.07 [1.93–2.21] | 2.30 [2.15–2.30] | 1 |
+| | 6000 | 2.01 [1.86–2.15] | 2.38 [2.25–2.41] | **0** |
+| | 7000 | 2.00 [1.81–2.24] | 2.29 [2.26–2.35] | 0 |
+| | 8000 | 2.01 [1.84–2.23] | 2.33 [2.31–2.41] | 0 |
+| | 9000 | 2.08 [1.84–2.36] | 2.33 [2.33–2.37] | 1 |
+
+§21.5 "differs" (a sustained CLEAR from tick 4000 on):
+
+- **M1: does not differ.** It never reaches CLEAR. L's median is slightly
+  higher from 5000 on, but the ranges overlap at every checkpoint.
+- **M2: differs from 5000,** L higher. This reproduces §20.
+- **M3: differs from 6000,** L higher. It is CLEAR at 6000–8000 and has 1
+  misclassified at 9000. At 3000 the ordering was slightly reversed.
+
+#### Determination: **B — repeat-reproduction difference** (per the §21.5 rule)
+
+The call follows the rule mechanically: M3 differs with L higher, and M1 does
+not differ.
+
+1. **Share of organisms that ever reproduce: not clearly larger in the late
+   establishers.** The lifetime fraction is about 0.36–0.40 in both groups, and
+   the ranges overlap throughout.
+2. **The difference is in repeated reproductive output.** Lifetime births per
+   reproducer separate cleanly from tick 6000: 1.81–2.24 in the extinct worlds
+   against 2.25–2.41 in the late establishers. The magnitude is modest, about
+   15% (medians 2.01 against 2.38 at 6000).
+3. **Earliest separation.** Cumulative births separate at tick 5000, as in
+   §20. Births per reproducer, the mechanism-relevant metric, separates at tick
+   6000. At tick 3000 neither metric separated, and births per reproducer had
+   the extinct worlds slightly ahead.
+4. **This accounts for births, but it does not explain the population split.**
+   Births = R × I. At tick 9000 the late establishers have about 4.5 times the
+   births of the extinct worlds (medians 325 against 71.5). About 4 times comes
+   from having more reproducers (median R 137 against 34.5), and about 1.12
+   times from more births per reproducer. The count of reproducers tracks
+   population size, which is the very thing being explained, so that part is
+   circular. What differs *per reproducer* is a modest intensity edge.
+   Participation share does not differ. None of this establishes that the
+   intensity difference causes the population divergence. It only co-occurs
+   with it.
+
+#### Limitations, stated with the result
+
+- **Lifetime and founder-inclusive.** M1 and M3 cover every organism since tick
+  0, founders and the dead included. Descendant-only participation or
+  intensity after tick 3000 is not derivable (§21.2). The founders' pre-3000
+  contribution weighs more in the extinct worlds, which have fewer births.
+- **Coupled metrics.** f × I = B / (25 + B). Growth biases both M1 and M3
+  against the late establishers, so their higher I is conservative in
+  direction. But the two metrics are not independent measurements.
+- **Small sample.** n = 4 against n = 3, one configuration, pilot seeds.
+  Chance alone gives 0 misclassified for 5.7% of labellings per look, but M3's
+  CLEAR holds at three consecutive checkpoints.
+
+**Causal limit.** Reproduction intensity differs and births accumulate faster
+in the late establishers. None of this shows that neural quality, food or
+sensing caused the difference.
+
+### 21.7 Next scientific question
+
+**In the stalled worlds that go extinct, why do reproducers produce fewer
+offspring over their lives? Is it longer intervals between successive
+reproductions, or shorter reproductive lifespans, meaning death sooner after
+first reproducing?**
+
+The persisted aggregates cannot answer this. It needs per-organism records of
+reproduction times and death times, which have never been recorded. This is a
+question only. Nothing is implemented or run.

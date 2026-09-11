@@ -45,6 +45,10 @@ cannot be told apart at tick 3000.
 population cleanly separates the 3 late establishers from the 4 extinct worlds
 still alive at 3000, and stays separated through 9000. Births separate from
 5000. Mean energy never does.
+**Reproduction participation analysis (read-only, §21): B — repeat
+reproduction.** Lifetime births per reproducer separate the groups from tick
+6000; the fraction of organisms ever reproducing never does. This is lifetime
+and founder-inclusive; descendant-only figures are not derivable.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -56,11 +60,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the read-only stalled-cohort analysis. `git log -1` is
-authoritative; recent history:
+Most recent work is the read-only reproduction-participation analysis.
+`git log -1` is authoritative; recent history:
 
 ```text
-(HEAD)  stalled-cohort: results — conclusion A — see `git log -1`
+(HEAD)  reproduction-participation: results — B — see `git log -1`
+8cf1759 reproduction-participation: read-only analysis code for the precommitted §21 comparison
+18fe6e3 reproduction-participation analysis PRECOMMITMENT (read-only, stalled cohort)
+b3a3f30 stalled-cohort: results — conclusion A, recovery signal clear from tick 4000 (read-only)
 a79401e stalled-cohort: read-only analysis code for the precommitted §20 comparison
 d08ce41 stalled-cohort analysis PRECOMMITMENT (read-only, 0A.2.0 default, after tick 3000)
 bfa81a9 early-establishment: results — PARTIAL separation by tick 3000 (read-only)
@@ -101,8 +108,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 127 / 127 passed   (+3: stalledCohort.test.ts)
-workspace total:          306 / 306 passed
+experiment-harness tests: 131 / 131 passed   (+4: reproductionParticipation.test.ts)
+workspace total:          310 / 310 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -110,8 +117,8 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed as live tests in the suite after the stalled-cohort
-analysis (no separate simulation was run for it); earlier also via
+Both hashes re-confirmed as live tests in the suite after the
+reproduction-participation analysis (no separate simulation was run for it); earlier also via
 `npm run simulate` / `singleFounderModelConfig()` after the continuation run: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
@@ -512,7 +519,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -623,7 +630,43 @@ modifying the model.
 
 ---
 
-## Reproduction participation analysis — PRECOMMITMENT (read-only, not yet computed)
+## Reproduction participation analysis — RESULT: B (repeat reproduction)
+
+Code in `8cf1759` (`src/analysis/reproductionParticipation.ts`, CLI
+`reproduction-participation`, 4 tests). Run read-only from that clean commit;
+simulated nothing. All 303 source files byte-identical. Output:
+`results/analysis-reproduction-participation-v1/reproduction-participation.json`.
+
+| Metric (E\* n = 4 / L n = 3) | 5000 | 6000 | 9000 | Differs? |
+|---|---|---|---|---|
+| M1 fractionEverReproduced | 0.308–0.351 / 0.349–0.372 (1) | 0.329–0.379 / 0.351–0.380 (2) | 0.316–0.400 / 0.391–0.402 (1) | **no** |
+| M2 cumulative births | 52–60 / 86–147 (0) | 54–73 / 126–188 (0) | 57–99 / 289–378 (0) | yes, from 5000 |
+| M3 births per reproducer | 1.93–2.21 / 2.15–2.30 (1) | 1.86–2.15 / 2.25–2.41 (0) | 1.84–2.36 / 2.33–2.37 (1) | yes, from 6000 (CLEAR 6000–8000) |
+
+The number in brackets is the best-cut misclassified count out of 7.
+
+What the numbers show:
+
+- **The mechanism is B.** The share that ever reproduces is similar, about
+  0.36–0.40 in both groups. Lifetime offspring per reproducer is about 15%
+  higher in the late establishers.
+- **The births gap is mostly reproducer count.** At tick 9000 it is about 4.5
+  times: about 4 times from more reproducers (a count that tracks population
+  size, so this part is circular) and about 1.12 times from intensity. This
+  co-occurs with the population split; it does not explain it causally.
+- **Limits:**
+  - lifetime and founder-inclusive;
+  - descendant-only figures are not derivable;
+  - f × I = B / (25 + B), so M1 and M3 are coupled;
+  - n = 4 against n = 3.
+
+**Next scientific question (§21.7):** in the stalled worlds that go extinct, why
+do reproducers produce fewer offspring over their lives — longer intervals
+between reproductions, or shorter reproductive lifespans? The persisted
+aggregates cannot answer it; it needs per-organism reproduction and death
+times.
+
+### Precommitment (historical record — EXECUTED)
 
 Full text: pilot report §21. Committed before any group value was computed. No
 simulation.
@@ -1079,8 +1122,17 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Compute the precommitted reproduction-participation comparison (pilot report
-§21) read-only from the persisted baseline timeseries, apply the §21.5 rule
-unchanged, and record the result.**
+**Precommit — design only, nothing run — an observational diagnostic that
+records per-organism life-history events for the same 7 stalled-cohort seeds.**
+The events are birth tick, each reproduction tick, and death tick and cause.
+Its purpose is to answer pilot report §21.7: longer inter-reproduction
+intervals, or shorter reproductive lifespans.
 
-No simulation, no model or parameter change.
+The diagnostic must be read-only with respect to the trajectory, with the
+canonical hash unchanged. It must be verified against the persisted baseline
+states at fixed ticks. Its window, measures and rule must be fixed before
+anything runs.
+
+Constraints that still hold: no model, ecology, `founderGroupCount` or
+`trajectory-outcome-v2` change; no calibration sweep; do not touch
+`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
