@@ -20,6 +20,7 @@
  *   baseline-continuation   continuation-multifounder-default-v1 (pilot report §18): continue the six
  *                           cap-stopped 0A.2.0 default-baseline seeds. Descriptive; gate already FAIL.
  *   early-establishment     Read-only §19 analysis of ticks 0–3000 of the 15 0A.2.0 default worlds.
+ *   stalled-cohort          Read-only §20 comparison of stalled worlds that recover vs die (ticks 4000–9000).
  *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
  *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
@@ -67,6 +68,9 @@ import {
 import {
   earlyRecord, groupStat, bestSingleCut, separation, EARLY_TICKS, EARLY_DOUBLING_LEVEL, EarlySample,
 } from '../analysis/earlyEstablishment.js';
+import {
+  STALLED_CHECKPOINTS, STALLED_GROUP_E, STALLED_GROUP_E_EXCLUDED, STALLED_GROUP_L, stalledStrength, persistsFrom,
+} from '../analysis/stalledCohort.js';
 import {
   TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
   TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
@@ -335,6 +339,11 @@ async function main(): Promise<void> {
   // Reading persisted results consumes no seeds and runs nothing.
   if (experiment === 'calibration-report') {
     printCalibrationReport(outputDir ?? 'results/calibration-v1');
+    return;
+  }
+  if (experiment === 'stalled-cohort') {
+    printProvenance();
+    runStalledCohort('results', outputDir ?? 'results/analysis-stalled-cohort-v1');
     return;
   }
   if (experiment === 'early-establishment') {
@@ -722,6 +731,95 @@ function runFoodLimitation(outDir: string): void {
   }
   console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
   console.log(`Results written to: ${outDir}/`);
+}
+
+/**
+ * Stalled-cohort analysis (pilot report §20). Read-only: reads the persisted
+ * baseline timeseries, runs nothing, writes only to `outDir`.
+ */
+function runStalledCohort(resultsRoot: string, outDir: string): void {
+  const source = path.join(resultsRoot, 'multifounder-default-baseline', 'timeseries-multifounder-default.csv');
+  const lines = fs.readFileSync(source, 'utf-8').trim().split('\n');
+  const header = lines[0]!.split(',');
+  const col = (k: string) => { const i = header.indexOf(k); if (i < 0) throw new Error(`missing column ${k}`); return i; };
+  const [cSeed, cTick, cPop, cBirths, cEnergy] = ['seed', 'tick', 'population', 'birthsCumulative', 'meanEnergy'].map(col);
+  const rows = new Map<string, { population: number; births: number; energy: number }>();
+  const lastTick = new Map<number, number>();
+  for (const line of lines.slice(1)) {
+    const c = line.split(',');
+    const seed = Number(c[cSeed!]); const tick = Number(c[cTick!]);
+    rows.set(`${seed}|${tick}`, { population: Number(c[cPop!]), births: Number(c[cBirths!]), energy: Number(c[cEnergy!]) });
+    lastTick.set(seed, Math.max(lastTick.get(seed) ?? 0, tick));
+  }
+  const allSeeds = [STALLED_GROUP_E_EXCLUDED, ...STALLED_GROUP_E, ...STALLED_GROUP_L];
+  const value = (seed: number, tick: number) => {
+    const r = rows.get(`${seed}|${tick}`);
+    if (!r) throw new Error(`seed ${seed}: no persisted sample at tick ${tick}`);
+    if (r.population <= 0) throw new Error(`seed ${seed}: population 0 at tick ${tick} inside the §20 window`);
+    return r;
+  };
+
+  const metrics = [
+    { name: 'population', get: (s: number, t: number) => value(s, t).population },
+    { name: 'cumulativeBirths', get: (s: number, t: number) => value(s, t).births },
+    { name: 'meanEnergy', get: (s: number, t: number) => value(s, t).energy },
+  ];
+  const comparison = STALLED_CHECKPOINTS.map((tick) => {
+    const perMetric = metrics.map((m) => {
+      const e = STALLED_GROUP_E.map(s => m.get(s, tick));
+      const l = STALLED_GROUP_L.map(s => m.get(s, tick));
+      return { metric: m.name, extinct: groupStat(e), lateEstablishers: groupStat(l), bestCut: bestSingleCut(e, l) };
+    });
+    return { tick, perMetric, strength: stalledStrength(perMetric.map(p => p.bestCut)) };
+  });
+  const persistence = metrics.map((m, mi) => {
+    const series = comparison.map(c => c.perMetric[mi]!.bestCut.misclassified);
+    const firstLe1 = series.findIndex(x => x <= 1);
+    const first0 = series.findIndex(x => x === 0);
+    return {
+      metric: m.name, misclassifiedByCheckpoint: series,
+      firstCheckpointAtMost1: firstLe1 < 0 ? null : STALLED_CHECKPOINTS[firstLe1],
+      persistsAtMost1: firstLe1 < 0 ? null : persistsFrom(series, firstLe1, 1),
+      firstCheckpointAt0: first0 < 0 ? null : STALLED_CHECKPOINTS[first0],
+      persistsAt0: first0 < 0 ? null : persistsFrom(series, first0, 0),
+    };
+  });
+  const firstClear = comparison.find(c => c.strength === 'CLEAR')?.tick ?? null;
+  const firstStrong = comparison.find(c => c.strength !== 'WEAK_NONE')?.tick ?? null;
+  const conclusion = firstClear !== null ? 'A' : firstStrong !== null ? 'B' : 'C';
+  const perSeed = allSeeds.map(seed => ({
+    seed, group: seed === STALLED_GROUP_E_EXCLUDED ? 'E (extinct at 3000; not counted)' : (STALLED_GROUP_L as readonly number[]).includes(seed) ? 'L' : 'E*',
+    lastPersistedTick: lastTick.get(seed) ?? null,
+    at: [3000, ...STALLED_CHECKPOINTS].map(t => {
+      const r = rows.get(`${seed}|${t}`);
+      return { tick: t, population: r?.population ?? null, births: r?.births ?? null, meanEnergy: r && r.population > 0 ? r.energy : null };
+    }),
+  }));
+
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'stalled-cohort.json'), JSON.stringify({
+    analysis: 'stalled-cohort-v1', specification: 'docs/Phase 0B Pilot Report.md §20 (precommitted in d08ce41)',
+    source, analysedWith: runProvenance(), generatedAt: new Date().toISOString(),
+    groups: { Estar: STALLED_GROUP_E, excludedFromCounts: STALLED_GROUP_E_EXCLUDED, L: STALLED_GROUP_L },
+    checkpoints: STALLED_CHECKPOINTS, comparison, persistence, firstClear, firstStrongPartialOrBetter: firstStrong, conclusion, perSeed,
+    chanceLevel: { perLookZero: 2 / 35, perLookAtMostOne: 14 / 35, looks: 18 },
+    note: 'Observational only. No causal claim about food, sensing or neural quality.',
+  }, null, 2));
+
+  const f = (v: number | null) => (v === null ? '—' : Number.isInteger(v) ? String(v) : v.toFixed(1));
+  console.log('\nPer seed (population / cumulative births / mean energy) at 3000 and each checkpoint:');
+  for (const p of perSeed) {
+    console.log(`  ${p.seed} ${p.group} (last sample ${p.lastPersistedTick}): ` + p.at.map(a => `${a.tick}: ${f(a.population)}/${f(a.births)}/${f(a.meanEnergy)}`).join('  '));
+  }
+  const g = (s: { median: number | null; min: number | null; max: number | null }) => `${f(s.median)} [${f(s.min)}–${f(s.max)}]`;
+  console.log('\nmetric           tick | E* (n=4) median [range] | L (n=3) median [range] | misclassified /7');
+  for (const c of comparison) for (const p of c.perMetric) {
+    console.log(`${p.metric.padEnd(16)} ${String(c.tick).padStart(4)} | ${g(p.extinct).padEnd(23)} | ${g(p.lateEstablishers).padEnd(22)} | ${p.bestCut.misclassified} (${p.bestCut.direction}, t=${f(p.bestCut.threshold)})`);
+  }
+  console.log('\nstrength by checkpoint: ' + comparison.map(c => `${c.tick} ${c.strength}`).join(', '));
+  console.log('persistence: ' + JSON.stringify(persistence));
+  console.log(`first CLEAR: ${firstClear ?? 'none'}; first STRONG PARTIAL or better: ${firstStrong ?? 'none'}; conclusion ${conclusion}`);
+  console.log(`Written to ${outDir}/`);
 }
 
 /** §19.3 groups, fixed in the precommitment (e5f368c). */

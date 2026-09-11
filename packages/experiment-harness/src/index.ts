@@ -19,6 +19,10 @@ export * from './analysis/foodLimitation.js';
 export * from './analysis/trajectoryOutcome.js';
 export * from './analysis/reclassify.js';
 export * from './analysis/earlyEstablishment.js';
+export {
+  STALLED_CHECKPOINTS, STALLED_GROUP_E, STALLED_GROUP_E_EXCLUDED, STALLED_GROUP_L, stalledStrength, persistsFrom,
+} from './analysis/stalledCohort.js';
+export type { StalledStrength } from './analysis/stalledCohort.js';
 export * from './probes/probeSet.js';
 export * from './probes/evaluate.js';
 export * from './probes/fingerprint.js';
