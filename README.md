@@ -13,7 +13,7 @@ Three workspace packages:
 |---|---|---|
 | `packages/simulation-core` | 0A | the deterministic headless biological simulation |
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
-| `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly |
+| `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly; a snapshot store with retention and fallback recovery |
 
 ## Status
 
@@ -22,7 +22,7 @@ Three workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| **Phase 0C — persistent canonical world** | **active — the current phase.** Slice 1, exact save/load/resume, is done |
+| **Phase 0C — persistent canonical world** | **active — the current phase.** Slice 1 (exact save/load/resume) and slice 2 (snapshot store: retention, world identity, fallback recovery) are done |
 | Phase 0D — Observatory UI | next, after 0C |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -99,9 +99,9 @@ Consequences that follow from this, and that you should not "fix":
     │   ├── vitest.config.ts
     │   ├── src/
     │   └── tests/
-    ├── persistence/                 Phase 0C — snapshot format v1, atomic save/load
-    │   ├── src/                     snapshot.ts, file.ts, errors.ts, stableStringify.ts
-    │   └── tests/                   continuation, corruption, file, snapshot (+ fixtures/)
+    ├── persistence/                 Phase 0C — snapshot format v1, atomic save/load, snapshot store
+    │   ├── src/                     snapshot.ts, file.ts, store.ts, errors.ts, stableStringify.ts
+    │   └── tests/                   continuation, corruption, file, snapshot, store, storeRecovery (+ fixtures/)
     └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
@@ -250,7 +250,20 @@ let w = restored.world;                     // exactly the world at tick 5000
 w = stepWorld(w, restored.config).world;    // continues as if never stopped
 ```
 
-## World persistence (Phase 0C, slice 1)
+Keep the newest snapshots of one world in a folder and recover after a crash:
+
+```ts
+import { saveToStore, recoverLatestValid } from '@alo/persistence';
+
+saveToStore('worlds/demo', createSnapshot(world, config));   // atomic; keeps the newest 5
+
+// after a restart:
+const { world: w2, config: c2, report } = recoverLatestValid('worlds/demo');
+// report.selected = the snapshot used; report.skipped = corrupt ones and why.
+// Throws if there is no valid snapshot. It never starts a fresh world.
+```
+
+## World persistence (Phase 0C)
 
 **The invariant, proven by test:** continuous run == save → load → resume,
 bit for bit. On the golden seed, a world saved at tick 10,000 and resumed —
@@ -306,11 +319,66 @@ then renames it over the target. A reader therefore sees the old snapshot or
 the new one, never a partial file. It refuses to write a snapshot that would
 not load.
 
+### Snapshot store (slice 2)
+
+`packages/persistence/src/store.ts` keeps the recent snapshots of **one** world
+in one folder:
+
+```
+worlds/demo/
+├── world-identity.json            which world this folder belongs to
+├── snapshot-000000006000.json     the world after tick 6,000
+├── snapshot-000000007000.json
+├── …                              at most the newest 5
+└── .snapshot-….json.<pid>.<n>.tmp a transient atomic-write file — never a snapshot
+```
+
+API: `saveToStore(dir, snapshot, { keep })`, `listSnapshots(dir)`,
+`recoverLatestValid(dir)`, `pruneSnapshots(dir, keep = 5)`. Refusals throw a
+`SnapshotStoreError` with a `code`.
+
+- **File names.** `snapshot-<tick, 12 digits zero-padded>.json`, so lexical
+  order is tick order. Only exact matches are snapshots; temporary files and
+  look-alike names are ignored everywhere.
+- **World identity.** A folder belongs to one world, identified by
+  `(simulationVersion, configHash)`. `configHash` covers the complete config,
+  `rootSeed` included. The first save records it in `world-identity.json`
+  (checksummed). A snapshot of any other world is refused on save
+  (`WORLD_IDENTITY_MISMATCH`), and an intact foreign snapshot found in the
+  folder makes recovery and pruning refuse the whole folder. Nothing is deleted
+  to resolve a conflict. A missing or corrupt identity file refuses the folder
+  (`STORE_IDENTITY_MISSING` / `STORE_IDENTITY_INVALID`).
+- **Saving.** Atomic, as above. Saves are tick-monotonic. Saving an
+  identical snapshot for an existing tick is a no-op; different content for
+  an existing tick is refused (`DUPLICATE_TICK`), and an older tick than the
+  newest stored is refused (`NON_MONOTONIC_TICK`). Invalid snapshots are never
+  written.
+- **Retention.** The newest 5 snapshots are kept (`keep` configurable). Older
+  ones are deleted only after the new file is committed and reads back
+  byte-identical. `pruneSnapshots` refuses to delete anything unless one of the
+  retained snapshots is valid.
+- **Recovery.** `recoverLatestValid(dir)` validates snapshots newest → oldest,
+  skips each invalid one and reports why, and returns the newest valid one
+  (`{ snapshot, world, config, report }`). The report names the selected file,
+  its tick and state hash, and every skipped file with its refusal code. It
+  holds no paths or timestamps, so recovering the same folder twice gives the
+  same report. Recovery only reads.
+- **No fresh world.** If the folder is missing or empty, or every snapshot is
+  invalid, recovery throws `NO_VALID_SNAPSHOT` (with the report). It never
+  creates or re-seeds a world.
+
+**Proven by test.** Golden seed, saving every 1,000 ticks. Corrupt the newest
+snapshot, or the newest three: recovery falls back to 8,000 or 6,000, and
+resuming reaches exactly `b95a0b4ef7dd8449` at 10,000, hash-equal to the
+uninterrupted run at every 1,000 ticks.
+
 **Current limitations.**
 
-- One local file, written by explicit calls only.
-- No snapshot rotation, no fallback to an older snapshot.
-- No persistent world process or tick scheduler.
+- After a fallback, the corrupt newer files stay in place as evidence. They
+  also block saves at or below their ticks, because they are never
+  overwritten. Moving them aside explicitly is the next step.
+- One writer per folder. Saves are explicit calls: there is no world process
+  or save schedule yet.
 - No database, events or API.
 - The checksums detect corruption, not deliberate tampering.
 
@@ -560,6 +628,17 @@ npm run test:watch --workspace=packages/simulation-core
 | `harness.test.ts`  | replicate/experiment runners, seed handling, metrics, degeneracy flags, sweep configuration validity, diagnostic interventions (A produces zero food and zero births; B has food and zero births), non-finite config rejection, the Phase 0A golden-hash regression |
 | `probes.test.ts`   | probe-set size/legality and pinned content hash, probe determinism, observational purity (a deeply frozen genome; probing every organism every tick leaves the canonical hash unchanged), fingerprint shape and stability, functional distance, the §14.29 runaway cap and outcome classification, the persisted-result reader |
 
+`packages/persistence/tests`:
+
+| File                     | Covers                                                                   |
+|--------------------------|--------------------------------------------------------------------------|
+| `continuation.test.ts`   | §18.60: continuous 20,000 == save at 10,000 → load → resume; golden resume to `b95a0b4ef7dd8449`; separate-process restore |
+| `snapshot.test.ts`       | round trip, deterministic serialization, purity, tick-0 and `0A.1.0` resume |
+| `corruption.test.ts`     | every snapshot refusal code, including 300 flipped bytes                  |
+| `file.test.ts`           | atomic single-file save/load                                              |
+| `store.test.ts`          | file naming, retention, fallback past corrupt snapshots, all-corrupt and empty stores, world identity, duplicate and out-of-order ticks, temp-file leftovers, deterministic read-only recovery |
+| `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449` |
+
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
 actually is.
@@ -596,7 +675,7 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Slice 1 is done: deterministic save/load/resume, snapshot format v1 |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery) |
 | 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**

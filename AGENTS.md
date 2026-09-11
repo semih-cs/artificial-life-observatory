@@ -157,9 +157,9 @@ Do not add a database, server or UI before the deterministic save/resume
 invariant (Spec §18.60, §19.27) is proven. Persistence code lives in its own
 workspace package that consumes `simulation-core`, never inside it.
 
-**Slice 1 is done:** `packages/persistence`, snapshot format v1. The invariant
-is proven by test, and the following persistence invariants must hold from now
-on:
+**Slices 1 and 2 are done:** `packages/persistence` — snapshot format v1
+(slice 1) and the folder-based snapshot store (slice 2). The following
+persistence invariants are proven by test and must hold from now on:
 
 - **Exact continuation.** A snapshot restores to a world that continues bit for
   bit: continuous run == save → load → resume. The continuation and golden-resume
@@ -176,6 +176,16 @@ on:
   catch-up (§19.24, §19.26).
 - **Atomic writes.** Files are written temp → fsync → rename. A partial file is
   never accepted.
+- **One folder = one world.** A snapshot store belongs to one world identity,
+  `(simulationVersion, configHash)`, recorded in `world-identity.json`.
+  Snapshots of another world are refused, never mixed in and never deleted to
+  resolve the conflict.
+- **Never overwrite a stored tick.** Store saves are tick-monotonic. Different
+  content for an existing tick is refused. Retention (newest 5) deletes older
+  snapshots only after the new one is committed and read back.
+- **Recovery never creates a world.** `recoverLatestValid` falls back past
+  invalid snapshots and reports each one. If none is valid, it throws. It only
+  reads the folder.
 
 ### Demo seeds (product only)
 
@@ -366,7 +376,9 @@ Results from the two models must not be pooled or compared numerically.
 
 Persistence regression, part of `npm test`: `npm test -w packages/persistence`.
 It covers the §18.60 continuation, the golden resume to `b95a0b4ef7dd8449`, a
-separate-process restore and corrupt-snapshot rejection. It takes about 75 s.
+separate-process restore, corrupt-snapshot rejection, and the snapshot store,
+including fallback recovery that resumes to `b95a0b4ef7dd8449`. It takes about
+75–100 s.
 
 Phase 0B CLI:
 

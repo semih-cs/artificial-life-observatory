@@ -17,7 +17,7 @@
 | **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
-| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** Slice 1, deterministic save/load/resume, is **DONE** (below) |
+| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** Slice 1 (deterministic save/load/resume) and slice 2 (snapshot store: retention, world identity, fallback recovery) are **DONE** (below) |
 | **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
 
 **Frozen v1 biological model:**
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0C slice 1:
+Phase 0C slice 2:
 
 ```text
-(HEAD)  Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume — see `git log -1`
+(HEAD)  Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery — see `git log -1`
+bdcc156 Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume
 5633ffd Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked
 511aa10 diagnostic-reproducer-lifecycle-v1: results — VALID, NEITHER / INCONCLUSIVE
 1f07f69 diagnostic-reproducer-lifecycle-v1: read-only recorder, analysis and CLI
@@ -115,8 +116,9 @@ artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
 ```text
 simulation-core tests:    179 / 179 passed
 experiment-harness tests: 138 / 138 passed
-persistence tests:         31 / 31  passed   (incl. §18.60 continuation, golden resume, separate process)
-workspace total:          348 / 348 passed
+persistence tests:         59 / 59  passed   (slice 1: 31 — §18.60 continuation, golden resume, separate process;
+                                             slice 2: 28 — snapshot store 25, fallback-recovery regression 3)
+workspace total:          376 / 376 passed
 workspace build:          PASS (simulation-core, then experiment-harness and persistence)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -124,7 +126,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Phase 0C slice 1 checkpoint:
+Re-confirmed at the Phase 0C slice 2 checkpoint (and at slice 1 before it):
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -527,10 +529,9 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
-| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, limitations) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2 snapshot store — layout, naming, retention, identity, fallback, no fresh world — and limitations) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world) |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
-| `AGENTS.md` | unchanged |
 
 ---
 
@@ -1283,18 +1284,9 @@ Also in this checkpoint:
 - the root `npm run build` now builds simulation-core first;
 - `package-lock.json` gains the new workspace.
 
-**Still needed for Phase 0C** (Spec §17.60, §14.35):
-
-- snapshot rotation (3–5 recent) and fallback from a corrupt newest snapshot
-  (§14.38, §18.61, §19.21–§19.25);
-- world identity and an immutable canonical launch configuration
-  (§19.33–§19.34);
-- a persistent world process with a tick scheduler and periodic snapshots
-  (§14.36, §19.19–§19.20);
-- a recovery algorithm that never silently starts a fresh world (§19.23–§19.24);
-- operational and biological event records (§19.35–§19.37);
-- PostgreSQL historical storage;
-- soak tests.
+What slice 1 left for Phase 0C, and where it went: rotation, fallback,
+world identity and no-fresh-world recovery are done in slice 2 (below); the
+rest is listed under "Phase 0C remaining" there.
 
 ### Slice 1 specification (historical record — IMPLEMENTED)
 
@@ -1366,25 +1358,123 @@ Out of scope for slice 1: snapshot rotation and fallback, the persistent server
 process and tick scheduler, PostgreSQL, events, the UI, and choosing a demo
 seed.
 
+## Phase 0C slice 2 — RESULT: DONE (folder snapshot store and fallback recovery)
+
+Operational persistence only. No change to simulation-core, biology,
+`simulationVersion` or snapshot format v1. No database, server, scheduler or UI.
+
+**Module:** `packages/persistence/src/store.ts`, exported from `@alo/persistence`.
+
+- `saveToStore(dir, snapshot, { keep = 5 })`
+  → `{ tick, fileName, written, pruned }`;
+- `listSnapshots(dir)` → snapshot files, oldest first;
+- `recoverLatestValid(dir)` → `{ snapshot, world, config, report }`;
+- `pruneSnapshots(dir, keep = 5)`;
+- helpers `snapshotFileName`, `readStoreIdentity`, `worldIdentityOf`;
+- `SnapshotStoreError` with a `code`.
+
+`file.ts` gains `writeFileAtomic`, the shared temp → fsync → rename → dir-fsync
+primitive. `saveSnapshotAtomic` now uses it, with unchanged behaviour.
+
+**Folder layout:**
+
+```text
+<dir>/world-identity.json          format, storeFormatVersion 1, simulationVersion, configHash, SHA-256 checksum
+<dir>/snapshot-000000010000.json   snapshot format v1 of the world after tick 10,000
+<dir>/.<name>.<pid>.<n>.tmp        transient atomic-write file; never a candidate
+```
+
+**Rules as implemented:**
+
+- **File names.** `snapshot-<tick, 12 digits zero-padded>.json`, so lexical
+  order is tick order. Only regular files matching exactly are candidates.
+  Temp files, other widths and look-alike suffixes are ignored by listing,
+  recovery and retention.
+- **World identity** = `(simulationVersion, configHash)`. This is the smallest
+  identity derivable from existing canonical data: `configHash` already
+  covers the full config, `rootSeed` and `simulationVersion` included. The
+  version is kept explicit for readable refusals. It is recorded on the first
+  save in `world-identity.json`, which is canonical and checksummed. Refusals:
+  - a save of another world → `WORLD_IDENTITY_MISMATCH`;
+  - an intact (checksum-valid) snapshot of another world in the folder →
+    recovery and pruning refuse the whole folder, including for an
+    unsupported future version;
+  - a missing or corrupt identity file → `STORE_IDENTITY_MISSING` /
+    `STORE_IDENTITY_INVALID`.
+
+  Nothing is deleted to resolve a conflict. A corrupt file's identity fields
+  are not trusted; the file is skipped as corrupt.
+- **Save.** It validates first, so an invalid snapshot is never written. It is
+  atomic and tick-monotonic:
+  - same tick with identical bytes → no-op (`written: false`);
+  - same tick with different bytes → `DUPLICATE_TICK`;
+  - an older tick than the newest stored → `NON_MONOTONIC_TICK`.
+- **Retention.** The newest 5 are kept. Older files are deleted, oldest first,
+  only after the new file is committed and read back byte-identical.
+  `pruneSnapshots` deletes nothing unless a retained snapshot is valid.
+- **Recovery.** Snapshots are tried newest → oldest with full
+  `parseSnapshot` validation, plus a check that the file-name tick matches
+  the content (`FILENAME_TICK_MISMATCH`). Each failure is recorded in
+  `report.skipped` as `{ fileName, tick, code, reason }`. The report holds no
+  paths or timestamps, so it is deterministic. Recovery only reads.
+- **No fresh world.** A missing directory, an empty store, or all snapshots
+  invalid → `NO_VALID_SNAPSHOT`, carrying the report. Recovery never
+  creates or re-seeds a world.
+
+**Proof** (28 new tests):
+
+| Required test | Where | Result |
+|---|---|---|
+| 1 retention | `store.test.ts` | 8 saves → exactly ticks 400–800 remain, names correct, newest restores to the reference hash; custom `keep`; invalid `keep` refused; prune refuses when every retained snapshot is corrupt |
+| 2 corrupt newest | `store.test.ts`, `storeRecovery.test.ts` | newest skipped and reported; previous restored; resumed hashes equal the uninterrupted run |
+| 3 multiple corrupt | `store.test.ts` | flipped / truncated / empty newest three → 4th selected; a misnamed valid file is skipped |
+| 4 all corrupt | `store.test.ts` | `NO_VALID_SNAPSHOT` with a 5-entry report; directory byte-identical afterwards |
+| 5 empty | `store.test.ts` | empty, missing (not created), identity-only → `NO_VALID_SNAPSHOT`; no or corrupt identity file → refused |
+| 6 mixed world | `store.test.ts` | same version + config (independent run) allowed; other seed, other ecology parameter, `0A.1.0` refused on save; intact foreign or future-version snapshot refuses recovery and prune; nothing deleted |
+| 7 duplicate tick | `store.test.ts` | identical re-save idempotent; different content refused, file untouched; older tick refused; after a fallback, the corrupt newer file is never overwritten |
+| 8 atomicity | `store.test.ts` | partial and complete temp files and look-alike names never candidates and never pruned; no temp left by a save |
+| 9 deterministic recovery | `store.test.ts` | two recoveries give identical reports and state; a copy of the directory gives the same report; directory unchanged |
+| continuation regression | `storeRecovery.test.ts` | golden seed saved every 1,000 ticks (store keeps 5,000–9,000). Corrupting 9,000 → recover 8,000; corrupting 9,000/8,000/7,000 → recover 6,000. Both resume to 10,000 hash-equal every 1,000 ticks, ending at `b95a0b4ef7dd8449` |
+
+A mutation check was done during implementation: disabling the identity
+comparison fails 4 tests, and breaking pruning fails 6.
+
+**Known limitation, deliberate:** after a fallback, the corrupt newer files
+stay in place as evidence. Because a stored tick is never overwritten and
+saves are monotonic, they block saves at or below their ticks
+(`DUPLICATE_TICK` / `NON_MONOTONIC_TICK`) until they are moved aside
+explicitly. That is the next step.
+
+**Phase 0C remaining** (Spec §17.60, §14.35):
+
+- explicit quarantine of reported corrupt snapshots, so a world resumed after
+  a fallback can save again (next step);
+- a persistent headless world process: launch from an immutable canonical
+  config or recover, tick loop, periodic saves through the store, and a
+  kill-and-restart proof (§14.36, §19.19–§19.20, §19.33–§19.34);
+- operational and biological event records (§19.35–§19.37);
+- PostgreSQL historical storage;
+- soak tests.
+
 ## NEXT EXACT STEP
 
-**Phase 0C slice 2 — snapshot rotation and recovery, local files only:**
+**Phase 0C slice 3 — explicit quarantine of corrupt snapshots, local files only.**
 
-1. **Add a directory-backed snapshot store to `packages/persistence`.** It
-   writes each snapshot atomically under a tick-ordered name and keeps only
-   the newest K. Default K = 5, from the Spec §14.38 3–5 baseline. It refuses
-   snapshots whose `configHash` or `simulationVersion` differ from the world
-   already in that directory.
-2. **Add `recoverLatestValid(dir)`.** It loads the newest snapshot that
-   validates, falls back to older ones when newer ones are corrupt, and reports
-   each skipped snapshot and why (§18.61, §19.21–§19.24). It throws, and never
-   creates a fresh world, if none is valid.
-3. **Prove it with tests:**
-   - retention count;
-   - a corrupt newest snapshot falls back to the previous one, and resuming
-     from it equals the continuous run from that tick;
-   - every snapshot corrupt → a clear failure;
-   - a mixed-world directory is refused.
+Add `quarantineSkippedSnapshots(dir, report)` to `packages/persistence/src/store.ts`.
+
+- It moves exactly the files named in a `recoverLatestValid` report's
+  `skipped` list into `<dir>/quarantine/`, with a rename that never deletes or
+  overwrites.
+- It re-validates each named file first and refuses to move any file that now
+  validates, or that belongs to another world.
+
+Prove it with a test on the golden seed:
+
+1. Save every 1,000 ticks, then corrupt 9,000.
+2. Recover 8,000 → quarantine → resume → save 9,000 and 10,000.
+3. Recover again: it must select 10,000 with nothing skipped, at hash
+   `b95a0b4ef7dd8449`.
+4. The quarantined file must still exist, unchanged.
 
 No database, server, scheduler or UI in this step. No change to
-simulation-core or biology.
+simulation-core, biology or snapshot format v1.
