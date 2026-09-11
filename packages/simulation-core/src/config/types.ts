@@ -1,3 +1,5 @@
+import { isSupportedSimulationVersion, SUPPORTED_MODEL_VERSIONS } from '../model/simulationModel.js';
+
 /**
  * Phase 0A configuration surface.
  *
@@ -197,6 +199,10 @@ export interface ReproductionConfig {
 }
 
 export interface SimulationConfig {
+  /**
+   * The model identity (see `model/simulationModel.ts`): 0A.1.0, 0A.2.0 or
+   * 0A.3.0. It selects the sensory contract and neural input dimension.
+   */
   simulationVersion: string;
   rootSeed: number;
   world: WorldConfig;
@@ -271,6 +277,13 @@ export function validateConfig(config: SimulationConfig): void {
   ) {
     problems.push(
       `bootstrap.founderGroupCount (${config.bootstrap.founderGroupCount}) must be an integer >= 1.`
+    );
+  }
+
+  if (!isSupportedSimulationVersion(config.simulationVersion)) {
+    problems.push(
+      `simulationVersion (${JSON.stringify(config.simulationVersion)}) is not a supported model ` +
+        `(${SUPPORTED_MODEL_VERSIONS.join(', ')}); a model version is never guessed.`
     );
   }
 

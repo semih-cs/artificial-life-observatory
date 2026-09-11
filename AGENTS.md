@@ -63,6 +63,11 @@ amended by**:
   controllers (5 organisms each) rather than 25 near-clones of one. The founder
   acceptance gate is unchanged. Model version `0A.2.0`; the historical
   single-founder model is `0A.1.0`.
+- `docs/V2.1 Amendment - Organism Sensing (0A.3.0).md` — V2.1 adds a NEW
+  model, `0A.3.0`: the `0A.2.0` model plus four appended inputs describing
+  the nearest visible other living organism (10 → 8 → 4). It extends §11.58
+  for `0A.3.0` only; `0A.1.0` and `0A.2.0` keep their exact six-input
+  meaning.
 
 An adopted amendment wins over the base document where they conflict.
 
@@ -175,6 +180,13 @@ observer invariants are proven by test and must hold from now on:
 - **One definition of state.** The stored world state is
   `canonicalizeWorldState(world)`. Any change to its shape, or to anything
   `stepWorld` reads, needs a new `snapshotFormatVersion` and an explicit loader.
+  *Clarified for V2.1:* adding the model `0A.3.0` did not change the shape,
+  and everything `stepWorld` reads for it (other organisms' positions and
+  sizes) was already stored. What differs by model is the neural array length,
+  which the validator derives from the snapshot's own `simulationVersion` (6 or
+  10) — so format v1 was kept, and old snapshots read exactly as before
+  (proved by snapshots written by tag `v1.0.0`, committed as fixtures). A
+  snapshot is never converted between models.
 - **Tick convention.** Snapshot tick N = the world after tick N completed.
 - **Refuse, never repair.** A snapshot that fails any check is rejected with a
   coded `SnapshotError`. There is no automatic fresh world or approximate
@@ -255,7 +267,9 @@ that cache, one Δ badge per hop, stopping honestly at the first unobserved
 ancestor. The final polish added an organism quick-jump (current frame
 only), the first-run card, the demo scripts and a help hint. **v1 is
 complete.** Work from here is v2 (README *Deferred to v2*) unless it is a
-genuine v1 bug; do not add features to the frozen v1 Observatory.
+genuine v1 bug; do not add features to the frozen v1 Observatory. V2.1 added
+exactly one Observatory feature — the selected organism's vision cone (see
+*V2* below and the frontend rule on it).
 
 Frontend rules that hold from now on:
 
@@ -308,8 +322,48 @@ Frontend rules that hold from now on:
 - **Organisms live in Pixi, not React.** React owns the shell (HUD,
   inspector, controls, connection); entities are Pixi display objects reused
   across frames. React state updates at most once per frame.
+- **The vision cone is geometry, not perception (V2.1).** The selected
+  organism's cone (`world/visionCone.ts`) is drawn from frame position,
+  heading, `visionRange` and `visionAngle` only. The frontend never
+  reimplements target selection, never marks another organism as "sensed",
+  and the frame never carries a sensed target, sensory vector or intent.
 
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
+
+
+### V2 — started (V2.1 done: other organisms enter the sensory world)
+
+V2 is the next product phase. It changes biology only through NEW, versioned
+models; `0A.1.0` and `0A.2.0` stay frozen historical ground truth and are
+never redefined, re-hashed or silently upgraded.
+
+**V2.1 — model `0A.3.0` (done).** Organisms of `0A.3.0` additionally perceive
+the nearest visible other living organism through four appended inputs
+(`organismVisible`, `organismDistance`, `organismAngle`,
+`organismRelativeSize`), using their own inherited `visionRange` and
+`visionAngle`. Perception only: no new action, output or interaction. The
+contract is `docs/V2.1 Amendment - Organism Sensing (0A.3.0).md`. Rules that
+hold from now on:
+
+- **Model registry.** `simulation-core/src/model/simulationModel.ts` says what
+  each `simulationVersion` means structurally (`0A.1.0` → 6 inputs, `0A.2.0`
+  → 6, `0A.3.0` → 10, organism sensing on/off). Everything dimension-dependent
+  asks it by version; never reintroduce one global input count. Unknown
+  versions are refused. A new biological model means a new version entry here,
+  never an edit of an existing one.
+- **`DEFAULT_SIMULATION_CONFIG` stays `0A.2.0`.** `0A.3.0` is
+  `organismSensingModelConfig()` / `modelConfig('0A.3.0')`, `--model 0A.3.0`
+  on `npm run simulate` and on `npm run world -- --new`. A recovered world
+  always keeps its stored model.
+- **Sensing is a pure read of S_t.** Candidates come only from
+  `state.organisms` (alive, not self); no RNG, no mutation, no dependence on
+  array order; ties by ascending id, and ids never become inputs.
+- **No behaviour is pre-solved.** Founder probes append `[0, 0, 0, 0]`; no
+  viability check may involve organism inputs. Mutation is unchanged; the new
+  weights are ordinary parameters.
+- **Performance is the plain O(N²) scan.** Do not add spatial indexes, caches
+  or approximations without a measured need and a decision recorded in
+  `PROJECT_STATUS.md` (measurements are there).
 
 ---
 
@@ -328,6 +382,8 @@ Do not change these casually.
 - Morphology and neural mutation channels are independently controllable.
 - Disabled mutation channels still consume their fixed RNG draw schedule so paired experiments retain RNG isolation.
 - Phase 0A neural topology is fixed and feedforward.
+- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
+- Sensing (every model) is a pure read of the pre-decision snapshot S_t; in `0A.3.0` it includes the nearest visible other living organism and nothing else about other organisms.
 - No RNN, memory, learning, plasticity, backpropagation, reinforcement learning or stochastic policy in Phase 0A.
 - Neural evaluation is deterministic, pure and RNG-free.
 - Decision logic returns `ActionIntent`; it does not directly mutate shared world state.
@@ -368,6 +424,7 @@ Phase 0A uses separate BootstrapRNG and CanonicalRNG responsibilities.
 Observation must not alter the biological trajectory.
 
 Given the same supported simulation version, configuration, seed and tick count, repeated execution should produce the same canonical trajectory/state hash.
+This holds per platform: on x86_64 the transcendental math functions can differ in the last bit from linux-arm64, where the recorded golden hashes are confirmed (see `PROJECT_STATUS.md`, *Known gaps*).
 
 The current Phase 0A regression reference is recorded in `PROJECT_STATUS.md`.
 
@@ -475,14 +532,28 @@ Deterministic regression:
 npm run simulate -- --seed 20260910 --ticks 10000
 ```
 
-Expected hash depends on the model version, and the two must never be conflated:
+```bash
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.3.0
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.1.0
+```
 
-| Model | Config | Hash |
-|---|---|---|
-| `0A.2.0` amended multi-founder (default) | `DEFAULT_SIMULATION_CONFIG` | `b95a0b4ef7dd8449` |
-| `0A.1.0` historical single-founder | `singleFounderModelConfig()` | `6a6576bd49e86b27` |
+Expected hash depends on the model version, and models must never be conflated:
 
-Results from the two models must not be pooled or compared numerically.
+| Model | Config | Topology | Hash |
+|---|---|---|---|
+| `0A.2.0` amended multi-founder (default, frozen v1) | `DEFAULT_SIMULATION_CONFIG` | 6 → 8 → 4 | `b95a0b4ef7dd8449` |
+| `0A.1.0` historical single-founder (frozen) | `singleFounderModelConfig()` | 6 → 8 → 4 | `6a6576bd49e86b27` |
+| `0A.3.0` V2.1 organism sensing | `organismSensingModelConfig()` | 10 → 8 → 4 | `e54d0c11249b7849` |
+
+Results from different models must not be pooled or compared numerically.
+Never "update" a historical hash to match changed behaviour — a changed
+historical hash is a regression.
+
+**Platform.** These hashes are confirmed on linux-arm64 (the development VM).
+On x86_64 the frozen v1 code itself gives a different `0A.2.0` hash
+(`ea689a61d2fd4b38`); determinism holds per platform, not across CPU
+architectures (see `PROJECT_STATUS.md`, *Known gaps*). Run the golden
+regressions on arm64.
 
 Persistence regression, part of `npm test`: `npm test -w packages/persistence`.
 It covers the §18.60 continuation, the golden resume to `b95a0b4ef7dd8449`, a
@@ -500,6 +571,14 @@ It covers:
 - golden runs with an observer, with pacing, and with both.
 
 It takes about 50 s.
+
+V2.1 regressions, part of `npm test`: `simulation-core/tests/organismSensing.test.ts`
+(target selection, normalisation, defaults, purity) and
+`organismSensingModel.test.ts` (model dimensions, founders, mutation, the
+`0A.3.0` golden hash); `persistence/tests/modelCompatibility.test.ts`
+(frozen v1 snapshot fixtures, `0A.3.0` exact resume, per-model dimension
+validation); `world-runner/tests/organismSensingModel.test.ts` (runner,
+`--model`, observer purity for `0A.3.0`); `observatory/tests/visionCone.test.ts`.
 
 Observatory regression, part of `npm test`: `npm test -w packages/observatory`
 (vitest, about 1 s, no browser). It covers protocol parsing, the connection

@@ -1,15 +1,15 @@
 // Separate-process fixture for the §18.60 continuation test. Uses only the BUILT
 // packages, so nothing can leak from the test process's memory.
 //
-//   node process.mjs create <seed> <tick> <snapshotPath>
+//   node process.mjs create <seed> <tick> <snapshotPath> [<simulationVersion>]   (default: the v1 model 0A.2.0)
 //   node process.mjs resume <snapshotPath> <toTick> <every>   → prints JSON hashes
-import { bootstrapWorld, cloneConfig, DEFAULT_SIMULATION_CONFIG, stepWorld, canonicalStateHash } from '@alo/simulation-core';
+import { bootstrapWorld, cloneConfig, DEFAULT_SIMULATION_CONFIG, modelConfig, stepWorld, canonicalStateHash } from '@alo/simulation-core';
 import { createSnapshot, saveSnapshotAtomic, loadSnapshot, restoreSnapshot } from '../../dist/index.js';
 
 const [mode, ...args] = process.argv.slice(2);
 if (mode === 'create') {
-  const [seed, tick, file] = args;
-  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  const [seed, tick, file, model] = args;
+  const config = model === undefined ? cloneConfig(DEFAULT_SIMULATION_CONFIG) : modelConfig(model);
   config.rootSeed = Number(seed);
   let world = bootstrapWorld(config);
   while (world.tick < Number(tick)) world = stepWorld(world, config).world;
@@ -24,7 +24,7 @@ if (mode === 'create') {
     world = stepWorld(world, config).world;
     if (world.tick % Number(every) === 0) hashes[world.tick] = canonicalStateHash(world);
   }
-  process.stdout.write(JSON.stringify({ pid: process.pid, startTick: restored.tick, hashes }));
+  process.stdout.write(JSON.stringify({ pid: process.pid, startTick: restored.tick, simulationVersion: config.simulationVersion, hashes }));
 } else {
   process.stderr.write(`unknown mode ${mode}\n`);
   process.exit(2);

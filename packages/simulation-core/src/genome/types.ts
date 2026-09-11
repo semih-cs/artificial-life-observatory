@@ -1,3 +1,5 @@
+import { V1_NEURAL_INPUT_SIZE } from '../model/simulationModel.js';
+
 /**
  * Heritable genome state. Immutable during an organism's lifetime (§11.34,
  * restated normatively in §11.59) — nothing in `biology/` or `world/` may
@@ -31,7 +33,15 @@ export interface Genome {
   readonly neural: NeuralGenome;
 }
 
-export const NEURAL_INPUT_SIZE = 6; // §11.58 — LOCKED, six unique inputs, indices 0-5
+/**
+ * The historical §11.58 input count — six unique inputs, indices 0-5 — of the
+ * v1 models 0A.1.0 and 0A.2.0 ([LOCKED] for those models). It is NOT a global
+ * constant any more: the input dimension is model-specific and comes from
+ * `simulationModel(simulationVersion).neuralInputSize` (0A.3.0 has 10).
+ * Functions that take an `inputSize` default to this value so every v1 call
+ * site keeps its exact historical meaning.
+ */
+export const NEURAL_INPUT_SIZE = V1_NEURAL_INPUT_SIZE;
 export const NEURAL_OUTPUT_SIZE = 4; // forward, turn, eat, reproduce — §11.59
 
 export function cloneMorphology(m: MorphologyGenome): MorphologyGenome {

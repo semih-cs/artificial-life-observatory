@@ -6,14 +6,21 @@
  * in the Phase 0B calibration harness, not here.
  *
  *   npm run simulate -- --seed 123 --ticks 10000
+ *   npm run simulate -- --seed 123 --ticks 10000 --model 0A.3.0
+ *
+ * --model selects a supported model by its simulationVersion (0A.1.0, 0A.2.0,
+ * 0A.3.0) through `modelConfig`. Without it the run uses
+ * DEFAULT_SIMULATION_CONFIG, the frozen v1 model 0A.2.0, exactly as before.
  */
-import { DEFAULT_SIMULATION_CONFIG, cloneConfig } from './config/defaults.js';
+import { DEFAULT_SIMULATION_CONFIG, cloneConfig, modelConfig } from './config/defaults.js';
+import { SUPPORTED_MODEL_VERSIONS } from './model/simulationModel.js';
 import { runSimulation } from './world/runner.js';
 
 interface Args {
   seed: number;
   ticks: number;
   json: boolean;
+  model?: string;
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -31,17 +38,23 @@ function parseArgs(argv: readonly string[]): Args {
     } else if (key === '--ticks' && value !== undefined) {
       args.ticks = Number(value);
       i += 1;
+    } else if (key === '--model' && value !== undefined) {
+      args.model = value;
+      i += 1;
     }
   }
   if (!Number.isFinite(args.seed) || !Number.isInteger(args.ticks) || args.ticks < 0) {
-    throw new Error('usage: simulate --seed <uint32> --ticks <n> [--json]');
+    throw new Error('usage: simulate --seed <uint32> --ticks <n> [--model <version>] [--json]');
+  }
+  if (args.model !== undefined && !SUPPORTED_MODEL_VERSIONS.includes(args.model)) {
+    throw new Error(`--model must be one of ${SUPPORTED_MODEL_VERSIONS.join(', ')}, got ${args.model}`);
   }
   return args;
 }
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  const config = args.model === undefined ? cloneConfig(DEFAULT_SIMULATION_CONFIG) : modelConfig(args.model);
   config.rootSeed = args.seed >>> 0;
 
   const started = Date.now();

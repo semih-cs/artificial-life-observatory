@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 const ROWS: Array<[string, string]> = [
-  ['click organism', 'inspect it'],
+  ['click organism', 'inspect it; its vision cone (range × angle) is drawn — geometry only'],
   ['click lineage row', 'focus that lineage'],
   ['# id  ⏎', 'jump to a living organism'],
   ['wheel · + / −', 'zoom (around the cursor)'],

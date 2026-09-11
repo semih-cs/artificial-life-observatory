@@ -2,6 +2,7 @@ import { Genome, MorphologyGenome, NeuralGenome, NEURAL_INPUT_SIZE, NEURAL_OUTPU
 import { RngStream } from '../rng/rngStream.js';
 import { NeuralConfig, BootstrapConfig } from '../config/types.js';
 import { evaluateNetwork } from '../neural/network.js';
+import { V1_NEURAL_INPUT_SIZE, ORGANISM_SENSING_NEURAL_INPUT_SIZE } from '../model/simulationModel.js';
 
 /**
  * Founder Neural Genome generation & screening (§13.76, [LOCKED] procedure /
@@ -12,6 +13,14 @@ import { evaluateNetwork } from '../neural/network.js';
  * scored, or run through a trajectory. There is no founder optimization and
  * no cherry-picking: the retry budget only determines how long we keep
  * drawing, never which of several candidates is preferred.
+ *
+ * Model-specific dimensions: every function here takes the model's neural
+ * `inputSize` (from `simulationModel(version).neuralInputSize`), defaulting
+ * to the v1 six so the historical 0A.1.0 / 0A.2.0 behaviour — including every
+ * BootstrapRNG draw — is exactly unchanged. A 0A.3.0 founder is drawn natively
+ * as a 10-input controller through the same procedure (it is never a 6-input
+ * controller migrated to 10); the larger input->hidden block consumes more
+ * BootstrapRNG draws, so 0A.3.0 bootstrap diverges from v1 under the same seed.
  */
 
 /**
@@ -19,7 +28,12 @@ import { evaluateNetwork } from '../neural/network.js';
  * sequence and verify that acceptance is first-passing-candidate, with no
  * ranking or best-of-N.
  */
-export function drawNeuralGenome(rng: RngStream, hiddenSize: number, sigma: number): NeuralGenome {
+export function drawNeuralGenome(
+  rng: RngStream,
+  hiddenSize: number,
+  sigma: number,
+  inputSize: number = NEURAL_INPUT_SIZE
+): NeuralGenome {
   // Fixed parameter order (§13.76 step 1): input->hidden weights, hidden
   // biases, hidden->output weights, output biases.
   const draw = (n: number): number[] => {
@@ -28,7 +42,7 @@ export function drawNeuralGenome(rng: RngStream, hiddenSize: number, sigma: numb
     return out;
   };
   return {
-    inputHiddenWeights: draw(hiddenSize * NEURAL_INPUT_SIZE),
+    inputHiddenWeights: draw(hiddenSize * inputSize),
     hiddenBiases: draw(hiddenSize),
     hiddenOutputWeights: draw(NEURAL_OUTPUT_SIZE * hiddenSize),
     outputBiases: draw(NEURAL_OUTPUT_SIZE),
@@ -59,9 +73,10 @@ export interface MechanicalValidity {
 export function mechanicalValidityCheck(
   genome: NeuralGenome,
   hiddenSize: number,
-  bounds: { min: number; max: number }
+  bounds: { min: number; max: number },
+  inputSize: number = NEURAL_INPUT_SIZE
 ): MechanicalValidity {
-  if (genome.inputHiddenWeights.length !== hiddenSize * NEURAL_INPUT_SIZE) {
+  if (genome.inputHiddenWeights.length !== hiddenSize * inputSize) {
     throw new Error('founder: dimensionality mismatch (input->hidden weights)');
   }
   if (genome.hiddenBiases.length !== hiddenSize) {
@@ -116,8 +131,27 @@ export interface FounderProbe {
  *
  * Positive foodAngle = food is to the organism's RIGHT (clockwise); the turn
  * output shares that sign convention (§11.59).
+ *
+ * For the 0A.3.0 ten-input model every probe is the same six-value fixture
+ * with [0, 0, 0, 0] appended for organismVisible, organismDistance,
+ * organismAngle, organismRelativeSize — "no other organism visible", exactly
+ * the sensing contract's no-target default. The screen stays a check of basic
+ * mechanical viability: no probe places an organism in view, and no check asks
+ * for any response to one. How organism sensing is used is left to evolution.
  */
-export function founderProbeSet(probeConfig: BootstrapConfig['founderProbe']): FounderProbe[] {
+export function founderProbeSet(
+  probeConfig: BootstrapConfig['founderProbe'],
+  inputSize: number = NEURAL_INPUT_SIZE
+): FounderProbe[] {
+  const v1 = v1FounderProbeSet(probeConfig);
+  if (inputSize === V1_NEURAL_INPUT_SIZE) return v1;
+  if (inputSize === ORGANISM_SENSING_NEURAL_INPUT_SIZE) {
+    return v1.map((p) => ({ name: p.name, input: [...p.input, 0, 0, 0, 0] }));
+  }
+  throw new Error(`founderProbeSet: no probe layout for a ${inputSize}-input model`);
+}
+
+function v1FounderProbeSet(probeConfig: BootstrapConfig['founderProbe']): FounderProbe[] {
   const a = probeConfig.lateralFoodAngle;
   return [
     { name: 'food-ahead-close', input: [1, 0.1, 0, 0.5, 0, 0.5] },
@@ -171,12 +205,13 @@ export function minimalViabilityScreen(
   genome: NeuralGenome,
   hiddenSize: number,
   neuralConfig: NeuralConfig,
-  probeConfig: BootstrapConfig['founderProbe']
+  probeConfig: BootstrapConfig['founderProbe'],
+  inputSize: number = NEURAL_INPUT_SIZE
 ): ViabilityResult {
-  const probes = founderProbeSet(probeConfig);
+  const probes = founderProbeSet(probeConfig, inputSize);
   const out = new Map<string, ReturnType<typeof evaluateNetwork>>();
   for (const p of probes) {
-    out.set(p.name, evaluateNetwork(genome, p.input, hiddenSize));
+    out.set(p.name, evaluateNetwork(genome, p.input, hiddenSize, inputSize));
   }
   const get = (name: string) => {
     const o = out.get(name);
@@ -246,21 +281,22 @@ export function generateFounderNeuralGenome(
   rng: RngStream,
   hiddenSize: number,
   neuralConfig: NeuralConfig,
-  bootstrapConfig: BootstrapConfig
+  bootstrapConfig: BootstrapConfig,
+  inputSize: number = NEURAL_INPUT_SIZE
 ): FounderGenerationResult {
   let lastViability: ViabilityResult | null = null;
   let rejectedNonFinite = 0;
 
   for (let attempt = 1; attempt <= bootstrapConfig.maxFounderAttempts; attempt++) {
-    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma);
+    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma, inputSize);
 
-    const validity = mechanicalValidityCheck(raw, hiddenSize, neuralConfig.neuralParamBounds);
+    const validity = mechanicalValidityCheck(raw, hiddenSize, neuralConfig.neuralParamBounds, inputSize);
     if (!validity.valid || validity.genome === null) {
       rejectedNonFinite += 1;
       continue; // structurally invalid candidate; draw the next one
     }
 
-    const viability = minimalViabilityScreen(validity.genome, hiddenSize, neuralConfig, bootstrapConfig.founderProbe);
+    const viability = minimalViabilityScreen(validity.genome, hiddenSize, neuralConfig, bootstrapConfig.founderProbe, inputSize);
     lastViability = viability;
     if (viability.pass) {
       return { neural: validity.genome, attempts: attempt, lastViability: viability };
@@ -300,9 +336,10 @@ export function generateFounderProfile(
   rng: RngStream,
   hiddenSize: number,
   neuralConfig: NeuralConfig,
-  bootstrapConfig: BootstrapConfig
+  bootstrapConfig: BootstrapConfig,
+  inputSize: number = NEURAL_INPUT_SIZE
 ): FounderProfile {
-  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig);
+  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig, inputSize);
   const morphology = founderMorphology(bootstrapConfig.geneBounds);
   return { genome: { morphology, neural }, attempts };
 }

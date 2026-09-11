@@ -18,6 +18,14 @@
  *     contains both RNG stream states (§18.24, §19.12).
  *   - The complete SimulationConfig travels with the state (§19.14): the tick
  *     function is `stepWorld(state, config)`, so the state alone is ambiguous.
+ *   - One format, several models. The stored record has the same shape for
+ *     every supported model; what differs by model is the neural input
+ *     dimension of every genome (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0). The
+ *     snapshot's own `simulationVersion` — which must agree with its config and
+ *     state — selects that dimension through simulation-core's model registry,
+ *     and genomes of any other length are refused. A snapshot is never
+ *     converted between models: a 0A.2.0 snapshot restores and resumes as
+ *     0A.2.0, under its historical six-input semantics.
  *
  * Purity: creating, serializing, parsing, validating and restoring a snapshot
  * draw no random numbers from any stream and never write to the world or the
@@ -39,8 +47,9 @@ import {
   hasNonFiniteCanonicalValue,
   MULTI_FOUNDER_MODEL_VERSION,
   SINGLE_FOUNDER_MODEL_VERSION,
-  NEURAL_INPUT_SIZE,
+  ORGANISM_SENSING_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
+  neuralInputSizeFor,
 } from '@alo/simulation-core';
 import type { SimulationConfig, WorldState, OrganismRuntimeState, Xoshiro128State } from '@alo/simulation-core';
 import { stableStringify } from './stableStringify.js';
@@ -50,11 +59,16 @@ export const SNAPSHOT_FORMAT_ID = 'alo-canonical-world-snapshot' as const;
 export const SNAPSHOT_FORMAT_VERSION = 1;
 
 /**
- * Simulation versions this format can restore. `0A.2.0` is the frozen v1
+ * Simulation versions this format can restore. `0A.3.0` is the V2.1
+ * organism-sensing model (10-input controllers); `0A.2.0` is the frozen v1
  * canonical model; `0A.1.0` is the historical single-founder model, still
- * runnable by the same core for regression.
+ * runnable by the same core for regression. Adding 0A.3.0 did not change the
+ * stored shape, so the format version stays 1 and every existing v1 snapshot
+ * reads exactly as before.
  */
-export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION];
+export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
+  ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+];
 
 /** The world record stored in a v1 snapshot: `canonicalizeWorldState` output. */
 export interface CanonicalWorldStateV1 {
@@ -301,6 +315,9 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
   if (!Array.isArray(state['food'])) malformed('state.food');
 
   const hidden = config.neural.hiddenLayerSize;
+  // The model's own input dimension — never one global count. The caller has
+  // already checked that snapshot, config and state agree on the version.
+  const inputSize = neuralInputSizeFor(config.simulationVersion);
   const organisms: OrganismRuntimeState[] = (state['organisms'] as unknown[]).map((raw, i) => {
     if (!isObject(raw)) malformed(`organism[${i}]`);
     const o = raw;
@@ -338,7 +355,7 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
           metabolism: m['metabolism'] as number,
         },
         neural: {
-          inputHiddenWeights: numArray(n['inputHiddenWeights'], `organism[${i}] inputHiddenWeights`, hidden * NEURAL_INPUT_SIZE),
+          inputHiddenWeights: numArray(n['inputHiddenWeights'], `organism[${i}] inputHiddenWeights`, hidden * inputSize),
           hiddenBiases: numArray(n['hiddenBiases'], `organism[${i}] hiddenBiases`, hidden),
           hiddenOutputWeights: numArray(n['hiddenOutputWeights'], `organism[${i}] hiddenOutputWeights`, NEURAL_OUTPUT_SIZE * hidden),
           outputBiases: numArray(n['outputBiases'], `organism[${i}] outputBiases`, NEURAL_OUTPUT_SIZE),

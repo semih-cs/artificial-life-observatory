@@ -1,4 +1,5 @@
 export * from './rng/index.js';
+export * from './model/simulationModel.js';
 export * from './config/types.js';
 export * from './config/defaults.js';
 export * from './genome/types.js';

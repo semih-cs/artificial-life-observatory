@@ -6,6 +6,7 @@ import { Genome } from '../genome/types.js';
 import { OrganismRuntimeState } from '../organism/types.js';
 import { WorldState, FoodItem, WorldConfigSnapshot } from './types.js';
 import { generateFertilityField, fertilityAt, FertilityField } from './fertility.js';
+import { simulationModel } from '../model/simulationModel.js';
 
 interface Point {
   x: number;
@@ -83,10 +84,13 @@ export const FERTILITY_PLACEMENT_ATTEMPTS = 8;
  * founder generation is the first thing that consumes that stream.
  */
 export function generateFounderProfiles(rng: RngStream, config: SimulationConfig): FounderProfile[] {
+  // The model fixes the founder controller's input dimension: 6 for 0A.1.0 /
+  // 0A.2.0 (unchanged draws), 10 for 0A.3.0 (drawn natively at full size).
+  const inputSize = simulationModel(config.simulationVersion).neuralInputSize;
   const founders: FounderProfile[] = [];
   for (let group = 0; group < effectiveFounderGroupCount(config); group++) {
     founders.push(
-      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap)
+      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap, inputSize)
     );
   }
   return founders;

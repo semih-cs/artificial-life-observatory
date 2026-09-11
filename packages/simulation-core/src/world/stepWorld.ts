@@ -13,6 +13,7 @@ import { createOffspring } from './offspring.js';
 import { regenerateFood } from './foodRegen.js';
 import { computeTickTelemetry, TickTelemetry } from '../telemetry/types.js';
 import { OrganismRuntimeState, cloneRuntimeState } from '../organism/types.js';
+import { simulationModel } from '../model/simulationModel.js';
 
 export interface StepResult {
   world: WorldState;
@@ -31,6 +32,25 @@ function makeRngStreamsFromState(state: WorldState): RngStreams {
   return {
     bootstrap: rngStreamFromState(state.rng.bootstrap, 'bootstrap'),
     canonical: rngStreamFromState(state.rng.canonical, 'canonical'),
+  };
+}
+
+/**
+ * The Sense-phase context for a world snapshot S_t (§20.72 phase 1): food,
+ * world bounds and the energy normalizer for every model; for a model with
+ * organism sensing (0A.3.0) also the S_t organism array itself — never a
+ * copy that resolution could have touched — and the authoritative morphology
+ * size bounds `bootstrap.geneBounds.size`. Pure: reads only.
+ */
+export function senseContextFor(state: WorldState, config: SimulationConfig): SenseContext {
+  const model = simulationModel(state.simulationVersion);
+  return {
+    world: state.worldConfig,
+    food: state.food,
+    energyCapacity: config.energy.energyCapacity,
+    ...(model.organismSensing
+      ? { organisms: { snapshot: state.organisms, sizeBounds: config.bootstrap.geneBounds.size } }
+      : {}),
   };
 }
 
@@ -62,19 +82,29 @@ function makeRngStreamsFromState(state: WorldState): RngStreams {
  *     ordering is by explicit organism or food ID.
  */
 export function stepWorld(state: WorldState, config: SimulationConfig): StepResult {
+  // The world's model decides its sensory contract. A world is only ever
+  // stepped under its own model's configuration: a mismatch would evaluate
+  // genomes under another model's input layout, so it is refused.
+  if (state.simulationVersion !== config.simulationVersion) {
+    throw new Error(
+      `stepWorld: world is ${state.simulationVersion} but config is ${config.simulationVersion}; ` +
+        'a world is never stepped under another model'
+    );
+  }
+  const model = simulationModel(state.simulationVersion);
+
   const streams = makeRngStreamsFromState(state);
   const canonical = streams.canonical;
 
   // ---- Phase 1: Snapshot -------------------------------------------------
   // S_t is the state as received. Sensing reads only this: food positions, the
-  // world config, and each organism's own pre-resolution state. Phase 0A has
-  // no organism-to-organism sensing (§11.58), so no organism can observe
-  // another's in-progress movement.
-  const senseCtx: SenseContext = {
-    world: state.worldConfig,
-    food: state.food,
-    energyCapacity: config.energy.energyCapacity,
-  };
+  // world config, and each organism's own pre-resolution state. Models 0A.1.0
+  // and 0A.2.0 have no organism-to-organism sensing (§11.58). Model 0A.3.0
+  // also reads the other organisms — but only from `state.organisms`, the S_t
+  // array itself, which this tick never modifies (resolution writes to
+  // clones). So no organism can observe another's in-progress movement, and
+  // sensing does not depend on the order in which organisms decide.
+  const senseCtx = senseContextFor(state, config);
 
   // Resolution writes to fresh objects: the caller's WorldState — the S_t this
   // tick reads from — is never modified, so an earlier world remains a valid,
@@ -86,7 +116,7 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // Pure. No world/organism state is mutated here and no RNG is consumed.
   const intents = new Map<number, ActionIntent>();
   for (const o of living) {
-    intents.set(o.id, decideAction(o, senseCtx, config.neural, config.neural.hiddenLayerSize));
+    intents.set(o.id, decideAction(o, senseCtx, config.neural, config.neural.hiddenLayerSize, model.neuralInputSize));
   }
 
   // ---- Phases 4-5: Movement resolution, then movement energy expenditure --

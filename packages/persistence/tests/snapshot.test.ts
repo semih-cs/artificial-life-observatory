@@ -31,7 +31,8 @@ describe('snapshot format v1', () => {
     expect(snap.state.organisms.length).toBe(world.organisms.length);
     expect(snap.state.food.length).toBe(world.food.length);
     expect(snap.checksum).toMatch(/^[0-9a-f]{64}$/);
-    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.2.0', '0A.1.0']);
+    // V2.1 adds 0A.3.0 to the same format v1; the two historical models stay supported.
+    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.3.0', '0A.2.0', '0A.1.0']);
   });
 
   it('round trip world → serialize → parse → restore preserves the canonical state exactly', () => {

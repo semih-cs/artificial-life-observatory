@@ -2,6 +2,7 @@
  * World runner CLI.
  *
  *   npm run world -- --dir worlds/demo --new --seed 20260910   create a world, then run it
+ *   npm run world -- --dir worlds/v2 --new --seed 20260910 --model 0A.3.0   create a V2.1 world
  *   npm run world -- --dir worlds/demo                         recover it and keep running
  *
  * Options:
@@ -9,6 +10,8 @@
  *   --new                 create a fresh world. Requires --seed. Refused if --dir already holds a world.
  *   --seed <uint32>       root seed for --new (default canonical config otherwise). Not accepted on recovery:
  *                         the stored world's config is used.
+ *   --model <version>     model for --new: 0A.1.0, 0A.2.0 or 0A.3.0 (default 0A.2.0, the frozen v1 model).
+ *                         Not accepted on recovery: a recovered world always keeps its stored model.
  *   --save-every <ticks>  snapshot cadence in simulation ticks (default 1000)
  *   --keep <n>            snapshots retained (default 5)
  *   --until-tick <tick>   stop, save and exit at this tick (default: run until SIGINT/SIGTERM)
@@ -21,7 +24,7 @@
  * A second signal exits immediately; the newest saved snapshot is still intact.
  */
 import * as path from 'node:path';
-import { cloneConfig, DEFAULT_SIMULATION_CONFIG } from '@alo/simulation-core';
+import { modelConfig, MULTI_FOUNDER_MODEL_VERSION, SUPPORTED_MODEL_VERSIONS } from '@alo/simulation-core';
 import { WorldRunner, DEFAULT_SAVE_EVERY } from './runner.js';
 import type { RunnerStatus } from './runner.js';
 import { startObserverServer } from './observer/server.js';
@@ -33,6 +36,7 @@ interface Args {
   dir: string;
   create: boolean;
   seed?: number;
+  model?: string;
   saveEvery: number;
   keep?: number;
   untilTick?: number;
@@ -42,7 +46,7 @@ interface Args {
   observePort?: number;
 }
 
-const USAGE = 'usage: world --dir <path> [--new --seed <uint32>] [--save-every <ticks>] [--keep <n>] [--until-tick <tick>] [--status-every <ticks>] [--ticks-per-second <n>] [--observe <port>] [--json]';
+const USAGE = 'usage: world --dir <path> [--new --seed <uint32> [--model <version>]] [--save-every <ticks>] [--keep <n>] [--until-tick <tick>] [--status-every <ticks>] [--ticks-per-second <n>] [--observe <port>] [--json]';
 
 function fail(message: string): never {
   process.stderr.write(`error: ${message}\n${USAGE}\n`);
@@ -65,6 +69,9 @@ function parseArgs(argv: readonly string[]): Args {
       case '--dir': if (value === undefined) fail('--dir needs a path'); dir = value; i++; break;
       case '--new': a.create = true; break;
       case '--seed': a.seed = intArg(key, value, 0); if (a.seed > 0xffffffff) fail('--seed must be a uint32'); i++; break;
+      case '--model':
+        if (value === undefined || !SUPPORTED_MODEL_VERSIONS.includes(value)) fail(`--model must be one of ${SUPPORTED_MODEL_VERSIONS.join(', ')}, got ${value}`);
+        a.model = value; i++; break;
       case '--save-every': a.saveEvery = intArg(key, value, 1); i++; break;
       case '--keep': a.keep = intArg(key, value, 1); i++; break;
       case '--until-tick': a.untilTick = intArg(key, value, 0); i++; break;
@@ -82,6 +89,7 @@ function parseArgs(argv: readonly string[]): Args {
   if (dir === undefined) fail('--dir is required');
   if (a.create && a.seed === undefined) fail('--new requires --seed');
   if (!a.create && a.seed !== undefined) fail('--seed is only used with --new; a recovered world keeps its stored seed');
+  if (!a.create && a.model !== undefined) fail('--model is only used with --new; a recovered world keeps its stored model');
   // npm runs workspace scripts inside the package directory; resolve relative to where it was invoked.
   const base = process.env['INIT_CWD'] ?? process.cwd();
   return { dir: path.resolve(base, dir), ...a };
@@ -108,7 +116,8 @@ async function main(): Promise<void> {
   }
   try {
     if (args.create) {
-      const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+      // Without --model a new world is the frozen v1 model 0A.2.0, exactly as before V2.
+      const config = modelConfig(args.model ?? MULTI_FOUNDER_MODEL_VERSION);
       config.rootSeed = args.seed!;
       runner = WorldRunner.create(args.dir, config, { saveEvery: args.saveEvery, keep: args.keep });
     } else {

@@ -8,6 +8,11 @@
  *
  * All motion is display-only interpolation between the two newest received
  * frames. Nothing here writes to simulation state or sends anything anywhere.
+ *
+ * The selected organism also gets its vision cone (V2.1): its geometric field
+ * of vision from the frame's position, heading, visionRange and visionAngle
+ * (`world/visionCone.ts`). It is drawn under the organisms and marks no other
+ * organism — the frame says nothing about what was sensed.
  */
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import type { FrameStore } from '../world/frameStore.js';
@@ -15,6 +20,7 @@ import type { ObserverFood, ObserverFrame, ObserverOrganism } from '../protocol/
 import { lineageColor, lighten, darken, type LineageColor } from '../world/lineageColor.js';
 import { CONTINUOUS_TICK_GAP } from '../world/sessionHistory.js';
 import { displayProgress, lerp, lerpAngle } from '../world/interpolation.js';
+import { visionCone, visionConeOutline } from '../world/visionCone.js';
 import {
   clampCamera, fitCamera, fitScale, panBy, screenToWorld, worldToScreen, wheelZoomFactor, zoomAt,
   DEFAULT_FIT_INSETS, FIT_PADDING, MAX_ZOOM_FACTOR, MIN_ZOOM_FACTOR, NO_INSETS, type CameraState, type Size,
@@ -87,6 +93,8 @@ export class WorldRenderer {
   private readonly foodLayer = new Container();
   private readonly organismLayer = new Container();
   private readonly overlayLayer = new Container();
+  /** The selected organism's vision cone, in world coordinates, beneath food and organisms. */
+  private readonly visionLayer = new Graphics();
   private readonly selectionRing = new Graphics();
   private readonly selectionLabel: Text;
 
@@ -146,7 +154,7 @@ export class WorldRenderer {
     app.canvas.style.touchAction = 'none';
     element.appendChild(app.canvas);
 
-    this.worldLayer.addChild(this.floorLayer, this.foodLayer, this.organismLayer);
+    this.worldLayer.addChild(this.floorLayer, this.visionLayer, this.foodLayer, this.organismLayer);
     this.overlayLayer.addChild(this.selectionRing, this.selectionLabel);
     app.stage.addChild(this.worldLayer, this.overlayLayer);
 
@@ -403,7 +411,7 @@ export class WorldRenderer {
     const now = performance.now();
     const dt = Math.min(100, now - this.lastFrameMs);
     this.lastFrameMs = now;
-    if (this.latest === null) { this.selectionRing.clear(); this.selectionLabel.text = ''; return; }
+    if (this.latest === null) { this.selectionRing.clear(); this.visionLayer.clear(); this.selectionLabel.text = ''; return; }
 
     const t = this.paused ? 1 : displayProgress(now - this.latestAt, this.intervalMs);
     const emphasis = this.emphasisLineage;
@@ -471,8 +479,35 @@ export class WorldRenderer {
       }
     }
 
+    this.drawVisionCone();
     this.drawSelection(now);
   };
+
+  /**
+   * The selected organism's field of vision: apex at its displayed
+   * (interpolated) position, centred on its displayed heading, radius and
+   * width from the newest frame's visionRange and visionAngle. Nothing is
+   * drawn when nothing is selected or the selection is no longer alive.
+   */
+  private drawVisionCone(): void {
+    const g = this.visionLayer;
+    g.clear();
+    const id = this.selectedId;
+    const v = id === null ? undefined : this.organisms.get(id);
+    const o = id === null ? undefined : this.latestById.get(id);
+    if (v === undefined || o === undefined || v.phase === 'dying') return;
+    const cone = visionCone(o, { x: v.x, y: v.y, heading: v.heading });
+    if (cone === null) return;
+    const px = 1 / Math.max(1e-6, this.camera.scale); // one screen pixel in world units
+    const tint = lighten(v.color.hex, 0.45);
+    g.poly(visionConeOutline(cone), true)
+      .fill({ color: tint, alpha: 0.075 })
+      .stroke({ width: 1.2 * px, color: tint, alpha: 0.55, join: 'round' });
+    // a faint centre line along the heading, to the edge of the range
+    g.moveTo(cone.cx, cone.cy)
+      .lineTo(cone.cx + Math.cos(v.heading) * cone.radius, cone.cy + Math.sin(v.heading) * cone.radius)
+      .stroke({ width: 1 * px, color: tint, alpha: 0.18 });
+  }
 
   private drawSelection(now: number): void {
     const g = this.selectionRing;

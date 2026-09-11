@@ -22,16 +22,36 @@ function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
-export function evaluateNetwork(genome: NeuralGenome, input: readonly number[], hiddenSize: number): RawNetworkOutputs {
-  if (input.length !== NEURAL_INPUT_SIZE) {
-    throw new Error(`evaluateNetwork: expected ${NEURAL_INPUT_SIZE} inputs (§11.58), got ${input.length}`);
+/**
+ * `inputSize` is the model's neural input dimension — 6 for the v1 models
+ * 0A.1.0 / 0A.2.0 (the default, so every v1 call site keeps its exact
+ * historical meaning), 10 for 0A.3.0; callers obtain it from
+ * `simulationModel(simulationVersion).neuralInputSize`. Both the input vector
+ * and the genome's input->hidden block must match it: a genome of one model is
+ * never silently evaluated under another model's layout (row-major
+ * [hidden x input] weights would otherwise be read with the wrong stride).
+ */
+export function evaluateNetwork(
+  genome: NeuralGenome,
+  input: readonly number[],
+  hiddenSize: number,
+  inputSize: number = NEURAL_INPUT_SIZE
+): RawNetworkOutputs {
+  if (input.length !== inputSize) {
+    throw new Error(`evaluateNetwork: expected ${inputSize} inputs, got ${input.length}`);
+  }
+  if (genome.inputHiddenWeights.length !== hiddenSize * inputSize) {
+    throw new Error(
+      `evaluateNetwork: genome has ${genome.inputHiddenWeights.length} input->hidden weights, ` +
+        `expected ${hiddenSize * inputSize} (${hiddenSize} hidden x ${inputSize} inputs)`
+    );
   }
 
   const hidden: number[] = new Array(hiddenSize);
   for (let h = 0; h < hiddenSize; h++) {
     let sum = genome.hiddenBiases[h] ?? 0;
-    for (let i = 0; i < NEURAL_INPUT_SIZE; i++) {
-      const w = genome.inputHiddenWeights[h * NEURAL_INPUT_SIZE + i] ?? 0;
+    for (let i = 0; i < inputSize; i++) {
+      const w = genome.inputHiddenWeights[h * inputSize + i] ?? 0;
       sum += w * (input[i] ?? 0);
     }
     hidden[h] = tanh(sum);

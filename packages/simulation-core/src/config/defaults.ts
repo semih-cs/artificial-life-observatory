@@ -1,18 +1,23 @@
 import { SimulationConfig } from './types.js';
+import {
+  SINGLE_FOUNDER_MODEL_VERSION,
+  MULTI_FOUNDER_MODEL_VERSION,
+  ORGANISM_SENSING_MODEL_VERSION,
+} from '../model/simulationModel.js';
 
 /**
- * Model identities (§13.76 and its amendment).
+ * Model identities (§13.76, its amendment, and V2.1). The version strings and
+ * their structural meaning (neural input dimension, organism sensing) live in
+ * `model/simulationModel.ts`; they are re-exported here for existing callers.
  *
- * The bootstrap rule is the only difference between them, and it changes the
- * canonical trajectory, so the two are different models and must never share a
- * regression reference or be mixed in one analysis.
+ *   0A.1.0 vs 0A.2.0: the bootstrap rule is the only difference.
+ *   0A.2.0 vs 0A.3.0: 0A.3.0 appends four nearest-visible-organism inputs
+ *   (10 -> 8 -> 4 instead of 6 -> 8 -> 4); everything else is 0A.2.0.
+ *
+ * Each changes the canonical trajectory, so they are different models and must
+ * never share a regression reference or be mixed in one analysis.
  */
-
-/** Historical model: one founder controller, 25 near-clones of it. */
-export const SINGLE_FOUNDER_MODEL_VERSION = '0A.1.0';
-
-/** Amended model: 5 independent founder controllers, 5 organisms each. */
-export const MULTI_FOUNDER_MODEL_VERSION = '0A.2.0';
+export { SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION };
 
 /**
  * The historical single-founder model's deterministic regression reference:
@@ -22,6 +27,17 @@ export const MULTI_FOUNDER_MODEL_VERSION = '0A.2.0';
  * `singleFounderModelConfig()`.
  */
 export const SINGLE_FOUNDER_GOLDEN_HASH = '6a6576bd49e86b27';
+
+/**
+ * The V2.1 organism-sensing model's deterministic regression reference:
+ * `organismSensingModelConfig()`, seed 20260910, 10,000 ticks — the same
+ * canonical seed and tick count as the other two models. It belongs to
+ * ORGANISM_SENSING_MODEL_VERSION only. It is evidence of trajectory stability
+ * for this model, not of biological quality. The frozen v1 references
+ * (`b95a0b4ef7dd8449` for 0A.2.0, SINGLE_FOUNDER_GOLDEN_HASH for 0A.1.0) are
+ * unchanged and must never be replaced by it.
+ */
+export const ORGANISM_SENSING_GOLDEN_HASH = 'e54d0c11249b7849';
 
 const DEG = Math.PI / 180;
 
@@ -180,6 +196,34 @@ export function singleFounderModelConfig(): SimulationConfig {
   config.simulationVersion = SINGLE_FOUNDER_MODEL_VERSION;
   config.bootstrap.founderGroupCount = 1;
   return config;
+}
+
+/**
+ * The V2.1 organism-sensing model `0A.3.0`: the frozen v1 `0A.2.0` defaults
+ * (five founder groups, unchanged mutation, ecology and bootstrap fixtures)
+ * with only the model identity changed. The version selects the 10-input
+ * sensory contract (see `model/simulationModel.ts`); no other configuration
+ * value differs from DEFAULT_SIMULATION_CONFIG.
+ */
+export function organismSensingModelConfig(): SimulationConfig {
+  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  config.simulationVersion = ORGANISM_SENSING_MODEL_VERSION;
+  return config;
+}
+
+/**
+ * The configuration of a supported model by version: 0A.1.0 →
+ * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
+ * `organismSensingModelConfig()`. Always a fresh copy. Throws for any other
+ * version.
+ */
+export function modelConfig(simulationVersion: string): SimulationConfig {
+  switch (simulationVersion) {
+    case SINGLE_FOUNDER_MODEL_VERSION: return singleFounderModelConfig();
+    case MULTI_FOUNDER_MODEL_VERSION: return cloneConfig(DEFAULT_SIMULATION_CONFIG);
+    case ORGANISM_SENSING_MODEL_VERSION: return organismSensingModelConfig();
+    default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
+  }
 }
 
 /** Deep-clone the default config so callers can override fields without aliasing. */
