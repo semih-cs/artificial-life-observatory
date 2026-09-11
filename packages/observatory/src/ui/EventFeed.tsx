@@ -62,7 +62,18 @@ export function EventFeed({ events, limit = EVENT_FEED_RENDER_LIMIT, focusLineag
                   <span className="dim"> · lineage </span><span className="mono">#{e.lineageRootId}</span>
                   <span className="dim"> · gen {e.generationDepth}</span>
                 </span>
-                <span className="feed-note dim">t {formatInt(e.tick)}</span>
+                <span className="feed-note dim">
+                  {e.morphologyChanges !== null ? (
+                    <span
+                      className={`feed-morph${e.morphologyChanges > 0 ? ' feed-morph-changed' : ''}`}
+                      data-testid="feed-morph"
+                      title={e.morphologyChanges > 0 ? `${e.morphologyChanges} of 5 morphology genes differ from parent #${e.parentId}` : 'no morphology difference from parent at protocol precision'}
+                    >
+                      Δ{e.morphologyChanges}
+                    </span>
+                  ) : null}
+                  t {formatInt(e.tick)}
+                </span>
               </li>
             );
           }

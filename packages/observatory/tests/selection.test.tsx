@@ -4,6 +4,21 @@ import { inspectorGroups, resolveSelection } from '../src/world/selection.js';
 import { Inspector } from '../src/ui/Inspector.js';
 import { Hud } from '../src/ui/Hud.js';
 import { FrameStore } from '../src/world/frameStore.js';
+import { MorphologyCache } from '../src/world/morphologyCache.js';
+import { inheritanceView } from '../src/world/inheritance.js';
+
+const inspector = (view: NonNullable<ReturnType<typeof resolveSelection>>) => (
+  <Inspector
+    selection={view}
+    energyScale={100}
+    lineageFocused={false}
+    inheritance={inheritanceView(view.organism, new MorphologyCache(), () => false)}
+    isAlive={() => false}
+    onSelectOrganism={() => {}}
+    onToggleLineageFocus={() => {}}
+    onDeselect={() => {}}
+  />
+);
 import { frame, organism } from './fixtures.js';
 
 describe('organism selection', () => {
@@ -14,21 +29,24 @@ describe('organism selection', () => {
     expect(view!.alive).toBe(true);
     expect(view!.lastSeenTick).toBe(3000);
     const groups = inspectorGroups(view!, 100);
-    expect(groups.map((g) => g.title)).toEqual(['Identity', 'Life', 'Morphology']);
+    expect(groups.map((g) => g.title)).toEqual(['Identity', 'Life']);
     const flat = Object.fromEntries(groups.flatMap((g) => g.fields.map((x) => [x.label, x.value])));
     expect(flat).toMatchObject({
       'ID': '#42', 'Parent': '#7', 'Lineage root': '#2', 'Generation': '3', 'Age': '812 ticks', 'Energy': '63.4',
-      'Size': '1.234', 'Max speed': '1.500', 'Vision range': '120.5', 'Metabolism': '0.900',
     });
-    expect(flat['Vision angle']).toContain('1.571 rad');
-    expect(flat['Vision angle']).toContain('90°');
+    expect(groups[0]!.fields.find((f) => f.label === 'Parent')!.organismId).toBe(7);
     const energy = groups[1]!.fields.find((x) => x.label === 'Energy')!;
     expect(energy.fraction).toBeCloseTo(0.634, 6);
 
-    const html = renderToStaticMarkup(
-      <Inspector selection={view!} energyScale={100} lineageFocused={false} onToggleLineageFocus={() => {}} onDeselect={() => {}} />,
-    );
+    const html = renderToStaticMarkup(inspector(view!));
     expect(html).toContain('Organism #42');
+    // morphology now lives in the inheritance section, at protocol precision
+    expect(html).toContain('1.234');
+    expect(html).toContain('1.500');
+    expect(html).toContain('120.500');
+    expect(html).toContain('1.571');
+    expect(html).toContain('90.0°');
+    expect(html).toContain('0.900');
     expect(html).toContain('alive · observed at tick 3,000');
     expect(html).toContain('Focus lineage');
     expect(html).not.toMatch(/healthy|weak|strong|dying|intelligent|aggressive|fit\b/i);
@@ -50,9 +68,7 @@ describe('organism selection', () => {
     // stays stable across further frames, and never resurrects on its own
     const later = resolveSelection(gone, 5, frame({ tick: 12, organisms: [] }));
     expect(later).toBe(gone);
-    const html = renderToStaticMarkup(
-      <Inspector selection={gone!} energyScale={100} lineageFocused={false} onToggleLineageFocus={() => {}} onDeselect={() => {}} />,
-    );
+    const html = renderToStaticMarkup(inspector(gone!));
     expect(html).toContain('no longer alive');
     expect(html).toContain('last seen at tick 10');
   });

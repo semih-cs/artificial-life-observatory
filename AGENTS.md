@@ -229,7 +229,7 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-**ACTIVE — slices 1 and 2 done.** `packages/observatory` (React + TypeScript +
+**ACTIVE — slices 1–3 done.** `packages/observatory` (React + TypeScript +
 Vite + PixiJS) consumes the read-only observer stream from
 `packages/world-runner`: `--observe <port>`, observer protocol v1, see
 README. It never sends commands that change the world (§14.50). Scope:
@@ -244,8 +244,10 @@ energy), food, births/deaths, interpolated motion, camera, selection with
 lineage emphasis, an organism inspector, HUD and connection states. Slice 2
 is evolution visibility: a living-lineage panel, a birth/death event feed
 and session-only population/generation trends, all derived in the browser
-from received frames. Later slices: mutation visibility, genealogy — see
-`PROJECT_STATUS.md`.
+from received frames. Slice 3 is inherited morphology: the inspector shows
+the five protocol morphology genes next to the parent's with exact deltas
+(from a bounded session cache), births carry a Δ count. Later slices:
+genealogy, neural fingerprints — see `PROJECT_STATUS.md`.
 
 Frontend rules that hold from now on:
 
@@ -259,8 +261,9 @@ Frontend rules that hold from now on:
   view never pauses the simulation.
 - **No unbounded history in the UI.** The frame store keeps the newest
   frame and the previous one. The only history is `world/sessionHistory.ts`
-  (slice 2): session-only, fixed bounds (80 feed events, 300 trend samples
-  every 10 ticks, 6 recently-extinct lineages), never persisted, never sent,
+  (slices 2–3): session-only, fixed bounds (80 feed events, 300 trend
+  samples every 10 ticks, 6 recently-extinct lineages, 4,000 morphology
+  records with least-recently-seen eviction), never persisted, never sent,
   and cleared when a frame from a different world identity
   `(simulationVersion, configHash, rootSeed)` arrives. It is not an event
   database and not scientific evidence. Any new history must be bounded the
@@ -279,6 +282,15 @@ Frontend rules that hold from now on:
   number, generation is a depth, and no qualitative labels (healthy, weak,
   fit, intelligent, adapted, successful, species, …) are invented. Lineages
   are lineages.
+- **Inheritance is compared, never guessed.** A parent → child morphology
+  difference is compared only between values actually received in this
+  session (`world/inheritance.ts`, `world/morphologyCache.ts`); a parent
+  never observed is reported as unavailable. Two protocol values differ iff
+  they are not identical (no epsilon; protocol precision is 0.001), and a
+  difference may be called a morphology mutation because genomes are fixed
+  for life and change only at reproduction (§13). It is never called
+  beneficial, harmful, fit or adapted. Neural genomes are not in the frame
+  and are not shown.
 - **Organisms live in Pixi, not React.** React owns the shell (HUD,
   inspector, controls, connection); entities are Pixi display objects reused
   across frames. React state updates at most once per frame.
@@ -482,7 +494,9 @@ selection and the inspector, interpolation bounds and angular wrap, lineage
 colour determinism and the camera; and (slice 2) lineage aggregation,
 birth/death derivation, frame-gap safety, bounded feed and trend,
 world-identity reset, reconnect preservation and the rendered evolution
-panel. `npm run build` type-checks and bundles it. The live check — a world runner with `--observe` plus the built
+panel; and (slice 3) parent → child morphology deltas, the morphology cache
+bound and reset, birth Δ counts and the rendered inheritance section.
+`npm run build` type-checks and bundles it. The live check — a world runner with `--observe` plus the built
 Observatory in a browser — is manual (or scripted with a headless browser
 where one is available) and is recorded in `PROJECT_STATUS.md`.
 

@@ -11,9 +11,11 @@
  *
  * Bounds (all fixed): the event feed keeps at most `maxEvents` entries, the
  * trend keeps at most `maxTrendPoints` samples taken every `sampleTicks`
- * ticks, and the recently-extinct list keeps at most `maxRecentExtinct`
- * lineages. Per-lineage counts exist only inside retained trend samples, so
- * memory is bounded by (samples × lineages alive in them).
+ * ticks, the recently-extinct list keeps at most `maxRecentExtinct`
+ * lineages, and the morphology cache keeps at most `maxMorphologyEntries`
+ * organisms (least-recently-seen evicted). Per-lineage counts exist only
+ * inside retained trend samples, so memory is bounded by (samples × lineages
+ * alive in them).
  *
  * The history belongs to one world identity `(simulationVersion, configHash,
  * rootSeed)`. A frame from a different identity clears it; a reconnect to the
@@ -21,6 +23,8 @@
  */
 import type { ObserverFrame, ObserverOrganism } from '../protocol/observerV1.js';
 import { summarizeLineages, type LineageAggregate } from './lineages.js';
+import { MorphologyCache, DEFAULT_MAX_MORPHOLOGY_ENTRIES } from './morphologyCache.js';
+import { morphologyChangesFromCache } from './inheritance.js';
 
 /** Largest forward tick step between two received frames that still counts as continuous observation. */
 export const CONTINUOUS_TICK_GAP = 8;
@@ -48,6 +52,12 @@ export interface BirthEvent {
   parentId: number | null;
   lineageRootId: number;
   generationDepth: number;
+  /**
+   * Morphology genes (of 5) that differ from the parent at protocol
+   * precision, or null when the parent was not observed this session.
+   * Never guessed.
+   */
+  morphologyChanges: number | null;
 }
 
 export interface DeathEvent {
@@ -120,6 +130,9 @@ export interface HistorySnapshot {
   resets: number;
   /** Frames folded into this history since the last reset. */
   framesObserved: number;
+  /** Observed births (consecutive frames) whose parent morphology was known, and how many of those differed in ≥ 1 gene. Session counters. */
+  birthsComparable: number;
+  birthsChanged: number;
 }
 
 export interface SessionHistoryOptions {
@@ -128,6 +141,7 @@ export interface SessionHistoryOptions {
   sampleTicks?: number;
   maxRecentExtinct?: number;
   continuousTickGap?: number;
+  maxMorphologyEntries?: number;
 }
 
 const EMPTY_EVENTS: readonly FeedEvent[] = Object.freeze([]);
@@ -140,6 +154,7 @@ export class SessionHistory {
   private readonly sampleTicks: number;
   private readonly maxRecentExtinct: number;
   private readonly continuousTickGap: number;
+  private readonly morphologyCache: MorphologyCache;
 
   private identity: WorldIdentity | null = null;
   private lastFrame: ObserverFrame | null = null;
@@ -158,6 +173,8 @@ export class SessionHistory {
   private eventSeq = 0;
   private resets = 0;
   private framesObserved = 0;
+  private birthsComparable = 0;
+  private birthsChanged = 0;
   private snapshotValue: HistorySnapshot;
   private readonly listeners = new Set<() => void>();
 
@@ -167,6 +184,7 @@ export class SessionHistory {
     this.sampleTicks = options.sampleTicks ?? DEFAULT_TREND_SAMPLE_TICKS;
     this.maxRecentExtinct = options.maxRecentExtinct ?? DEFAULT_MAX_RECENT_EXTINCT;
     this.continuousTickGap = options.continuousTickGap ?? CONTINUOUS_TICK_GAP;
+    this.morphologyCache = new MorphologyCache(options.maxMorphologyEntries ?? DEFAULT_MAX_MORPHOLOGY_ENTRIES);
     this.snapshotValue = this.buildSnapshot();
   }
 
@@ -194,6 +212,11 @@ export class SessionHistory {
     const last = this.lastFrame;
     let eventsChanged = false;
 
+    // Events are derived before this frame's organisms enter the cache, so a
+    // birth is compared against a parent seen in an earlier frame only.
+    // (A parent is always older than its child, so it is already cached
+    // whenever it was observed at all.)
+
     if (last !== null) {
       const step = frame.tick - last.tick;
       const continuous = step > 0 && step <= this.continuousTickGap;
@@ -207,6 +230,7 @@ export class SessionHistory {
     }
 
     const trendChanged = this.maybeSample(frame, lineages);
+    this.morphologyCache.observe(frame.organisms, frame.tick);
 
     this.lastFrame = frame;
     this.lastById = map;
@@ -233,6 +257,9 @@ export class SessionHistory {
     this.trendView = EMPTY_TREND;
     this.extinctView = EMPTY_EXTINCT;
     this.framesObserved = 0;
+    this.birthsComparable = 0;
+    this.birthsChanged = 0;
+    this.morphologyCache.clear();
   }
 
   private deriveEvents(frame: ObserverFrame, byId: ReadonlyMap<number, ObserverOrganism>, lineages: LineageAggregate): boolean {
@@ -245,7 +272,12 @@ export class SessionHistory {
     }
     for (const o of frame.organisms) {
       if (!this.lastById.has(o.id)) {
-        this.addEvent({ kind: 'birth', seq: 0, tick: frame.tick, id: o.id, parentId: o.parentId, lineageRootId: o.lineageRootId, generationDepth: o.generationDepth });
+        const morphologyChanges = morphologyChangesFromCache(o, this.morphologyCache);
+        if (morphologyChanges !== null) {
+          this.birthsComparable++;
+          if (morphologyChanges > 0) this.birthsChanged++;
+        }
+        this.addEvent({ kind: 'birth', seq: 0, tick: frame.tick, id: o.id, parentId: o.parentId, lineageRootId: o.lineageRootId, generationDepth: o.generationDepth, morphologyChanges });
         changed = true;
       }
     }
@@ -325,8 +357,13 @@ export class SessionHistory {
       trend: this.trendView,
       resets: this.resets,
       framesObserved: this.framesObserved,
+      birthsComparable: this.birthsComparable,
+      birthsChanged: this.birthsChanged,
     };
   }
+
+  /** The bounded session morphology cache (read-only use: parent lookups for the inspector). */
+  morphology(): MorphologyCache { return this.morphologyCache; }
 
   /** Stable between pushes; a new object after each push, so it works with useSyncExternalStore. */
   snapshot(): HistorySnapshot { return this.snapshotValue; }

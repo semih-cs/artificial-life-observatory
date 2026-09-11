@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-11 (Phase 0D slice 2)
+**Last updated:** 2026-09-11 (Phase 0D slice 3)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -18,7 +18,7 @@
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
-| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1 and 2 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. **Next:** mutation visibility |
+| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1–3 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. **Next:** a compact genealogy view |
 
 **Frozen v1 biological model:**
 
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0D slice 2, evolution visibility in the Observatory:
+Phase 0D slice 3, inherited morphology in the Observatory:
 
 ```text
-(HEAD)  Phase 0D slice 2: Observatory evolution visibility — lineage panel, birth/death feed, session-only trends — see `git log -1`
+(HEAD)  Phase 0D slice 3: Observatory inherited morphology — parent → child gene deltas, birth Δ counts, morphology cache — see `git log -1`
+ddfcda3 Phase 0D slice 2: Observatory evolution visibility — lineage panel, birth/death feed, session-only trends
 e809686 Phase 0D slice 1: Observatory frontend — live world view over observer protocol v1
 96732ab Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing
 68865c7 Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop)
@@ -126,23 +127,25 @@ persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuati
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
 world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
                                              golden observer / paced / paced+observer 3)
-observatory tests:         59 / 59  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
+observatory tests:         69 / 69  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
                                              frame store 4; interpolation 5; lineage colour 5; camera 5;
-                                             slice 2: lineage aggregation 4; session history 10; evolution panel 6) — ≈ 1.3 s
-workspace total:          487 / 487 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
+                                             slice 2: lineage aggregation 4; session history 10; evolution panel 6;
+                                             slice 3: inheritance, cache, birth feed, inspector section 10) — ≈ 1.3 s
+workspace total:          497 / 497 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
 workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner, then observatory:
                                 tsc --noEmit + vite build, ≈ 8 s total)
-live integration:          27 / 27 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 2 section)
+live integration:          34 / 34 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 3 section)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Observatory slice 2 checkpoint (the biology, persistence
-and runner packages are byte-for-byte unchanged by this slice: `git diff
---stat` touches only `packages/observatory/` and the three documentation
-files; no dependency was added), at the slice 1 checkpoint, at the
+Re-confirmed at the Observatory slice 3 checkpoint (the biology, persistence
+and runner packages are byte-for-byte unchanged by slices 2 and 3: `git
+diff --stat` touches only `packages/observatory/` and the three
+documentation files; no dependency was added), at the slice 2 and slice 1
+checkpoints, at the
 observer-bridge checkpoint, and at every Phase 0C checkpoint before it:
 
 - the amended hash via `npm run simulate`;
@@ -1975,22 +1978,148 @@ markers rather than inventing events. The JS work per frame is small
 **Not in this slice** (later Observatory slices): mutation visibility
 (morphology/neural change between parent and child), a genealogy tree,
 neural fingerprints (needs an on-demand message and a protocol bump),
-organism search, mobile polish, persistent history.
+organism search, mobile polish, persistent history. (Morphology mutation
+visibility is now slice 3, below.)
+
+## Phase 0D slice 3 — RESULT: DONE (inherited morphology / mutation visibility)
+
+No change to simulation-core, experiment-harness, persistence or
+world-runner. No change to biology, `simulationVersion`, the snapshot
+format, the store, or observer protocol v1 (the five morphology genes are
+already in every frame). No database, server, REST API, authentication,
+mutation command or new dependency. The Observatory stays read-only (the
+read-only test is unchanged; the live check counted 0 WebSocket data frames
+sent).
+
+**What may be said, verified against the core:** `biology/mutation.ts`
+derives a child genome as an exact parent clone followed by the morphology
+and neural mutation channels, at reproduction only; the genome is
+immutable for life (§13.4). So a parent → child morphology difference is a
+morphology mutation at that birth, and the UI labels it so. Protocol v1
+rounds morphology to 0.001 (`observer/frame.ts` `r3`), a pure function of
+the stored value, so identical stored genes always show identical — an
+observed difference is real — while a sub-0.001 mutation can show as no
+difference ("at protocol precision"). Comparison rule: two protocol values
+differ iff not identical; no epsilon; deltas shown with 3 decimals and a
+0.001 step is never rounded away.
+
+**Code** (`packages/observatory/src`):
+
+- `world/morphologyCache.ts` — `MorphologyCache`: id → {id, parentId,
+  lineageRootId, generationDepth, five genes, lastSeenTick}; bounded at
+  `DEFAULT_MAX_MORPHOLOGY_ENTRIES = 4000`; `observe(organisms, tick)` is
+  O(N) per frame and re-touches known ids (Map re-insertion), so eviction
+  is least-recently-seen: living organisms stay, the longest-dead leave
+  first. Owned by `SessionHistory`, so it is cleared on a world-identity
+  change and kept across a same-world reconnect (`history.morphology()`).
+- `world/inheritance.ts` — `compareMorphology(parent, child)` → five
+  `GeneDelta` (parent, child, exact delta, relative delta, changed) and a
+  changed count; `inheritanceView(organism, cache, parentAlive)` →
+  `founder | unavailable | alive | observed(lastSeenTick)` plus the
+  comparison when the parent's morphology is known; `inheritanceSummary`
+  (*N / 5 morphology genes differ from parent* / *No morphology difference
+  from parent at protocol precision* / *Founder — no parent comparison* /
+  *Parent comparison unavailable*); `morphologyChangesFromCache` for
+  births (null when the parent was never observed — never guessed).
+- `world/sessionHistory.ts` — births are derived before the frame's
+  organisms enter the cache (a parent is always older than its child, so it
+  is cached whenever it was observed at all); `BirthEvent.morphologyChanges:
+  number | null`; session counters `birthsComparable` / `birthsChanged` in
+  the snapshot.
+- `ui/Inheritance.tsx` — the inspector's *Inherited morphology* section:
+  summary (bold when ≥ 1 gene differs); parent line — **Parent #id** button
+  when alive (selects it), *observed · last seen at tick N* when dead but
+  cached, *morphology not observed in this session* when unavailable,
+  *Founder · generation 0 · lineage #r* for founders — then `→ #child gen
+  g`; a five-row table Gene / Parent / Current / Δ / bar. Changed rows: bold
+  current value, ▲/▼ mark, signed delta (cool tint up, warm-neutral tint
+  down — neither means good or bad), a tiny centred bar in the lineage
+  colour scaled by the relative change (clipped ±25 %). Unchanged rows
+  subdued. Founders and unavailable parents show current values only. A
+  footer states the precision and that neural genome differences are not
+  shown.
+- `world/selection.ts` — the Morphology group is gone from
+  `inspectorGroups` (Identity, Life remain); the Parent field carries
+  `organismId` and the inspector renders it as a link when that organism is
+  alive. `ui/Inspector.tsx` takes `inheritance`, `isAlive`,
+  `onSelectOrganism`; `App.tsx` builds the view once per frame from the
+  session cache.
+- `ui/EventFeed.tsx` — born rows carry a **Δn** badge (highlighted for
+  n ≥ 1, plain *Δ0* for a comparable unchanged birth, absent when the
+  parent was not observed). `ui/EvolutionPanel.tsx` — *Morphology changes
+  · changed / comparable observed births* (session counters; not called a
+  rate).
+- Not implemented (allowed to skip): a world-side birth cue for mutated
+  newborns; the renderer is unchanged in this slice.
+
+**Bounds and cost:** parent lookup is O(1) by id; per frame one O(N)
+cache touch in addition to slice 2's passes; per birth one five-gene
+comparison; the inspector view is one comparison per frame for the
+selected organism. Memory: ≤ 4,000 records of six numbers each.
+
+**Proof** (10 new tests; 69 in observatory):
+
+| Requirement | Test | Result |
+|---|---|---|
+| parent → child comparison | `inheritance.test.tsx` | known parent/child → five deltas in gene order: +0.032 size, −8.5 vision range, +0.001 metabolism (a protocol step, never rounded away), 0 for max speed and vision angle; changed count 3; relative delta; `formatDelta` `+0.032` / `−8.500` / `0` |
+| unchanged genes | `inheritance.test.tsx` | identical child → 0 differences, every delta 0 and unchanged |
+| founder | `inheritance.test.tsx` | `founder`, no comparison, *Founder — no parent comparison* |
+| missing parent | `inheritance.test.tsx` | child cached, parent never seen → `unavailable`, no comparison, births report null |
+| dead cached parent | `inheritance.test.tsx` | parent seen at tick 100, absent at 101 → `observed · last seen 100` with the full comparison; alive lookup → `alive` |
+| cache bound | `inheritance.test.tsx` | cap 100 over 1,000 frames with 40 long-lived + 3 births per frame → never above 100, the 40 re-seen ids retained, long-dead evicted, newest kept |
+| world identity reset / reconnect | `inheritance.test.tsx` | through `SessionHistory`: a parent dead across a missed-frame gap is still compared (same world); a different `rootSeed` clears the cache and the same parent id is `unavailable` |
+| birth feed integration | `inheritance.test.tsx` | births `[20 → 3, 21 → 0, 30 → null]`; counters 2 comparable / 1 changed; feed renders `Δ3` (highlighted), `Δ0`, no badge for the unknown parent; Evolution stat `1 / 2` |
+| inspector section | `inheritance.test.tsx` | summary, `data-changed` per gene, `+0.032` / `−8.500` / `+0.001`, up/down/same classes, parent button and Identity link when alive; dead parent → *observed · last seen*, no button; unavailable → *Parent comparison unavailable*; founder → own values, no comparison; no fit/beneficial/harmful/adapted/superior wording |
+| read-only guarantee | `connection.test.ts` (unchanged) | the socket type has no `send`; zero transmissions across the lifecycle |
+| selection groups | `selection.test.tsx` (updated) | groups are Identity + Life; morphology values render in the inheritance section at 3 decimals; Parent field carries `organismId` |
+
+**Live integration** (34 / 34 checks; runner `--observe 8787` on the
+golden seed created to tick 2,700, paced at 10 ticks/s, production build,
+headless Chromium 1440×900 via Playwright; a second world, seed 424242
+created to tick 700, for the world-change phase):
+
+1. selecting a born organism from the feed opens the inspector with the
+   comparison (*1 / 5 morphology genes differ from parent*, Parent #74
+   alive · gen 2 → #139 gen 3);
+2. changed genes obvious (bold current value, ▲ +0.149, bar), 4 unchanged
+   rows subdued;
+3. parent navigation: clicking **Parent #74** selects it; the chain ended
+   at *Parent #15 observed · last seen at tick 2,999 · gen 0* — a founder
+   that reached `maxAge` 3,000 during the run — so a dead parent was
+   compared from the cache (item 6);
+4. births in the feed carry Δ badges (19 comparable, 11 with ≥ 1 change);
+   Evolution shows *Morphology changes 18 / 41*;
+5. after the runner restart (same world) the panel and history continue;
+   after switching to the other world the cache holds only that world: the
+   first birth's parent is *alive* there, and clicking it shows *Founder —
+   no parent comparison* with five current values and no comparison rows
+   (items 7–9);
+6. slice 1–2 features intact (lineage focus, sparklines, zoom/fit/pause,
+   gap marker on reconnect, identity reset); 0 WebSocket frames sent of
+   1,009 received; no console errors.
+
+Screenshots were inspected; one layout fix before sign-off: gene labels
+wrapped at 340 px, so the table now uses 11.5 px, a 40 px bar and the
+`rad` unit under the label.
+
+**Not in this slice** (later Observatory slices): a genealogy view, neural
+fingerprints / neural mutation visibility (needs an on-demand message and a
+protocol bump), organism search, a world-side mutated-birth cue, mobile
+polish, persistent history.
 
 ## NEXT EXACT STEP
 
-**Phase 0D slice 3 — mutation visibility: parent → child morphology
-change.** In the inspector, when the selected organism's parent is still in
-the newest frame (or was seen in this session's bounded history), show the
-five morphology genes side by side with the parent's — size, max speed,
-vision range, vision angle, metabolism — with the numeric delta and a small
-mark on each field that changed. Nothing is interpreted: no "better",
-"worse" or "adapted"; a difference is a difference. Add a bounded
-session-only cache of last-seen morphology per organism id (the same bound
-discipline as `sessionHistory.ts`, e.g. ≤ 2,000 ids, LRU) so a parent that
-died recently can still be compared. Derived from protocol-v1 frames only;
-no backend change, no protocol bump. Tests: delta computation, the cache
-bound, and the rendered comparison (rendered with `react-dom/server`, no
-qualitative labels).
+**Phase 0D slice 4 — a compact ancestry strip in the inspector.** From
+the session morphology cache (which already holds id, parent, generation
+and genes per observed organism), walk the selected organism's parent
+chain as far as the cache knows it and show it as a small vertical strip:
+`founder #r · gen 0 → #a · gen 1 → … → #selected`, each hop with its
+morphology-change count (from `compareMorphology`), alive / observed /
+unavailable state, and clickable when alive. Stop at the first ancestor
+not in the cache and say so ("earlier ancestors not observed this
+session"). Bounded by the cache and the generation depth; no new storage,
+no backend change, no protocol bump, no full tree. Tests: chain walking
+with a gap in the cache, hop deltas, founder termination, the rendered
+strip with no qualitative labels.
 
 Backend work stays limited to what the frontend demonstrably needs.

@@ -30,6 +30,11 @@ export function EvolutionPanel({ history, focusLineage, selectedLineage, onToggl
           <span className="stat-label">Lineages</span>
           <span className="stat-value">{agg ? agg.lineages.length : '—'}</span>
         </span>
+        <span className="stat" title="Observed births (consecutive frames) whose parent morphology was known this session, and how many differed in at least one of the five morphology genes at protocol precision">
+          <span className="stat-label">Morphology changes</span>
+          <span className="stat-value" data-testid="evo-morph">{history.birthsComparable > 0 ? `${history.birthsChanged} / ${history.birthsComparable}` : '—'}</span>
+          <span className="stat-note dim">observed births</span>
+        </span>
       </div>
       <TrendPanel trend={history.trend} />
       <LineagePanel

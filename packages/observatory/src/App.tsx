@@ -4,6 +4,7 @@ import { FrameStore } from './world/frameStore.js';
 import { SessionHistory } from './world/sessionHistory.js';
 import { resolveSelection, type SelectionView } from './world/selection.js';
 import { toggleLineageFocus } from './world/lineages.js';
+import { inheritanceView } from './world/inheritance.js';
 import { observerWsUrl } from './config.js';
 import type { CameraState } from './render/camera.js';
 import { WorldView, type WorldViewHandle } from './ui/WorldView.js';
@@ -110,6 +111,13 @@ export function App() {
   }, []);
 
   const energyScale = Math.max(100, summary?.maxEnergy ?? 0);
+  const isAlive = useCallback((id: number) => store.organism(id) !== undefined, [store]);
+  // Parent → child morphology from the session cache; recomputed once per frame (the cache is updated per frame).
+  const inheritance = useMemo(
+    () => (selection !== null ? inheritanceView(selection.organism, history.morphology(), isAlive) : null),
+    // `historySnapshot` is the per-frame trigger.
+    [selection, historySnapshot, history, isAlive],
+  );
   const onToggleFocus = useCallback((lineageRootId: number) => setFocusLineage((f) => toggleLineageFocus(f, lineageRootId)), []);
   const onSelectFromFeed = useCallback((id: number) => {
     // Only an organism still present in the newest frame can be selected from the feed.
@@ -143,11 +151,14 @@ export function App() {
         <ConnectionOverlay status={status} onRetry={() => connectionRef.current?.retryNow()} />
       </main>
       <SidePanel tab={tab} hasSelection={hasSelection} onTab={setTab}>
-        {tab === 'organism' && selection !== null ? (
+        {tab === 'organism' && selection !== null && inheritance !== null ? (
           <Inspector
             selection={selection}
             energyScale={energyScale}
             lineageFocused={focusLineage === selection.organism.lineageRootId}
+            inheritance={inheritance}
+            isAlive={isAlive}
+            onSelectOrganism={onSelectFromFeed}
             onToggleLineageFocus={() => onToggleFocus(selection.organism.lineageRootId)}
             onDeselect={() => setSelectedId(null)}
           />

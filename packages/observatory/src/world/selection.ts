@@ -41,6 +41,8 @@ export interface InspectorField {
   /** Optional 0..1 fraction for a small bar next to the value. */
   fraction?: number;
   mono?: boolean;
+  /** When set, the value names another organism (e.g. the parent) that the UI may make selectable. */
+  organismId?: number;
 }
 
 export interface InspectorGroup {
@@ -49,9 +51,12 @@ export interface InspectorGroup {
 }
 
 const fmt = (v: number, digits: number) => v.toFixed(digits);
-const deg = (rad: number) => `${(rad * 180 / Math.PI).toFixed(0)}°`;
 
-/** Real simulation data only: no qualitative labels are invented here. */
+/**
+ * Real simulation data only: no qualitative labels are invented here.
+ * Morphology is not a group any more: the inspector shows it in the
+ * inheritance section, next to the parent's values (`world/inheritance.ts`).
+ */
 export function inspectorGroups(view: SelectionView, energyScale: number): InspectorGroup[] {
   const o = view.organism;
   const scale = energyScale > 0 ? energyScale : 100;
@@ -60,7 +65,7 @@ export function inspectorGroups(view: SelectionView, energyScale: number): Inspe
       title: 'Identity',
       fields: [
         { label: 'ID', value: `#${o.id}`, mono: true },
-        { label: 'Parent', value: o.parentId === null ? 'founder' : `#${o.parentId}`, mono: true },
+        { label: 'Parent', value: o.parentId === null ? 'founder' : `#${o.parentId}`, mono: true, ...(o.parentId !== null ? { organismId: o.parentId } : {}) },
         { label: 'Lineage root', value: `#${o.lineageRootId}`, mono: true },
         { label: 'Generation', value: String(o.generationDepth) },
       ],
@@ -70,16 +75,6 @@ export function inspectorGroups(view: SelectionView, energyScale: number): Inspe
       fields: [
         { label: 'Age', value: `${o.age} ticks` },
         { label: 'Energy', value: fmt(o.energy, 1), fraction: Math.max(0, Math.min(1, o.energy / scale)) },
-      ],
-    },
-    {
-      title: 'Morphology',
-      fields: [
-        { label: 'Size', value: fmt(o.size, 3) },
-        { label: 'Max speed', value: fmt(o.maxSpeed, 3) },
-        { label: 'Vision range', value: fmt(o.visionRange, 1) },
-        { label: 'Vision angle', value: `${fmt(o.visionAngle, 3)} rad (${deg(o.visionAngle)})` },
-        { label: 'Metabolism', value: fmt(o.metabolism, 3) },
       ],
     },
   ];

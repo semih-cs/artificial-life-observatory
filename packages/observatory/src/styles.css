@@ -401,3 +401,48 @@ body {
 .feed-id:hover { color: var(--accent); }
 @keyframes feed-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .feed-row { animation: none; } .lineage-bar-fill { transition: none; } }
+
+/* ---- inherited morphology (inspector) ------------------------------------- */
+
+.inheritance-summary { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
+.inheritance-summary-changed { color: var(--text); font-weight: 600; }
+.parent-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 11.5px; margin-bottom: 8px; }
+.parent-btn { appearance: none; border: 1px solid var(--border-strong); background: rgba(150, 175, 230, 0.08); color: var(--accent); font: inherit; font-family: var(--mono); font-size: 11.5px; padding: 2px 7px; border-radius: 6px; cursor: pointer; }
+.parent-btn:hover { background: rgba(150, 175, 230, 0.16); }
+.parent-name { color: var(--text); }
+.parent-state { font-size: 10.5px; color: var(--dim); }
+.parent-alive { color: var(--live); }
+.parent-arrow { color: var(--dim); }
+.field-link { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-family: var(--mono); font-size: 12.5px; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.field-link:hover { color: var(--text); }
+
+.genes { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: auto; }
+.genes th, .genes td { padding: 4px 3px; text-align: left; vertical-align: baseline; border-bottom: 1px solid rgba(150, 175, 230, 0.07); font-weight: normal; }
+.genes thead th { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); padding-bottom: 3px; }
+.genes .num { text-align: right; white-space: nowrap; }
+.gene-label { color: var(--muted); font-size: 11.5px; padding-left: 0 !important; white-space: nowrap; }
+.gene-sub { display: block; font-size: 10px; }
+.gene-unit { font-size: 10px; }
+.gene-parent { color: var(--dim); }
+.gene-current { color: var(--text); }
+.gene-delta { color: var(--dim); }
+.gene-same .gene-current { color: var(--muted); }
+.gene-same .gene-parent, .gene-same .gene-delta { color: var(--dim); opacity: 0.8; }
+.gene-up .gene-current, .gene-down .gene-current { font-weight: 650; color: var(--text); }
+.gene-up .gene-delta { color: #9fd0ff; }
+.gene-down .gene-delta { color: #f0c8a0; }
+.gene-mark { font-size: 8px; margin-right: 3px; vertical-align: 1px; }
+.gene-bar-cell { width: 44px; padding-right: 0 !important; }
+.gene-bar { position: relative; display: block; height: 8px; width: 40px; }
+.gene-bar-axis { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(150, 175, 230, 0.28); }
+.gene-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 3.5px; height: 1px; background: rgba(150, 175, 230, 0.10); }
+.gene-bar-fill { position: absolute; top: 1.5px; height: 5px; border-radius: 2px; opacity: 0.9; }
+.gene-down .gene-bar-fill { opacity: 0.7; }
+.inheritance-foot { margin: 8px 0 0; font-size: 10.5px; line-height: 1.45; }
+.inheritance-founder .genes .gene-parent, .inheritance-unavailable .genes .gene-parent,
+.inheritance-founder .genes .gene-delta, .inheritance-unavailable .genes .gene-delta,
+.inheritance-founder .genes .gene-bar-cell, .inheritance-unavailable .genes .gene-bar-cell { width: 0; padding: 0 !important; }
+
+.feed-morph { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 999px; font-size: 10px; letter-spacing: 0.02em; color: var(--dim); border: 1px solid rgba(150, 175, 230, 0.14); }
+.feed-morph-changed { color: var(--accent); border-color: rgba(159, 187, 255, 0.45); }
+.stat-note { font-size: 10px; }
