@@ -28,8 +28,12 @@ to explain the calibration failure. Nothing frozen; no calibration cycle for
 **Food-limitation diagnostic (`diagnostic-food-limitation-v1`): RUN — integrity
 gate PASS, outcome INCONCLUSIVE** (decision seeds C, A, B; no 2-of-3 majority).
 Pilot report §15. Cap, ecology and model unchanged.
-**Outcome classifier v2 (`trajectory-outcome-v2`): DESIGNED, NOT IMPLEMENTED.**
-Pilot report §16. All existing classifications remain v1 (peak ≥ 200) results.
+**Outcome classifier v2 (`trajectory-outcome-v2`): IMPLEMENTED; persisted runs
+reclassified read-only.** Pilot report §16 (design) and §17 (implementation and
+reclassification). Every recorded classification remains a v1 (peak ≥ 200)
+result. The complete 15-seed `0A.2.0` default baseline **cannot** be
+reclassified: 6 seeds were stopped by the v1 cap. It cannot reach the 0.70 gate
+under v2 regardless, because of its 5 extinctions.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -41,11 +45,13 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the outcome classifier v2 design (design only).
-`git log -1` is authoritative; recent history:
+Most recent work is the v2 classifier implementation and read-only
+reclassification. `git log -1` is authoritative; recent history:
 
 ```text
-(HEAD)  outcome classifier v2: design only — see `git log -1`
+(HEAD)  trajectory-outcome-v2: reclassification of persisted results — see `git log -1`
+daab8b6 trajectory-outcome-v2: implement the §16 long-horizon outcome classifier
+7c60f3d outcome classifier v2 (trajectory-outcome-v2): design only
 d3edab2 diagnostic-food-limitation-v1: results — integrity PASS, outcome INCONCLUSIVE
 60bd999 diagnostic-food-limitation-v1: minimal harness support for the precommitted run
 6b14031 diagnostic-food-limitation-v1 PRECOMMITMENT: design only, nothing run
@@ -75,8 +81,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests:  97 / 97  passed   (+14: foodLimitation.test.ts)
-workspace total:          276 / 276 passed
+experiment-harness tests: 116 / 116 passed   (+19: trajectoryOutcome.test.ts)
+workspace total:          295 / 295 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -84,7 +90,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed after the food-limitation run: the amended hash via
+Both hashes re-confirmed after the v2 reclassification: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
 
@@ -484,7 +490,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -542,9 +548,10 @@ implemented as specified. **The model was not modified.**
    200 is not known (pilot report §14.10). The precommitted diagnostic (§15)
    was run and is INCONCLUSIVE under its own rule; the question remains open.
 12. **The v1 outcome classifier is too coarse.** Peak ≥ 200 does not separate
-   unbounded growth from bounded high plateaus (§15.10, §16.1). A trajectory
-   classifier v2 is designed (§16) but not implemented. Until it is, every
-   outcome label in the repository is v1.
+   unbounded growth from bounded high plateaus (§15.10, §16.1). v2 is now
+   implemented (§17). But 72 of 169 in-scope persisted runs were stopped by the
+   v1 cap and cannot be reclassified. In particular, 6 of the 15 `0A.2.0`
+   default-baseline seeds have no trajectory past 200.
 
 ## Scientific caution
 
@@ -593,7 +600,49 @@ modifying the model.
 
 ---
 
-## Outcome classifier v2 (`trajectory-outcome-v2`) — DESIGN ONLY, not implemented
+## Outcome classifier v2 — IMPLEMENTED AND APPLIED TO PERSISTED RUNS
+
+Implemented in `daab8b6` (`src/analysis/trajectoryOutcome.ts`,
+`src/analysis/reclassify.ts`, CLI `reclassify-trajectory`, 19 tests), with every
+§16 parameter unchanged. Class labels: `EXTINCTION`, `BOUNDED_VIABLE`,
+`HIGH_BOUNDED`, `RUNAWAY`, `INCONCLUSIVE`. §16's `EXTINCT` and `RUNAWAY_GROWTH`
+were renamed; this is a label change only. v1 `classifyRunOutcome` is
+untouched.
+
+Reclassification is read-only. It ran from clean `daab8b6`
+(`sourceIdentity 3437054f502219ba`) and simulated nothing. All 288 source
+JSON/CSV files are byte-identical before and after. Output:
+`packages/experiment-harness/results/reclassification-trajectory-outcome-v2/`
+(`reclassification.json`, `reclassification.csv`; one record per run with
+seed, versions, final tick, peak, final, early/late/window means, growth ratio,
+class, reason, ceiling flag, context and source provenance).
+
+Scope: every 20,000-tick persisted experiment (calibration-v2, calibration-v3,
+multifounder-default-baseline, diagnostic-food-limitation-v1). Movement-policy
+is excluded (food off by design); 10,000-tick results fall below the horizon.
+Eligible = the trajectory is complete (extinct, ceiling, or 20,000 ticks).
+Runs stopped by the v1 cap are **not reclassified**.
+
+| Model | In scope | Eligible records (distinct) | Not reclassified (v1 cap) | EXTINCTION | BOUNDED_VIABLE | HIGH_BOUNDED | RUNAWAY | INCONCLUSIVE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0A.2.0` | 19 | 10 (9) | 9 | 5 | 3 (2) | 1 | 1 | 0 |
+| `0A.1.0` | 150 | 87 (77) | 63 | 85 (76) | 0 | 0 | 0 | 2 (1) |
+
+Four uncapped food-diagnostic trajectories: 139595 `BOUNDED_VIABLE` (r 1.011,
+window mean 194.0); 123757 `HIGH_BOUNDED` (0.973, 312.2); 107919 `RUNAWAY`
+(1.185, 369.7); 210866 `BOUNDED_VIABLE` (0.960, 174.7). The `0A.1.0` default's
+only v1-viable world (139595) is `INCONCLUSIVE (DECLINING)`, r 0.653.
+
+**Gate.** No cohort is complete, so `boundedCompletionRate` is **not
+computable** for any cohort. The `0A.2.0` default baseline is missing seeds
+115838, 155433, 163352, 171271, 179190 and 202947, all stopped by the v1 cap.
+Assembled with the verified uncapped continuations, 9 of 15 seeds are known:
+5 EXTINCTION, 2 BOUNDED_VIABLE, 1 HIGH_BOUNDED, 1 RUNAWAY. The possible rate
+range is 0.20–0.60. The baseline's 5 extinctions alone rule out the 0.70 gate
+under v2, since a passing 15-run cohort allows at most 4 non-bounded runs. Every
+`0A.1.0` cohort is excluded the same way.
+
+### v2 design (historical record — IMPLEMENTED)
 
 Full design: `docs/Phase 0B Pilot Report.md` §16. Nothing implemented or run;
 the 200 cap is unchanged in code; no persisted result rewritten.
@@ -784,13 +833,17 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Implement `trajectory-outcome-v2` exactly as designed in pilot report §16 and
-reclassify existing pilot results from persisted trajectories only, without
-rerunning simulation.**
+**Precommit — design only, nothing run — an uncapped continuation of the six
+cap-stopped `0A.2.0` default-baseline seeds (115838, 155433, 163352, 171271,
+179190, 202947) under the §15 execution settings. Its purpose is to let the full
+15-seed default baseline be classified by `trajectory-outcome-v2`.**
 
-v2 labels are written to separate, version-tagged outputs; v1 fields and every
-persisted file stay untouched; no parameter of the rule may be changed.
+The settings are: 20,000 ticks, 200 cap not an early stop, safety ceiling 1000,
+and an integrity check against each baseline `finalStateHash`. State in the
+precommitment that its gate result is already fixed — it cannot reach 0.70,
+per §17.5 — and that it only completes the regime description.
+
 Constraints that still hold: no simulation-core change; do not change the 200
-cap in code, food parameters or `founderGroupCount`; no calibration sweep; do
-not touch `packages/experiment-harness/seeds/validation.json`; do not begin
-Phase 0C.
+cap in code, the v2 thresholds, food parameters or `founderGroupCount`; no
+calibration sweep; do not touch `packages/experiment-harness/seeds/validation.json`;
+do not begin Phase 0C.

@@ -8,7 +8,8 @@ validation seeds are untouched.**
 > multi-founder initialization (`0A.2.0`). §14 is the first `0A.2.0` result:
 > the multi-founder default baseline. §15 is the `0A.2.0` food-limitation
 > diagnostic (precommitted design and result: INCONCLUSIVE). §16 is the design
-> of the trajectory-based outcome classifier v2. Every classification in §§2–15
+> of the trajectory-based outcome classifier v2; §17 its implementation and the
+> read-only reclassification of persisted runs. Every classification in §§2–15
 > is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
@@ -1159,6 +1160,7 @@ condition, it does not make an organism better at anything.
 | Multi-founder worlds start with functionally distinct founders | Yes, observational | §14.8: per-world mean pairwise founder distance 0.304–0.401, min pair 0.224 |
 | The 200 runaway cap masks food limitation in the default `0A.2.0` ecology | **Undetermined** | §15.10: decision seeds classified C, A, B — INCONCLUSIVE under the precommitted 2-of-3 rule |
 | Peak population ≥ 200 identifies unbounded growth | **No** | §16.1: uncapped, two v1-"runaway" worlds held level near 190 and 310 for ~16,000 ticks |
+| The `0A.2.0` default configuration can reach the ~70% gate under v2 | **No** | §17.5: the baseline cohort already has 5 extinctions; at most 4 non-bounded runs of 15 are compatible with the gate. The full v2 classification is not computable (6 seeds stopped by the v1 cap) |
 
 ---
 
@@ -1884,3 +1886,194 @@ experiment, not calibration evidence and not a gate evaluation.
 
 Nothing here is a claim about adaptation, intelligence or evolutionary
 advantage.
+
+---
+
+## 17. `trajectory-outcome-v2` — implementation and reclassification of persisted results
+
+**No simulation was run for this section.** Every classification below is
+computed from persisted files, and no persisted result file was modified. The
+sha256 of all 288 source JSON/CSV files is identical before and after. The only
+simulation executed in this task was the standing golden-hash regression check.
+
+### 17.1 Implementation
+
+Commit `daab8b6`, harness only:
+
+- `src/analysis/trajectoryOutcome.ts` — the pure classifier;
+- `src/analysis/reclassify.ts` — read-only reader, eligibility and cohort
+  summary;
+- CLI `reclassify-trajectory` — read-only, runs nothing, consumes no seeds;
+- 19 focused tests.
+
+Every §16.3 parameter is transcribed unchanged and pinned by test:
+
+- horizon 20,000;
+- window (14000, 20000], split at 17000;
+- at least 10 samples per half;
+- growth threshold 2^(3000/20000) = 1.10957, shrink threshold 0.90125;
+- `HIGH_BOUNDED` at a window mean of 200 or more;
+- safety ceiling 1000.
+
+The v1 rule (`classifyRunOutcome`) is untouched, and a test pins its behaviour.
+
+Two points on how the implementation matches the design:
+
+- **Labels.** The classes are named `EXTINCTION`, `BOUNDED_VIABLE`,
+  `HIGH_BOUNDED`, `RUNAWAY` and `INCONCLUSIVE`. §16 wrote `EXTINCT` and
+  `RUNAWAY_GROWTH`. This is a label change only, and all five names still
+  differ from every v1 label. Reasons are recorded alongside:
+  - `EXTINCT`, `SAFETY_CEILING`, `GROWING_AT_HORIZON`, `PLATEAU`;
+  - `TRUNCATED`, `INSUFFICIENT_SAMPLES`, `DECLINING`, `ERROR`.
+- **Order.** Evaluation follows §16.4: error, extinction, safety ceiling,
+  truncation, samples, then the growth ratio. So a run that hits the ceiling
+  early is `RUNAWAY`, not `INCONCLUSIVE (INSUFFICIENT_SAMPLES)`. No persisted
+  run reached the ceiling, so this ordering affects no result below.
+
+Output, version-tagged and separate from every source:
+`results/reclassification-trajectory-outcome-v2/`, containing
+`reclassification.json` and `reclassification.csv`. Each record carries:
+
+- seed, `simulationVersion` and `classifierVersion`;
+- final tick, peak and final population;
+- early, late and window means, and the growth ratio;
+- class and reason, and whether the safety ceiling was reached;
+- window food, births and deaths (context only);
+- the untouched v1 label;
+- the source directory, timeseries file, `gitCommit`, `gitDirty`,
+  `sourceIdentity` and `configHash`.
+
+The reclassification itself ran from clean `daab8b6`
+(`sourceIdentity 3437054f502219ba`).
+
+### 17.2 Which persisted runs are eligible
+
+In scope: every persisted experiment on the 20,000-tick horizon.
+
+- `calibration-v2`: 6 cells, `0A.1.0`
+- `calibration-v3`: 4 cells, `0A.1.0`
+- `multifounder-default-baseline`: `0A.2.0`
+- `diagnostic-food-limitation-v1`: `0A.2.0`
+
+Out of scope:
+
+- `diagnostic-movement-policy`: food and reproduction are disabled by design,
+  so extinction is built in; it is not an ecological trajectory.
+- Every 10,000-tick and 5,000-tick result: below the minimum horizon.
+
+A run in scope is **eligible** only if its persisted trajectory is complete for
+the classifier: it went extinct, reached the ceiling, or ran to 20,000 ticks,
+and it has its 200-tick timeseries. A run stopped by the v1 cap has no
+trajectory past population 200. It is **not reclassified**, and no class is
+inferred for it.
+
+| Model | Runs in scope | Eligible records | Distinct eligible trajectories | Not reclassified (stopped by v1 cap) |
+|---|---:|---:|---:|---:|
+| `0A.2.0` | 19 | 10 | 9 | 9 |
+| `0A.1.0` | 150 | 87 | 77 | 63 |
+
+Records and distinct trajectories differ because two pairs of files hold the
+same trajectories. calibration-v2 cell 1 and calibration-v3 cell 0 are the same
+`0A.1.0` default configuration. Seed 210866 appears in both the baseline and the
+food-limitation diagnostic.
+
+### 17.3 Results (eligible records; the two models are never pooled)
+
+| Class | `0A.2.0` records (distinct) | `0A.1.0` records (distinct) |
+|---|---:|---:|
+| EXTINCTION | 5 (5) | 85 (76) |
+| BOUNDED_VIABLE | 3 (2) | 0 |
+| HIGH_BOUNDED | 1 (1) | 0 |
+| RUNAWAY | 1 (1) | 0 |
+| INCONCLUSIVE | 0 | 2 (1) |
+
+The four uncapped food-diagnostic trajectories (`0A.2.0`):
+
+| Seed | Early mean | Late mean | Final-6000 mean | Growth ratio | Peak | Final | v1 label | **v2 class** |
+|---:|---:|---:|---:|---:|---:|---:|---|---|
+| 139595 | 193.0 | 195.1 | 194.0 | 1.0107 | 215 | 189 | RUNAWAY | **BOUNDED_VIABLE** |
+| 123757 | 316.5 | 308.0 | 312.2 | 0.9732 | 351 | 310 | RUNAWAY | **HIGH_BOUNDED** |
+| 107919 | 338.4 | 400.9 | 369.7 | 1.1848 | 478 | 473 | RUNAWAY | **RUNAWAY** (growing at horizon) |
+| 210866 | 178.3 | 171.1 | 174.7 | 0.9596 | 196 | 170 | VIABLE | **BOUNDED_VIABLE** |
+
+These match the §16.8 sanity check exactly. The baseline copy of 210866 gives
+the same result.
+
+The `0A.1.0` model's one non-extinct eligible trajectory is seed 139595 in the
+default configuration (calibration-v2 cell 1 ≡ calibration-v3 cell 0; v1
+`VIABLE_COMPLETION`). Under v2 it is **INCONCLUSIVE (DECLINING)**: early mean
+58.8, late 38.4, growth ratio 0.653, peak 109, final 40. The only world v1 ever
+counted as viable in the single-founder model was shrinking at the horizon.
+
+### 17.4 Cohorts and the gate
+
+No cohort is complete. A cohort here means one configuration run on all 15
+pilot seeds. Every cohort contains runs stopped by the v1 cap, so
+**boundedCompletionRate is not computable for any cohort**, and the gate is not
+applied.
+
+For each incomplete cohort the table shows the range the rate could take under
+**every** possible class of its missing runs. This is not a rate estimate and
+not a gate evaluation.
+
+| Cohort | Eligible / 15 | Known classes | Missing | Possible range | Could reach 0.70? |
+|---|---:|---|---:|---|---|
+| `0A.2.0` multifounder-default-baseline | 6 | 5 E, 1 BV | 9 | 0.067–0.667 | no |
+| `0A.2.0` default, baseline + verified uncapped continuations (below) | 9 | 5 E, 2 BV, 1 HB, 1 R | 6 | 0.200–0.600 | no |
+| `0A.1.0` calibration-v2, 6 cells | 7–10 | all E, except 1 INCONCLUSIVE in cell 1 | 5–8 | max 0.333–0.533 | no |
+| `0A.1.0` calibration-v3, 4 cells | 9–10 | all E, except 1 INCONCLUSIVE in cell 0 | 5–6 | max 0.333–0.400 | no |
+
+The second row assembles the `0A.2.0` default configuration seed by seed. It
+takes the baseline record, or — where the v1 cap stopped the baseline — the
+`diagnostic-food-limitation-v1` run of that seed. It uses a continuation only
+when the `configHash` is identical and the §15.9 integrity gate passed for that
+seed, i.e. the run is proven to be the same trajectory continued.
+
+### 17.5 Can the amended-model baseline be assessed under v2?
+
+**No — the complete 15-seed `0A.2.0` default baseline cannot be reclassified.**
+Six pilot seeds have no trajectory past population 200. The v1 cap stopped them
+in `multifounder-default-baseline`, and nothing has continued them:
+
+| Seed | Stopped by v1 cap at tick |
+|---:|---:|
+| 115838 | 3389 |
+| 179190 | 3587 |
+| 155433 | 3597 |
+| 163352 | 3782 |
+| 171271 | 6444 |
+| 202947 | 18876 |
+
+Their v2 classes are unknown and are not inferred.
+
+What the persisted data does settle is narrower. The baseline cohort alone
+already contains 5 extinctions. A 15-run cohort can pass the 0.70 gate with at
+most 4 runs that are neither `BOUNDED_VIABLE` nor `HIGH_BOUNDED`. So **the
+`0A.2.0` default configuration cannot reach the gate under v2, whatever the
+missing six turn out to be.** That follows from the extinctions alone, which are
+certain under both classifiers. Every `0A.1.0` cohort is excluded the same way,
+by its 7–9 extinctions.
+
+### 17.6 Limitations
+
+- Old early-stop runs are the binding limitation. 72 of 169 in-scope records
+  (9 `0A.2.0`, 63 `0A.1.0`) were stopped by the v1 cap and cannot be
+  reclassified.
+- Among 20,000-tick results, only extinctions and the few worlds the cap never
+  stopped can be classified. The 10,000-tick results cannot be classified at
+  all.
+- The window and half lengths are tied to the default `maxAge` (3000).
+  calibration-v3's `maxAge 6000` cells are classified with the same fixed
+  numbers. Every run in them is extinct or cap-stopped, so no classification is
+  affected.
+- Four uncapped trajectories and one declining `0A.1.0` world are the only
+  non-extinct v2 classifications on record. They describe individual worlds,
+  not a regime.
+
+### 17.7 Historical scope — unchanged
+
+Every classification in §§2–15 remains a `peak-cap-outcome-v1` result. That
+covers each `outcome` field, the extinct/runaway/viable counts and every
+`viableCompletionRate`. The decisions taken under v1 stand. v2 labels live only
+in the reclassification output. `0A.1.0` and `0A.2.0` are never pooled. Nothing
+here is evidence about adaptation, intelligence or evolutionary advantage.
