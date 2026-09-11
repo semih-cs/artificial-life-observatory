@@ -55,7 +55,7 @@ export function Inheritance({ selection, view, color, onSelectOrganism }: Inheri
         ) : (
           <>
             <span className="mono parent-name">Parent #{parent.parentId}</span>
-            <span className="parent-state parent-observed">observed · last seen at tick {formatInt(parent.lastSeenTick)} · gen {parent.record.generationDepth}</span>
+            <span className="parent-state parent-observed">observed · last seen t {formatInt(parent.lastSeenTick)} · gen {parent.record.generationDepth}</span>
             <span className="parent-arrow" aria-hidden="true">→</span>
             <span className="mono">#{o.id}</span>
             <span className="dim">gen {o.generationDepth}</span>

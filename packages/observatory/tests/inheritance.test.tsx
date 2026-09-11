@@ -159,7 +159,7 @@ describe('inspector inheritance section', () => {
     const cache = new MorphologyCache();
     cache.observe([parent], 100);
     const dead = render(childChanged, cache, () => false);
-    expect(dead).toContain('observed · last seen at tick 100');
+    expect(dead).toContain('observed · last seen t 100');
     expect(dead).not.toContain('parent-btn');
     expect(dead).not.toContain('field-link');
     const none = render(childChanged, new MorphologyCache(), () => false);

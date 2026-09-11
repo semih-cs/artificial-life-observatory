@@ -1,13 +1,13 @@
 # Artificial Life Observatory
 
-A headless, deterministic artificial-life simulation core, the experiment
-harness that studied it, exact world persistence with a long-running world
-process (Phase 0C), and — from Phase 0D — the Observatory: a read-only browser
-frontend for watching the live world.
-Organisms with a five-gene morphology and a fixed-topology neural controller
-live, move, eat, reproduce, mutate and die in a bounded 2D world with a static
-seeded fertility field. No database and no cloud deployment yet; those are
-later phases.
+**v1 — complete.** A deterministic artificial-life simulation, a persistent
+world that runs on your machine, and the Observatory: a read-only browser
+window onto that world. Organisms with a five-gene morphology and a
+fixed-topology feedforward neural controller live, move, eat, reproduce,
+mutate and die in a bounded 2D world with a static seeded fertility field;
+you watch lineages grow and vanish, generations advance, and inherited
+morphology change from parent to child. Everything runs locally: no
+database, no cloud, no accounts (see *V1 boundaries*).
 
 Five workspace packages:
 
@@ -19,17 +19,57 @@ Five workspace packages:
 | `packages/world-runner` | 0C → 0D bridge | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly; optional tick pacing and a read-only WebSocket observer stream |
 | `packages/observatory` | 0D | the Observatory frontend (React + TypeScript + Vite + PixiJS): watch the live world in a browser — organisms, lineages, food, births and deaths, an organism inspector, and an evolution panel (living lineages, session-only trends, birth/death feed) parent → child morphology comparison and a compact ancestry strip. Read-only |
 
-**Quick start — watch a live world:**
+## Quick start
+
+You need Node.js 20+ (developed on Node 22) and two terminals.
 
 ```bash
-npm install
-npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # terminal 1 (first time)
-npm run observatory                                                                           # terminal 2
-# open http://localhost:5173/
+npm install            # once — installs the workspace from package-lock.json
+
+npm run demo:new       # terminal 1 — creates worlds/demo with the DEMO seed and starts streaming it
+npm run observatory    # terminal 2 — the Observatory → open http://localhost:5173/
 ```
 
-Pick any seed outside the pilot and validation sets (no demo seed has been
-chosen yet). If `worlds/demo` already holds a world, drop `--new --seed`.
+The page connects by itself. You will see organisms (coloured by lineage)
+moving over a dark floor, food as small points, and on the right the
+Evolution panel: living lineages, population and generation trends, and a
+feed of births and deaths. Click any organism to inspect it — its genes next
+to its parent's, and its observed ancestry back to a founder. Press `?` in
+the top-right for the controls.
+
+**Stop:** `Ctrl+C` in terminal 1. The runner finishes the current tick,
+saves a snapshot and exits; the page shows *Disconnected* and keeps the last
+world visible.
+
+**Resume the same world later:**
+
+```bash
+npm run demo:resume    # terminal 1 — recovers worlds/demo from its newest valid snapshot and continues
+```
+
+`demo:new` is refused (exit 1, nothing touched) if `worlds/demo` already
+holds a world, so it can never overwrite one. To start over, delete
+`worlds/demo` yourself first.
+
+**What is where.** The world lives in `worlds/demo/` as local JSON snapshots
+(newest five kept, gitignored). The observer stream binds `127.0.0.1:8787`
+only and is read-only: the page cannot send anything to the world, and it
+has no server, database or accounts. What the page shows beyond the live
+frame — trends, the birth/death feed, parent comparisons, ancestry — is
+derived in the browser from the frames it received while open, and is
+forgotten on reload; only the world itself persists.
+
+**DEMO seed — presentation only.** `demo:new` uses seed `31415926`. It was
+picked because, under the frozen v1 configuration, it gave a long-lived
+world with visible lineage turnover and advancing generations in a 40,000-
+tick headless check (population ≈ 100 at tick 2,000, ≈ 350–380 from tick
+4,000 on; 18 living lineages at tick 2,000 narrowing to 1 by tick 30,000;
+maximum generation 36 at tick 40,000). That is a choice for watching, not a
+finding: it is outside the pilot and validation seed sets, it is not
+research evidence, and it says nothing about typical or "best" worlds. The
+canonical regression seed and golden hashes are unchanged (`b95a0b4ef7dd8449`
+for seed 20260910).
+
 Full details: *Observatory (Phase 0D)* below.
 
 ## Status
@@ -40,7 +80,7 @@ Full details: *Observatory (Phase 0D)* below.
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
 | Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing) |
-| **Phase 0D — Observatory UI** | **active — slices 1–4 done.** `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). Next: final v1 polish and the Phase 0D freeze |
+| **Phase 0D — Observatory UI** | **complete, frozen for v1.** Slices 1–4 plus the final polish (organism quick-jump, first-run card, demo scripts, help hint). `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). **v1 is complete**; further work is v2 unless it is a genuine v1 bug |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
 inherit and mutate genomes, form lineages and evolve across generations. All of
@@ -52,15 +92,9 @@ and many live for tens of thousands of ticks at a stable population of about
 150–320 organisms. The 15-seed pilot profile and everything learned in Phase 0B
 are in `docs/Phase 0B Pilot Report.md`; its closure is §23.
 
-**What comes next is visualisation — not more calibration.**
-
-- Phase 0C (done) makes a world save, load and resume exactly.
-- Phase 0D lets you watch it live and inspect organisms, lineages and
-  mutations. Slice 1 — the live world view with selection and an
-  inspector — slice 2 — evolution visibility: lineages, births/deaths,
-  trends — slice 3 — inherited morphology (parent → child mutation
-  visibility) — and slice 4 — a compact ancestry strip — are done; see
-  *Observatory (Phase 0D)*.
+**v1 is complete.** Phase 0C makes a world save, load and resume exactly;
+Phase 0D lets you watch it live and inspect organisms, lineages, inherited
+morphology and ancestry — see *Observatory (Phase 0D)* and *V1 boundaries*.
 
 The biology is frozen for v1: do not change it unless a genuine bug is found.
 The held-out validation seeds are reserved for future research and must not be
@@ -517,8 +551,9 @@ npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --o
 npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787
 ```
 
-No demo seed has been chosen yet (see `PROJECT_STATUS.md`). Use any seed
-outside the pilot and validation sets.
+The DEMO seed `31415926` is what `npm run demo:new` uses (a presentation
+choice, not evidence — see *Quick start*). Any other seed outside the pilot
+and validation sets works the same way.
 
 - **Two separate rates.** `--ticks-per-second` sets the simulation rate
   (TPS). It only decides when ticks run, never what they compute. The
@@ -620,19 +655,22 @@ elements.
 ### Run it
 
 ```bash
-# terminal 1 — a world, paced at 10 ticks/s, streaming observer frames on port 8787
-npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # first time only
-npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787                       # every later time (recovers the world)
-
-# terminal 2 — the Observatory (Vite dev server)
-npm run observatory
-# → http://localhost:5173/
+npm run demo:new       # terminal 1, first time — worlds/demo, DEMO seed 31415926, 10 ticks/s, observer on 8787
+npm run demo:resume    # terminal 1, every later time — recovers the same world
+npm run observatory    # terminal 2 — Vite dev server → http://localhost:5173/
 ```
 
-`--new` creates a world and is refused if `worlds/demo` already holds one, so
-use the second form to continue an existing world. Any seed outside the pilot
-and validation sets is fine; no demo seed has been chosen and none is
-scientific evidence (`PROJECT_STATUS.md`).
+Both demo scripts are plain `npm run world` invocations:
+
+```bash
+npm run world -- --dir worlds/demo --new --seed 31415926 --ticks-per-second 10 --observe 8787
+npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787
+```
+
+so any other directory, seed or pace works the same way. `--new` is refused
+if the directory already holds a world. The DEMO seed is a presentation
+choice, not evidence (see *Quick start*); any seed outside the pilot and
+validation sets is fine.
 
 The Observatory connects to `ws://127.0.0.1:8787/` by default. To point it
 elsewhere set `VITE_OBSERVER_WS_URL`, either in the environment or in
@@ -681,6 +719,8 @@ Production build and preview: `npm run build -w packages/observatory`, then
 | pan | click-drag |
 | fit the whole world | `Fit` button or `F` |
 | select an organism | click it; `Esc` or `×` deselects |
+| jump to an organism by id | type the id in the `#` box top-right and press `Enter` — if it is in the newest frame it is selected and the camera pans to it; otherwise a small *not currently alive* note appears (the current frame only; dead organisms are not searched). `Esc` clears the box |
+| controls help | the `?` button top-right lists these controls |
 | emphasise a lineage | selecting an organism emphasises its lineage; **Focus lineage** in the inspector keeps that emphasis (a chip top-right clears it) |
 | pause the view | **Pause view** or `Space` — pauses only the browser's drawing; the simulation and the stream continue, and resuming jumps to the newest frame |
 
@@ -698,6 +738,8 @@ frame), `simulationVersion`, seed, `configHash` and world size.
 ### Connection behaviour
 
 - Connects automatically on load; the first valid frame makes it *live*.
+  Until then a card says *Waiting for a local world…* with the exact
+  `demo:new` / `demo:resume` / `observatory` commands.
 - On disconnect it retries with backoff (0.5 s → 1 s → 2 s → 4 s → 5 s cap).
   While frames have been seen, the last world stays visible with a small
   *reconnecting* pill; before the first frame a card shows the expected
@@ -743,7 +785,7 @@ missing and dead parents, the cache bound, identity reset and reconnect,
 the birth Δ count, and the rendered inspector section; and for ancestry:
 the chain walk (complete, unobserved, founder, truncated, evicted),
 per-hop Δ counts, reconnect and world-change behaviour, and the rendered
-strip.
+strip; and the final polish (quick-jump, first-run card, help hint).
 
 ### Evolution panel (slice 2)
 
@@ -871,11 +913,11 @@ descendants, siblings or trees.
 
 ### Current limitations
 
-- Slices 1–4 only: no genealogy tree (descendants, siblings), no neural
-  fingerprints or neural mutation visibility, no persistent history. The
-  evolution panel, the morphology cache and the ancestry strip forget
-  everything when the tab is closed or reloaded; ancestors that died before
-  the tab opened, or whose cache records were evicted, end the chain.
+- No genealogy tree (descendants, siblings), no neural fingerprints or
+  neural mutation visibility, no persistent history. The evolution panel,
+  the morphology cache and the ancestry strip forget everything when the
+  tab is closed or reloaded; ancestors that died before the tab opened, or
+  whose cache records were evicted, end the chain.
 - A parent that was never in a received frame of this session cannot be
   compared; the inspector says so rather than guessing.
 - Births and deaths in the feed are frame differences, not simulation
@@ -886,6 +928,53 @@ descendants, siblings or trees.
 - No organism labels except the selected one; no search by id.
 - The energy ring scale is a display assumption (see above), because
   protocol v1 does not carry `energyCapacity`.
+
+## V1 boundaries
+
+v1 is the observable, persistent, deterministic world described above —
+and deliberately nothing more. It intentionally does **not** include:
+
+- lifetime learning, reinforcement learning, or any within-life adaptation;
+- memory or recurrent neural state;
+- neural plasticity;
+- a neural fingerprint / neural genome viewer (neural genomes are not in
+  the observer frame);
+- a full genealogy database or tree (descendants, siblings, whole-lineage
+  history);
+- a cloud backend, a database, or any persistence beyond local JSON
+  snapshots;
+- multiplayer or remote observers (the stream binds localhost);
+- simulation controls from the frontend (the observer is read-only by
+  construction);
+- mobile-first polish;
+- persistent analytics (everything analytical in the UI is session-only);
+- a semantic species system (there are lineages, identified by founder id,
+  and nothing else).
+
+The v1 organism neural network is a fixed-topology feedforward network. It
+evolves across generations only, through inherited weights and biases and
+mutation at reproduction; it does not change during an organism's life.
+
+Selection is emergent (resource acquisition, survival, reproduction). No
+fitness score exists, and the UI never calls anything fit, adapted,
+successful, superior or intelligent.
+
+### Deferred to v2
+
+Short list, in no particular order; none of it is started:
+
+- neural fingerprint / neural mutation visualisation;
+- richer senses;
+- memory / recurrent neural state;
+- lifetime learning, plasticity and RL experiments;
+- richer morphology;
+- full genealogy;
+- persistent analytics;
+- cloud / database / remote observers;
+- mobile polish;
+- richer ecosystem and environmental complexity.
+
+Anything else is a v1 bug: fix it, keep the freeze.
 
 ## Running Phase 0B experiments
 
@@ -1171,6 +1260,7 @@ npm run test:watch --workspace=packages/simulation-core
 | `sessionHistory.test.ts` | births and deaths from consecutive frames; lineage extinction and the recently-extinct list; frame-gap safety (a 500-tick jump with 200 replaced organisms yields one gap marker and no events; coalescing; backwards ticks; the 8-tick limit); bounded feed (50 cap over 300 ticks of churn); trend sampling every N ticks with correct population, food, max generation, lineage count and per-lineage counts; bounded trend (40 cap over 500 samples, evicted lineages gone); world-identity reset on seed, hash or version change; reconnect to the same world keeps and continues history; snapshots and subscriptions |
 | `inheritance.test.tsx` | parent → child comparison: five exact deltas (positive, negative, a 0.001 step), unchanged child, founder, missing parent (never guessed), alive vs recently dead cached parent; cache bound (100 over 1,000 frames, least-recently-seen eviction); cache cleared by a world-identity change and kept across a same-world reconnect; births carry a Δ count only with a known parent, session counters, feed badges and the Evolution stat; the rendered inspector section (marks, deltas, clickable living parent, observed / unavailable / founder states, no qualitative labels) |
 | `ancestry.test.tsx` | chain walk over the session cache: a fully cached chain to the founder with per-hop Δ counts (reusing `compareMorphology`), alive vs observed states and last-seen ticks; stop at the first unobserved parent (no invented node, no Δ); a founder as a one-node complete chain; truncation to the closest `DEFAULT_MAX_ANCESTRY_DEPTH` hops; an evicted ancestor ends the chain; same-world reconnect keeps it and a world change clears it (through `SessionHistory`); the rendered strip (founder, Δ badges, alive link, observed node, selected node, unobserved / truncated boundaries, no qualitative labels) |
+| `polish.test.tsx` | organism quick-jump id parsing and current-frame-only resolution (a dead organism is not searched); the first-run card shows the demo commands when no world is reachable and nothing over a live world; the help hint is closed by default |
 | `evolutionPanel.test.tsx` | rendered with `react-dom/server`: lineages most numerous first with count, share and gen; extinct lineages listed; births (with parent), deaths (with age) and extinctions in the feed; no qualitative labels; focused and selected rows; the focused lineage sparkline; the gap marker instead of inferred events; trend cards and sparkline path bounds; the HUD generation stat |
 
 **Do not weaken or delete a test to get green output.** If a test fails, either
@@ -1210,7 +1300,7 @@ are never pooled with these.
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
 | **0C**  | **complete for v1** — persistence, snapshots, recovery, the canonical continuous world: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
-| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Slice 2 done: evolution visibility (living lineage panel, birth/death feed, session-only trends). Slice 3 done: inherited morphology (parent → child gene deltas, birth Δ counts). Slice 4 done: compact ancestry strip. Next: final v1 polish and the Phase 0D freeze |
+| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Slice 2 done: evolution visibility (living lineage panel, birth/death feed, session-only trends). Slice 3 done: inherited morphology (parent → child gene deltas, birth Δ counts). Slice 4 done: compact ancestry strip. Final polish done (quick-jump, first-run card, demo scripts). **Frozen for v1** |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 

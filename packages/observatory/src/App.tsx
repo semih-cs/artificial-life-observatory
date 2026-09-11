@@ -125,6 +125,13 @@ export function App() {
     [selection, historySnapshot, history, isAlive],
   );
   const onToggleFocus = useCallback((lineageRootId: number) => setFocusLineage((f) => toggleLineageFocus(f, lineageRootId)), []);
+  const onJump = useCallback((id: number): 'selected' | 'not-alive' | 'invalid' => {
+    if (!Number.isInteger(id) || id < 0) return 'invalid';
+    if (store.organism(id) === undefined) return 'not-alive';
+    setSelectedId(id);
+    worldRef.current?.centerOnOrganism(id);
+    return 'selected';
+  }, [store]);
   const onSelectFromFeed = useCallback((id: number) => {
     // Only an organism still present in the newest frame can be selected from the feed.
     if (store.organism(id) !== undefined) setSelectedId(id);
@@ -152,8 +159,9 @@ export function App() {
           onZoomOut={() => worldRef.current?.zoomBy(1 / 1.4)}
           onTogglePause={() => setViewPaused((p) => !p)}
           onClearFocus={() => setFocusLineage(null)}
+          onJump={onJump}
         />
-        <p className="hint-bar">scroll to zoom · drag to pan · click an organism · F fit · Esc deselect</p>
+        <p className="hint-bar">click an organism to inspect · wheel to zoom · drag to pan · F fit · Space pause view · ? controls</p>
         <ConnectionOverlay status={status} onRetry={() => connectionRef.current?.retryNow()} />
       </main>
       <SidePanel tab={tab} hasSelection={hasSelection} onTab={setTab}>

@@ -236,6 +236,21 @@ export class WorldRenderer {
     return this.camera;
   }
 
+  /** Pan (no zoom change) so the organism's newest known position sits at the viewport centre. Display only. */
+  centerOnOrganism(id: number): boolean {
+    const o = this.store.organism(id);
+    if (o === undefined || this.worldSize === null) return false;
+    const cam: CameraState = {
+      scale: this.camera.scale,
+      offsetX: this.viewport.width / 2 - o.x * this.camera.scale,
+      offsetY: this.viewport.height / 2 - o.y * this.camera.scale,
+    };
+    this.camera = clampCamera(cam, this.worldSize, this.viewport);
+    this.fitted = false;
+    this.applyCamera();
+    return true;
+  }
+
   /** Number of organism visuals currently on screen (including ones fading out). */
   visualCount(): number {
     return this.organisms.size;

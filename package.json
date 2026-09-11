@@ -12,6 +12,8 @@
     "simulate": "npm run simulate --workspace=packages/simulation-core --",
     "experiment": "npm run experiment --workspace=packages/experiment-harness --",
     "world": "npm run world --workspace=packages/world-runner --",
-    "observatory": "npm run dev --workspace=packages/observatory --"
+    "observatory": "npm run dev --workspace=packages/observatory --",
+    "demo:new": "npm run world -- --dir worlds/demo --new --seed 31415926 --ticks-per-second 10 --observe 8787",
+    "demo:resume": "npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787"
   }
 }

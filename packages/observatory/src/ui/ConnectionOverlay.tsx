@@ -5,7 +5,9 @@ export interface ConnectionOverlayProps {
   onRetry: () => void;
 }
 
-const RUN_HINT = 'npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787';
+const NEW_HINT = '# terminal 1 — create worlds/demo (DEMO seed) and stream it\nnpm run demo:new';
+const RESUME_HINT = '# terminal 1 — worlds/demo already exists: recover the same world\nnpm run demo:resume';
+const UI_HINT = '# terminal 2 — this page\nnpm run observatory';
 
 /**
  * Connection state on top of the world. While frames have been seen the last
@@ -44,13 +46,16 @@ export function ConnectionOverlay({ status, onRetry }: ConnectionOverlayProps) {
 
   return (
     <div className="overlay">
-      <div className="card" role="status">
-        <h2>{state === 'connecting' ? 'Connecting to the observer stream' : 'Observer not reachable'}</h2>
-        <p className="mono">{url}</p>
+      <div className="card card-welcome" role="status" data-testid="first-run">
+        <p className="welcome-kicker">Artificial Life Observatory</p>
+        <h2>{state === 'connecting' ? 'Looking for a local world…' : 'Waiting for a local world…'}</h2>
+        <p className="dim">This page only watches a world runner on your machine (<span className="mono">{url}</span>). Nothing here can change the simulation.</p>
         {state !== 'connecting' ? (
           <>
-            <p>Is a world runner serving observer frames? Start one with</p>
-            <pre className="mono">{RUN_HINT}</pre>
+            <p className="welcome-step">Start the demo world, then keep this page open:</p>
+            <pre className="mono">{NEW_HINT}{'\n\n'}{UI_HINT}</pre>
+            <p className="welcome-step">Already created it once? Resume the same world instead:</p>
+            <pre className="mono">{RESUME_HINT}</pre>
             <p className="dim">{retry}{lastError ? ` — ${lastError}` : ''}</p>
             <button type="button" className="btn" onClick={onRetry}>Retry now</button>
           </>

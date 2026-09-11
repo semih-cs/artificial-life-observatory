@@ -6,6 +6,7 @@ import type { CameraState } from '../render/camera.js';
 export interface WorldViewHandle {
   fitWorld(): void;
   zoomBy(factor: number): void;
+  centerOnOrganism(id: number): boolean;
 }
 
 export interface WorldViewProps {
@@ -62,6 +63,7 @@ export const WorldView = forwardRef<WorldViewHandle, WorldViewProps>(function Wo
   useImperativeHandle(ref, () => ({
     fitWorld: () => rendererRef.current?.fitWorld(),
     zoomBy: (factor: number) => rendererRef.current?.zoomBy(factor),
+    centerOnOrganism: (id: number) => rendererRef.current?.centerOnOrganism(id) ?? false,
   }), []);
 
   return <div className="world-host" ref={hostRef} data-testid="world-host" />;

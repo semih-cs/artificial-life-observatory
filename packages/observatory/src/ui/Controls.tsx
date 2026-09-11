@@ -1,3 +1,6 @@
+import { QuickJump, type JumpResult } from './QuickJump.js';
+import { HelpHint } from './HelpHint.js';
+
 export interface ControlsProps {
   viewPaused: boolean;
   zoomPercent: number | null;
@@ -7,9 +10,10 @@ export interface ControlsProps {
   onZoomOut: () => void;
   onTogglePause: () => void;
   onClearFocus: () => void;
+  onJump: (id: number) => JumpResult;
 }
 
-export function Controls({ viewPaused, zoomPercent, focusLineage, onFit, onZoomIn, onZoomOut, onTogglePause, onClearFocus }: ControlsProps) {
+export function Controls({ viewPaused, zoomPercent, focusLineage, onFit, onZoomIn, onZoomOut, onTogglePause, onClearFocus, onJump }: ControlsProps) {
   return (
     <div className="controls" aria-label="View controls">
       {focusLineage !== null ? (
@@ -17,6 +21,7 @@ export function Controls({ viewPaused, zoomPercent, focusLineage, onFit, onZoomI
           Lineage #{focusLineage} focused <span aria-hidden="true">×</span>
         </button>
       ) : null}
+      <QuickJump onJump={onJump} />
       <div className="control-group">
         <button type="button" className="ctl" onClick={onZoomOut} aria-label="Zoom out" title="Zoom out">−</button>
         <span className="ctl ctl-readout mono" title="Zoom relative to fit">{zoomPercent === null ? '—' : `${zoomPercent}%`}</span>
@@ -31,6 +36,7 @@ export function Controls({ viewPaused, zoomPercent, focusLineage, onFit, onZoomI
       >
         {viewPaused ? 'Resume view' : 'Pause view'}
       </button>
+      <HelpHint />
     </div>
   );
 }

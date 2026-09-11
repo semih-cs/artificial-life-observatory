@@ -221,7 +221,10 @@ observer invariants are proven by test and must hold from now on:
 ### Demo seeds (product only)
 
 A clearly labelled DEMO seed may be chosen for the product UI because it
-produces a long-lived, interesting world.
+produces a long-lived, interesting world. **v1 DEMO seed: `31415926`**
+(`npm run demo:new` / `demo:resume`, `worlds/demo`), chosen from a 40,000-
+tick headless check for visible lineage turnover and advancing
+generations; recorded in `PROJECT_STATUS.md`.
 
 - It must be kept separate from the pilot and validation seed sets.
 - Choosing it is **not** a scientific claim.
@@ -229,7 +232,7 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-**ACTIVE — slices 1–4 done.** `packages/observatory` (React + TypeScript +
+**COMPLETE / FROZEN FOR V1.** `packages/observatory` (React + TypeScript +
 Vite + PixiJS) consumes the read-only observer stream from
 `packages/world-runner`: `--observe <port>`, observer protocol v1, see
 README. It never sends commands that change the world (§14.50). Scope:
@@ -249,8 +252,10 @@ the five protocol morphology genes next to the parent's with exact deltas
 (from a bounded session cache), births carry a Δ count. Slice 4 is a
 compact ancestry strip: the observed parent chain walked backwards through
 that cache, one Δ badge per hop, stopping honestly at the first unobserved
-ancestor. Next: final v1 polish and the Phase 0D freeze — see
-`PROJECT_STATUS.md`.
+ancestor. The final polish added an organism quick-jump (current frame
+only), the first-run card, the demo scripts and a help hint. **v1 is
+complete.** Work from here is v2 (README *Deferred to v2*) unless it is a
+genuine v1 bug; do not add features to the frozen v1 Observatory.
 
 Frontend rules that hold from now on:
 
@@ -504,9 +509,9 @@ colour determinism and the camera; and (slice 2) lineage aggregation,
 birth/death derivation, frame-gap safety, bounded feed and trend,
 world-identity reset, reconnect preservation and the rendered evolution
 panel; and (slice 3) parent → child morphology deltas, the morphology cache
-bound and reset, birth Δ counts and the rendered inheritance section; and
-(slice 4) the ancestry walk and strip. `npm run build` type-checks and
-bundles it. The live check — a world runner with `--observe` plus the built
+bound and reset, birth Δ counts and the rendered inheritance section;
+(slice 4) the ancestry walk and strip; and the final polish (quick-jump,
+first-run card, help hint). `npm run build` type-checks and bundles it. The live check — a world runner with `--observe` plus the built
 Observatory in a browser — is manual (or scripted with a headless browser
 where one is available) and is recorded in `PROJECT_STATUS.md`.
 

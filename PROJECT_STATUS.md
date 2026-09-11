@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-11 (Phase 0D slice 4)
+**Last updated:** 2026-09-11 (v1 complete — Phase 0D frozen)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -18,7 +18,7 @@
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
-| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1–4 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. **Next:** final v1 polish, demo experience, integration check, Phase 0D freeze |
+| **Phase 0D** — Observatory / visualisation | **COMPLETE / FROZEN FOR V1** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. The final polish adds an organism quick-jump, the first-run card, `npm run demo:new` / `demo:resume` with DEMO seed `31415926`, and a help hint. **V1 COMPLETE.** Further work is v2 unless it is a genuine v1 bug |
 
 **Frozen v1 biological model:**
 
@@ -33,6 +33,27 @@ The historical single-founder model `0A.1.0` (`6a6576bd49e86b27`) stays
 documented and tested. Biology does not change in Phase 0C or 0D unless a
 genuine implementation bug is found, and any such change must be versioned.
 This is a **product freeze, not a research baseline qualification**.
+
+**DEMO seed (presentation only): `31415926`** — used by `npm run demo:new`
+(`worlds/demo`, 10 ticks/s, observer on 8787). Chosen from a 40,000-tick
+headless check of a handful of candidate seeds outside the pilot and
+validation sets: population ≈ 100 at tick 2,000 and ≈ 350–380 from tick
+4,000 on, 18 living lineages at tick 2,000 narrowing to 1 by tick 30,000,
+maximum generation 36 at tick 40,000. It is not research evidence, not a
+"representative" or "best" world, and it changes no regression seed or
+golden hash.
+
+### V1 — COMPLETE
+
+v1 = frozen `0A.2.0` biology + exact persistence + the persistent world
+runner with its read-only observer stream + the Observatory (Phase 0D
+slices 1–4 and the final polish). What v1 deliberately excludes, and the
+v2 backlog, are in README *V1 boundaries*. From here on:
+
+- **no new features in v1** — the Observatory, runner and biology are
+  frozen; only genuine v1 bugs are fixed, with a focused test each;
+- **v2 work starts in a new phase** with its own spec, never by extending
+  the frozen packages "a little".
 
 ### Phase 0B closure — what is recorded
 
@@ -88,10 +109,12 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0D slice 4, the ancestry strip in the Observatory:
+the v1 completion checkpoint (final polish, demo experience, Phase 0D
+freeze):
 
 ```text
-(HEAD)  Phase 0D slice 4: Observatory compact ancestry strip — observed parent chain, Δ per hop, honest boundaries — see `git log -1`
+(HEAD)  v1 complete: Observatory final polish (quick-jump, first-run card, help), demo scripts and DEMO seed, Phase 0D frozen — see `git log -1`
+f21d072 Phase 0D slice 4: Observatory compact ancestry strip — observed parent chain, Δ per hop, honest boundaries
 47f7e87 Phase 0D slice 3: Observatory inherited morphology — parent → child gene deltas, birth Δ counts, morphology cache
 ddfcda3 Phase 0D slice 2: Observatory evolution visibility — lineage panel, birth/death feed, session-only trends
 e809686 Phase 0D slice 1: Observatory frontend — live world view over observer protocol v1
@@ -128,25 +151,28 @@ persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuati
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
 world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
                                              golden observer / paced / paced+observer 3)
-observatory tests:         77 / 77  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
+observatory tests:         81 / 81  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
                                              frame store 4; interpolation 5; lineage colour 5; camera 5;
                                              slice 2: lineage aggregation 4; session history 10; evolution panel 6;
                                              slice 3: inheritance, cache, birth feed, inspector section 10;
-                                             slice 4: ancestry walk + strip 8) — ≈ 1.4 s
-workspace total:          505 / 505 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
+                                             slice 4: ancestry walk + strip 8; final polish 4) — ≈ 1.4 s
+workspace total:          509 / 509 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
 workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner, then observatory:
                                 tsc --noEmit + vite build, ≈ 8 s total)
-live integration:          42 / 42 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 4 section)
+live integration:          52 / 52 checks passed (v1 acceptance: first-run card, demo world create/resume, quick-jump, help, then slices 1–4 on the golden world and a third world; see the Phase 0D final section)
+demo scripts:              verified on the dev VM — `demo:new` creates worlds/demo (seed 31415926) and streams; `demo:resume` recovers it; `demo:new` over an existing world is refused ([WORLD_EXISTS], exit 1, nothing touched)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Observatory slice 4 checkpoint (the biology, persistence
-and runner packages are byte-for-byte unchanged by slices 2–4: `git
+Re-confirmed at the v1 checkpoint (the biology, persistence and runner
+packages are byte-for-byte unchanged by Phase 0D slices 2–4 and the final
+polish: `git
 diff --stat` touches only `packages/observatory/` and the three
-documentation files; no dependency was added), at the slice 3, 2 and 1 checkpoints, at the
+documentation files plus two root `package.json` scripts; no dependency was added), at
+the slice 4, 3, 2 and 1 checkpoints, at the
 observer-bridge checkpoint, and at every Phase 0C checkpoint before it:
 
 - the amended hash via `npm run simulate`;
@@ -2194,20 +2220,88 @@ outside the selected view. Memory unchanged (the cache bound is 4,000).
 a historical inspector for dead ancestors, persistent genealogy, neural
 fingerprints, mobile polish, database/cloud, deeper analytics.
 
+## Phase 0D final — RESULT: DONE (v1 polish, demo experience, freeze)
+
+No change to simulation-core, experiment-harness, persistence or
+world-runner; no change to biology, `simulationVersion`, the snapshot
+format, the store or observer protocol v1; no dependency added. Only
+`packages/observatory`, two root `package.json` scripts and the docs.
+
+**Added (small, all display-only):**
+
+- **Organism quick-jump** (`ui/QuickJump.tsx`, top-right `#` box): `Enter`
+  parses `208` / `#208`; if the id is in the newest frame it is selected,
+  the Organism tab opens and the camera pans to it without changing zoom
+  (`WorldRenderer.centerOnOrganism`, clamped); otherwise a small
+  *#id is not currently alive* note for 2.4 s. Current frame only — no
+  history, no query, no message. `Esc` in the box clears it and does not
+  reach the global shortcuts (which already ignore inputs).
+- **First-run card** (`ui/ConnectionOverlay.tsx`): before any frame,
+  *Artificial Life Observatory — Waiting for a local world…* (or *Looking
+  for…* while connecting) with the observer address, the exact
+  `npm run demo:new` + `npm run observatory` commands, and `npm run
+  demo:resume` for an existing `worlds/demo`. Styled as a welcome, not an
+  error. After frames were seen a disconnect stays the small pill.
+- **Demo scripts** (root `package.json`): `demo:new` =
+  `world --dir worlds/demo --new --seed 31415926 --ticks-per-second 10
+  --observe 8787`; `demo:resume` = the same without `--new --seed`. The
+  runner's existing refusal (`WORLD_EXISTS`) makes `demo:new` safe over an
+  existing world. Verified on the dev VM (create → stop → resume → refuse).
+- **Help hint** (`ui/HelpHint.tsx`, `?` top-right): the existing controls
+  in one popover; the hint bar now also names Space and `?`.
+- **Polish:** the inheritance parent line uses *last seen t N* so it no
+  longer wraps; the welcome card's commands are on their own lines.
+
+**Language pass:** all visible strings reviewed — born, died, no longer
+living, generation, lineage, parent, morphology mutation, observed
+ancestry, population. No fit / superior / successful / intelligent /
+adapted / strongest anywhere (the rendered-panel tests assert it).
+
+**Proof:** `polish.test.tsx` (4 tests; 81 in observatory): id parsing;
+current-frame-only resolution (a dead id is *not-alive*); the first-run
+card shows the three commands when disconnected, *Looking for* while
+connecting, nothing when live, and the pill after frames; the help hint is
+closed by default. The read-only test is unchanged.
+
+**v1 acceptance pass (52 / 52; production build served statically, headless
+Chromium 1440×900 via Playwright):**
+
+1. *First run:* page opened with no runner → the welcome card with
+   `demo:new` / `demo:resume` / `observatory`.
+2. *Demo world:* the runner started exactly as `demo:new` does (fresh
+   `worlds/demo`, seed 31415926) → live automatically, HUD seed 31415926,
+   world pixels change between screenshots (organisms move), food and
+   population shown; quick-jump `7` → *Organism #7* with zoom unchanged;
+   `999999` → *not currently alive* note; `?` opens the controls; stop →
+   *Disconnected*; restart as `demo:resume` → live, same seed, tick
+   continues (170 → 202).
+3. *Slices 1–4* on the golden world at tick 2,500 (identity change →
+   *Cleared 1×*): tick advances, lineage panel, live counts, focus and
+   sparkline, births/deaths with no gap on a continuous stream, no
+   qualitative labels, inheritance comparison and change marks, 5-node
+   ancestry chain to a founder with Δ badges matching the inspector, alive
+   ancestor click, Evolution *Morphology changes*, feed Δ badges, a founder
+   dead at `maxAge` shown as an observed parent and ancestor, zoom / fit /
+   pause-view, runner stop and same-world reconnect (samples continue, one
+   gap marker), a third world (seed 424242, tick 3,200) → *Cleared 2×* and an
+   unobserved-ancestor boundary.
+4. 0 WebSocket data frames sent (1,311 received); no application console
+   errors; screenshots inspected (welcome card, quick-jump, help popover).
+
+## V2 backlog (deferred; nothing started)
+
+Neural fingerprint / neural mutation visualisation; richer senses; memory /
+recurrent neural state; lifetime learning, plasticity and RL experiments;
+richer morphology; full genealogy; persistent analytics; cloud / database /
+remote observers; mobile polish; richer ecosystem and environmental
+complexity. Any of these is a new phase with its own spec.
+
 ## NEXT EXACT STEP
 
-**Phase 0D final — v1 polish and freeze.** No new subsystem. In one
-task: (1) small UX fixes found while using the Observatory (inspector
-wrapping at narrow widths, feed/lineage list scroll behaviour, keyboard
-shortcuts listed in one place); (2) an organism quick-jump — type an id to
-select it if it is in the newest frame (no search index, no history);
-(3) the demo-world startup experience — one documented command pair (a
-labelled DEMO seed chosen for a long-lived world, never research
-evidence), a clearer first-run card when no runner is reachable, and
-`npm run observatory` pointing at it; (4) a final live integration pass
-over slices 1–4 recorded here; (5) README/PROJECT_STATUS/AGENTS updated
-to state that Phase 0D is **frozen for v1** and that neural fingerprints,
-full genealogy, mobile polish, database/cloud and deeper analytics are
-v2. Then commit the v1 checkpoint.
+**None for v1 — v1 is complete and Phase 0D is frozen.** The next task, if
+any, is either a genuine v1 bug fix (reproduce with a focused test, smallest
+correction, rerun the affected package and the golden hashes) or the start
+of v2 as a new phase with its own specification (see the V2 backlog above).
+Do not extend the frozen v1 packages with features.
 
 Backend work stays limited to what the frontend demonstrably needs.
