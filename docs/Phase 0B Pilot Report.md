@@ -1171,6 +1171,8 @@ condition, it does not make an organism better at anything.
 | `0A.2.0` extinction is already determined by the end of the first founder lifespan | **Partly** | §19.6: all 7 worlds that doubled by tick 3000 established; the 8 that did not include all 5 extinct worlds and 3 later establishers, indistinguishable at tick 3000 on population, births and energy |
 | Stalled worlds that recover diverge from those that die soon after tick 3000 | Yes, at pilot level | §20.6: population separates the 3 late establishers from the 4 extinct worlds alive at 3000 with 0 misclassified at every checkpoint 4000–9000; births from 5000; mean energy never |
 | The stalled-cohort split is repeat reproduction rather than participation | Yes, at pilot level, lifetime and founder-inclusive | §21.6: births per reproducer CLEAR from 6000 (1.81–2.24 vs 2.25–2.41); the fraction ever reproducing never separates; descendant-only figures are not derivable |
+| Extinct-world reproducers produce fewer offspring because they die sooner after first reproducing | **No** | §22.9: post-first-reproduction survival overlaps (2 of 7 worlds misclassified; best cut has E\* longer) |
+| …because of longer intervals between reproductions | **Not established** | §22.9: median interval is STRONG PARTIAL (1 of 7 misclassified), below the precommitted CLEAR bar; call NEITHER / INCONCLUSIVE |
 
 ---
 
@@ -3143,4 +3145,126 @@ establishment success.
 
 ### 22.9 Results
 
-*(empty at precommitment)*
+Implementation: commit `1f07f69`. It is harness-only, with no simulation-core
+change. The run used that clean commit; all seven replicates record
+`gitCommit 1f07f69…`, `gitDirty false`, `sourceIdentity b923c6fb51a70756`,
+`simulationVersion 0A.2.0`.
+
+Output: `results/diagnostic-reproducer-lifecycle-v1/`. It contains
+`lifecycle-<seed>.csv` (one row per organism), `lifecycle-analysis.json`,
+`replicates.json` and the 200-tick timeseries.
+
+#### Observational purity — PASS
+
+- A run with the recorder gave an identical canonical hash and an identical
+  timeseries to a run without it.
+- The recorder ran without error on deep-frozen before/after states for 800
+  ticks, and the post-step hash was unchanged.
+- Recorded births, deaths and parentage balanced exactly with core telemetry at
+  every tick of all seven runs. Any mismatch would have stopped the run.
+
+#### Validity — PASS on all seven seeds
+
+| Seed | Exact canonical hash | Full timeseries rows at 3000 / 5000 / 7000 / 9000 |
+|---:|---|---|
+| 131676 | @14505 `c3213619b9c38edf` ✓ | identical |
+| 147514 | @9092 `d796624c0cc0b4f6` ✓ | identical |
+| 187109 | @18374 `96a753e86be9dc3a` ✓ | identical |
+| 195028 | @9235 `8d14961c1201f613` ✓ | identical |
+| 107919 | @9793 `da0a52515e7c9bc6` ✓, @20000 `93f7b89eaf6b1247` ✓ | identical |
+| 202947 | @18876 `b6fbde0b63d26a5d` ✓, @20000 `52633379cc4603fa` ✓ | identical |
+| 210866 | @20000 `16b073462ec8b5c4` ✓ | identical |
+
+No canonical hash was persisted at ticks 3000–9000. At those ticks every one of
+the 25 timeseries fields matched the baseline exactly.
+
+#### Eligible reproducers and censoring
+
+No organism was censored. Every descendant born in ticks 3001–9000 had its
+death observed.
+
+| Seed | Group | Included organisms | Eligible reproducers | …with ≥ 2 events |
+|---:|---|---:|---:|---:|
+| 131676 | E\* | 54 | 22 | 16 |
+| 147514 | E\* | 15 | 5 | 1 |
+| 187109 | E\* | 38 | 13 | 6 |
+| 195028 | E\* | 27 | 9 | 3 |
+| 107919 | L | 295 | 150 | 95 |
+| 202947 | L | 321 | 145 | 90 |
+| 210866 | L | 241 | 126 | 84 |
+
+#### Per-world medians
+
+| Seed | Group | First-reproduction age | Inter-reproduction interval | Post-first-reproduction survival | Lifetime reproduction events | Fraction dying before a 2nd reproduction |
+|---:|---|---:|---:|---:|---:|---:|
+| 131676 | E\* | 832 | 368.5 | 1801.5 | 2 | 0.273 |
+| 147514 | E\* | 500 | 676 (one organism) | 2360 | 1 | 0.800 |
+| 187109 | E\* | 960 | 489.8 | 1702 | 1 | 0.538 |
+| 195028 | E\* | 1353 | 410 | 1220 | 1 | 0.667 |
+| 107919 | L | 654.5 | 336 | 2185.5 | 2 | 0.367 |
+| 202947 | L | 506 | 287.5 | 1458 | 2 | 0.379 |
+| 210866 | L | 1004.5 | 383.5 | 1659.5 | 2 | 0.333 |
+
+Best single cut over the 7 worlds:
+
+- **IV** — median interval: **1 misclassified**, STRONG PARTIAL, in the
+  expected direction (L shorter). 131676, at 368.5, sits below the L world
+  210866 at 383.5.
+- **SV** — median post-first-reproduction survival: **2 misclassified**,
+  WEAK / NONE. The best cut has the extinct worlds *longer*, not shorter:
+  1220–2360 against 1458–2186.
+
+Descriptive cuts, not part of the decision:
+
+- median lifetime events: 1 misclassified (E\* lower);
+- fraction dying before a second reproduction: 1 misclassified (E\* higher);
+- first-reproduction age: 2 misclassified.
+
+Also descriptive: the parent's energy after its first reproduction step, net of
+cost, had per-world medians of 34.8–40.8 in E\* and 39.3–45.7 in L. The two
+ranges overlap.
+
+#### Determination: **NEITHER / INCONCLUSIVE** (per §22.8)
+
+Neither primary measure is CLEAR in its expected direction, so neither
+mechanism is supported by the precommitted rule.
+
+What the data does and does not show, stated without overreach:
+
+- **Earlier death is not indicated.** Post-first-reproduction survival is not
+  shorter in the extinct worlds: its ranges overlap, and the best cut even
+  points the other way.
+- **Longer gaps are suggested but not established.**
+  - Three of the four extinct worlds have longer median intervals, a higher
+    fraction of reproducers that never reproduce a second time (0.54–0.80
+    against 0.33–0.38), and a median of 1 lifetime reproduction against 2.
+  - The exception each time is 131676. It is the extinct world with the most
+    reproducers (22) and the latest extinction (tick 14505).
+  - Its values sit inside the late-establisher range.
+- **The extinct worlds' figures rest on few organisms.** They have 5–22
+  reproducers, and 147514's median interval comes from a single organism.
+  Those medians are much noisier than the late establishers', which rest on
+  126–150 reproducers each.
+
+One look per measure at n = 4 against n = 3 gives a CLEAR cut for 5.7% of
+random labellings. This result is pilot-level description only.
+
+**Death cause** is descriptive and derived. Energy-depletion deaths below
+`maxAge` against at-`maxAge` deaths: E\* 35/19, 10/5, 28/10, 22/5; L 159/136,
+278/43, 121/120. The at-`maxAge` category cannot be separated from starvation
+in the same tick (§22.4).
+
+**Causal limit.** None of this shows that food, neural quality, sensing or
+morphology caused any difference. What is observed is this: reproducers in the
+extinct stalled worlds do not die sooner after first reproducing, and in most
+of those worlds a larger share never reproduce a second time.
+
+### 22.10 Next scientific question
+
+**After a first reproduction, do reproducers in the extinct stalled worlds take
+longer to climb back from their post-reproduction energy to the reproduction
+threshold (75) — or fail to reach it at all before they die — than reproducers
+in the worlds that establish?**
+
+This is a question only. It needs a per-organism energy record between
+reproductions, which does not exist.

@@ -49,6 +49,9 @@ still alive at 3000, and stays separated through 9000. Births separate from
 reproduction.** Lifetime births per reproducer separate the groups from tick
 6000; the fraction of organisms ever reproducing never does. This is lifetime
 and founder-inclusive; descendant-only figures are not derivable.
+**Reproducer-lifecycle diagnostic (§22): VALID, NEITHER / INCONCLUSIVE.**
+Survival after first reproduction does not separate the groups. The
+inter-reproduction interval is STRONG PARTIAL (1 of 7 worlds misclassified).
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -60,11 +63,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the read-only reproduction-participation analysis.
+Most recent work is the observational reproducer-lifecycle diagnostic.
 `git log -1` is authoritative; recent history:
 
 ```text
-(HEAD)  reproduction-participation: results — B — see `git log -1`
+(HEAD)  diagnostic-reproducer-lifecycle-v1: results — NEITHER / INCONCLUSIVE — see `git log -1`
+1f07f69 diagnostic-reproducer-lifecycle-v1: read-only recorder, analysis and CLI
+ff7e2b1 diagnostic-reproducer-lifecycle-v1 PRECOMMITMENT: longer gaps or earlier death?
+80766e0 reproduction-participation: results — B, repeat-reproduction difference (read-only)
 8cf1759 reproduction-participation: read-only analysis code for the precommitted §21 comparison
 18fe6e3 reproduction-participation analysis PRECOMMITMENT (read-only, stalled cohort)
 b3a3f30 stalled-cohort: results — conclusion A, recovery signal clear from tick 4000 (read-only)
@@ -108,8 +114,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 131 / 131 passed   (+4: reproductionParticipation.test.ts)
-workspace total:          310 / 310 passed
+experiment-harness tests: 138 / 138 passed   (+7: reproducerLifecycle.test.ts)
+workspace total:          317 / 317 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -117,9 +123,9 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed as live tests in the suite after the
-reproduction-participation analysis (no separate simulation was run for it); earlier also via
-`npm run simulate` / `singleFounderModelConfig()` after the continuation run: the amended hash via
+Both hashes re-confirmed after the reproducer-lifecycle diagnostic, via
+`npm run simulate`, via `singleFounderModelConfig()` on the built core, and as
+live tests in the suite: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
 
@@ -519,7 +525,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -630,7 +636,52 @@ modifying the model.
 
 ---
 
-## `diagnostic-reproducer-lifecycle-v1` — PRECOMMITMENT (not yet run)
+## `diagnostic-reproducer-lifecycle-v1` — RESULT: VALID, NEITHER / INCONCLUSIVE
+
+Implemented in `1f07f69` (`src/analysis/lifecycle.ts`,
+`src/experiments/reproducerLifecycle.ts`, CLI `reproducer-lifecycle`, 7 tests),
+with no simulation-core change. Run from that clean commit: `gitDirty false`,
+`sourceIdentity b923c6fb51a70756`. Output:
+`results/diagnostic-reproducer-lifecycle-v1/`.
+
+**Checks:**
+
+- **Purity: PASS.** Identical hash and timeseries with and without the
+  recorder; runs on deep-frozen states; telemetry balanced at every tick of all
+  seven runs.
+- **Validity: PASS for all seven.** The exact canonical hash matched at every
+  persisted checkpoint (baseline extinction or stop ticks, and 20,000 for L).
+  All 25 timeseries fields matched exactly at 3000, 5000, 7000 and 9000.
+- **Censoring:** none. Eligible reproducers per world: E\* 22, 5, 13, 9;
+  L 150, 145, 126.
+
+| Seed | Group | 1st-rep age | Interval | Post-1st survival | Events | Died before 2nd |
+|---:|---|---:|---:|---:|---:|---:|
+| 131676 | E\* | 832 | 368.5 | 1801.5 | 2 | 0.273 |
+| 147514 | E\* | 500 | 676 (n = 1) | 2360 | 1 | 0.800 |
+| 187109 | E\* | 960 | 489.8 | 1702 | 1 | 0.538 |
+| 195028 | E\* | 1353 | 410 | 1220 | 1 | 0.667 |
+| 107919 | L | 654.5 | 336 | 2185.5 | 2 | 0.367 |
+| 202947 | L | 506 | 287.5 | 1458 | 2 | 0.379 |
+| 210866 | L | 1004.5 | 383.5 | 1659.5 | 2 | 0.333 |
+
+**Decision:**
+
+- **IV (interval):** 1 misclassified, STRONG PARTIAL, L shorter.
+- **SV (survival):** 2 misclassified, WEAK / NONE; the best cut has E\*
+  longer.
+- **Result: NEITHER / INCONCLUSIVE.** Earlier death is not indicated. Longer
+  gaps are suggested in 3 of 4 extinct worlds but not established; the
+  exception is 131676, and the extinct worlds rest on few reproducers.
+- **Causal limit:** no claim about food, neural quality, sensing or
+  morphology.
+
+**Next scientific question (§22.10):** after a first reproduction, do
+extinct-world reproducers take longer to regain the reproduction threshold (75)
+from their post-reproduction energy — or fail to regain it at all — than
+reproducers in establishing worlds?
+
+### Precommitment (historical record — EXECUTED)
 
 Full text: pilot report §22. Committed before any code for it exists and before
 anything runs.
@@ -1163,13 +1214,16 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Execute `diagnostic-reproducer-lifecycle-v1` exactly as precommitted in pilot
-report §22:**
+**Precommit — design only, nothing run — an extension of the observational
+lifecycle recorder that, for the same 7 seeds and the same eligible reproducers
+(§22.6), records each reproducer's energy after every reproduction and the
+first tick, if any, at which it next reaches the reproduction threshold (75).**
 
-1. implement the read-only recorder and its purity tests in the harness;
-2. commit;
-3. run the seven seeds from the clean commit;
-4. enforce the §22.5 validity check;
-5. apply the §22.8 rule unchanged.
+Its purpose is to answer pilot report §22.10. The design must keep the purity
+tests and the §22.5 validity checks, and must fix the decision rule before
+anything runs.
 
-No simulation-core change; no biological, ecological or parameter change.
+Constraints that still hold: no simulation-core, biological, neural,
+ecological or parameter change; `founderGroupCount` and `trajectory-outcome-v2`
+unchanged; no calibration sweep; do not touch
+`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
