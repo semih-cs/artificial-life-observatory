@@ -51,6 +51,22 @@ npm run demo:resume    # terminal 1 — recovers worlds/demo from its newest val
 holds a world, so it can never overwrite one. To start over, delete
 `worlds/demo` yourself first.
 
+**Two ways to skip the crowded opening.** A fresh world starts with 25
+founders (5 founder groups × 5, the frozen `0A.2.0` bootstrap) and fills
+to its food-limited level of ≈ 350 organisms within the first ≈ 4,000
+ticks; that early burst is the empty world filling up, not a fast
+reproduction setting. If you would rather watch the settled world, or watch
+the burst more slowly:
+
+```bash
+npm run demo:new:settled   # terminal 1 — creates worlds/demo, fast-forwards to tick 5,000 unpaced (a few seconds), then streams at 10 ticks/s
+npm run demo:resume:slow   # terminal 1 — resumes worlds/demo at 3 ticks/s instead of 10
+```
+
+Both are plain `npm run world` invocations (`--until-tick 5000`, then the
+resume command; `--ticks-per-second 3`). Pace only decides when ticks run —
+the world's trajectory is identical at any pace.
+
 **What is where.** The world lives in `worlds/demo/` as local JSON snapshots
 (newest five kept, gitignored). The observer stream binds `127.0.0.1:8787`
 only and is read-only: the page cannot send anything to the world, and it

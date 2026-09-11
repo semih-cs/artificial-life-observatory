@@ -2249,6 +2249,13 @@ format, the store or observer protocol v1; no dependency added. Only
   existing world. Verified on the dev VM (create → stop → resume → refuse).
 - **Help hint** (`ui/HelpHint.tsx`, `?` top-right): the existing controls
   in one popover; the hint bar now also names Space and `?`.
+- **Opening-burst conveniences** (scripts only, after the v1 checkpoint):
+  `demo:new:settled` creates `worlds/demo` and fast-forwards it to tick
+  5,000 unpaced (`--until-tick 5000`, ≈ 5 s, population ≈ 344) before
+  streaming at 10 ticks/s; `demo:resume:slow` resumes at 3 ticks/s. No
+  biology or runner change: the 25-founder start and the early fill to the
+  food-limited level are the frozen `0A.2.0` model, documented in the
+  README Quick start. Verified on the dev VM.
 - **Polish:** the inheritance parent line uses *last seen t N* so it no
   longer wraps; the welcome card's commands are on their own lines.
 

@@ -14,6 +14,8 @@
     "world": "npm run world --workspace=packages/world-runner --",
     "observatory": "npm run dev --workspace=packages/observatory --",
     "demo:new": "npm run world -- --dir worlds/demo --new --seed 31415926 --ticks-per-second 10 --observe 8787",
-    "demo:resume": "npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787"
+    "demo:resume": "npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787",
+    "demo:new:settled": "npm run world -- --dir worlds/demo --new --seed 31415926 --until-tick 5000 --status-every 1000 && npm run demo:resume",
+    "demo:resume:slow": "npm run world -- --dir worlds/demo --ticks-per-second 3 --observe 8787"
   }
 }
