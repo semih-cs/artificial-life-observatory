@@ -37,6 +37,10 @@ result.
 5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY and 0 INCONCLUSIVE.
 boundedCompletionRate is 0.533: **BASELINE GATE FAILED**, as already fixed.
 Dominant failure mode: extinction (establishment failure).
+**Early establishment analysis (read-only, §19): PARTIAL separation by tick
+3000.** All 7 worlds that doubled by tick 3000 established. The 8 still at
+founder scale include all 5 extinct worlds and 3 later establishers, which
+cannot be told apart at tick 3000.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -48,11 +52,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the complete 15-seed `0A.2.0` default profile. `git log -1`
+Most recent work is the read-only early-establishment analysis. `git log -1`
 is authoritative; recent history:
 
 ```text
-(HEAD)  continuation-multifounder-default-v1: results — see `git log -1`
+(HEAD)  early-establishment: results — PARTIAL — see `git log -1`
+8ca5532 early-establishment: read-only analysis code for the precommitted §19 comparison
+e5f368c early-establishment analysis PRECOMMITMENT (read-only, 0A.2.0 default)
+8b7a6bd continuation-multifounder-default-v1: results — complete 15-seed 0A.2.0 profile
 58d3cd1 continuation-multifounder-default-v1: minimal harness support for the precommitted run
 a8faf6a continuation-multifounder-default-v1 PRECOMMITMENT: complete the 15-seed 0A.2.0 profile
 3ad28cb trajectory-outcome-v2: reclassification of persisted results (read-only)
@@ -87,8 +94,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 120 / 120 passed   (+4: baselineContinuation.test.ts)
-workspace total:          299 / 299 passed
+experiment-harness tests: 124 / 124 passed   (+4: earlyEstablishment.test.ts)
+workspace total:          303 / 303 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -96,7 +103,9 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed after the continuation run: the amended hash via
+Both hashes re-confirmed as live tests in the suite after the early-establishment
+analysis (no separate simulation was run for it); earlier also via
+`npm run simulate` / `singleFounderModelConfig()` after the continuation run: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
 
@@ -496,7 +505,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -607,7 +616,44 @@ modifying the model.
 
 ---
 
-## Early establishment analysis (`0A.2.0` default) — PRECOMMITMENT (read-only, not yet computed)
+## Early establishment analysis (`0A.2.0` default) — RESULT: PARTIAL (conclusion B)
+
+Code in `8ca5532` (`src/analysis/earlyEstablishment.ts`, CLI
+`early-establishment`, 4 tests). Run read-only from that clean commit;
+simulated nothing. All 301 source files byte-identical. Output:
+`results/analysis-early-establishment-v1/early-establishment.json`.
+
+Fields available for all 15 seeds, from one file (the baseline 200-tick
+timeseries): population, cumulative births and mean energy at ticks
+1000/2000/3000; minimum and maximum population over ticks 0–3000; first tick
+with population ≥ 50; first birth. First birth was at tick 600 in all 15, so it
+is uninformative. Food intake is unavailable for group E and was not used.
+
+| Metric @ 3000 | Extinct (n = 5) median [range] | Established (n = 10) median [range] | Best cut misclassified |
+|---|---|---|---:|
+| population | 16 [0–27] | 150.5 [24–194] | 2 / 15 |
+| cumulative births | 42 [10–45] | 192 [30–291] | 1 / 15 |
+| mean energy | 33.4 [23.6–38.9] (n = 4) | 36.7 [29.2–41.3] | 3 / 14 |
+
+What the numbers show:
+
+- **Separation is PARTIAL.** All 7 worlds that doubled their founding
+  population by tick 3000 established.
+- **The rest cannot be split yet.** The 8 still at founder scale at tick 3000
+  (0–35 organisms, 10–57 births) include all 5 extinct worlds and 3 later
+  establishers: 107919, 202947 and 210866.
+- **Strongest early indicator** (observational only): cumulative births by tick
+  3000. The extinct worlds had ≤ 45; 9 of 10 established worlds had ≥ 48, the
+  exception being 107919 with 30.
+- **Mean energy does not separate the groups.**
+- **Causal limit:** no claim about food acquisition.
+
+**Next scientific question (§19.8):** among the eight worlds still at founder
+scale at tick 3000, when do the three later establishers first become
+distinguishable from the five that went extinct, on population, births and
+mean energy?
+
+### Precommitment (historical record — EXECUTED)
 
 Full text: pilot report §19. Committed before any group comparison was computed.
 No simulation.
@@ -930,8 +976,16 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Compute the precommitted early-establishment analysis (pilot report §19)
-read-only from the persisted baseline timeseries, apply the §19.5 separation
-rule unchanged, and record the result.**
+**Precommit — design only, nothing computed — a read-only follow-on analysis of
+the persisted 200-tick timeseries that answers pilot report §19.8.**
 
-No simulation, no model or parameter change, no founder ranking.
+It would track the eight founder-scale worlds after tick 3000: 100000, 131676,
+147514, 187109 and 195028 against 107919, 202947 and 210866. It would compare
+population, cumulative births and mean energy at fixed ticks up to each
+extinct world's extinction. The design must fix the ticks and the separation
+rule before anything is computed, and must state the n = 5 against n = 3 limit.
+
+Constraints that still hold: no simulation; no model, ecology,
+`founderGroupCount` or `trajectory-outcome-v2` change; no calibration sweep;
+do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
+Phase 0C.

@@ -1165,6 +1165,7 @@ condition, it does not make an organism better at anything.
 | The `0A.2.0` default configuration can reach the ~70% gate under v2 | **No** | §17.5: the baseline cohort already has 5 extinctions; at most 4 non-bounded runs of 15 are compatible with the gate. The full v2 classification is not computable (6 seeds stopped by the v1 cap) |
 | Complete 15-seed `0A.2.0` default profile under v2 | Measured | §18.6: 5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY, 0 INCONCLUSIVE; boundedCompletionRate 0.533; gate FAILED |
 | The default `0A.2.0` failure is extinction-dominated | Yes, at pilot level | §18.7: the 5 extinct worlds never exceeded 37 organisms; all 10 others reached at least 196, and 8 of those 10 plateaued |
+| `0A.2.0` extinction is already determined by the end of the first founder lifespan | **Partly** | §19.6: all 7 worlds that doubled by tick 3000 established; the 8 that did not include all 5 extinct worlds and 3 later establishers, indistinguishable at tick 3000 on population, births and energy |
 
 ---
 
@@ -2358,4 +2359,114 @@ because they could not find food.
 
 ### 19.6 Results
 
-*(empty at precommitment)*
+The analysis code is in commit `8ca5532`. It ran read-only from that clean
+commit (`sourceIdentity 6984bc7f58990278`). It checked the fixed groups against
+the persisted v2 profile and simulated nothing. All 301 source JSON/CSV files
+were byte-identical before and after. Output:
+`results/analysis-early-establishment-v1/early-establishment.json`.
+
+#### All 15 seeds, ticks 0–3000
+
+| Seed | Group (v2 class) | Pop 1000 / 2000 / 3000 | Births 1000 / 2000 / 3000 | Mean energy 1000 / 2000 / 3000 | Min–max pop | First tick ≥ 50 |
+|---:|---|---|---|---|---|---:|
+| 100000 | E (EXTINCTION) | 29 / 5 / 0 | 9 / 10 / 10 | 23.7 / 11.8 / n/a | 0–30 | — |
+| 131676 | E (EXTINCTION) | 33 / 33 / 27 | 12 / 28 / 45 | 28.8 / 25.5 / 23.6 | 25–37 | — |
+| 147514 | E (EXTINCTION) | 32 / 25 / 15 | 9 / 28 / 42 | 32.7 / 33.6 / 34.3 | 15–34 | — |
+| 187109 | E (EXTINCTION) | 26 / 15 / 16 | 9 / 21 / 35 | 23.0 / 34.7 / 38.9 | 13–27 | — |
+| 195028 | E (EXTINCTION) | 35 / 24 / 24 | 12 / 25 / 43 | 27.6 / 39.1 / 32.5 | 22–36 | — |
+| 107919 | S (RUNAWAY) | 31 / 23 / 24 | 11 / 18 / 30 | 30.5 / 31.9 / 32.6 | 21–34 | — |
+| 115838 | S (HIGH_BOUNDED) | 28 / 75 / 175 | 14 / 74 / 210 | 31.6 / 40.9 / 35.0 | 25–175 | 1800 |
+| 123757 | S (HIGH_BOUNDED) | 35 / 74 / 184 | 14 / 66 / 222 | 32.9 / 41.1 / 40.1 | 25–184 | 1600 |
+| 139595 | S (BOUNDED_VIABLE) | 49 / 104 / 194 | 34 / 124 / 291 | 34.2 / 49.4 / 38.0 | 25–194 | 1200 |
+| 155433 | S (HIGH_BOUNDED) | 45 / 78 / 169 | 25 / 91 / 253 | 32.4 / 33.4 / 30.4 | 25–169 | 1400 |
+| 163352 | S (BOUNDED_VIABLE) | 40 / 104 / 176 | 21 / 110 / 277 | 34.0 / 37.7 / 36.7 | 25–176 | 1400 |
+| 171271 | S (HIGH_BOUNDED) | 40 / 32 / 56 | 17 / 38 / 85 | 22.6 / 37.6 / 36.7 | 25–56 | 2800 |
+| 179190 | S (HIGH_BOUNDED) | 34 / 52 / 132 | 18 / 64 / 174 | 32.6 / 38.4 / 41.3 | 25–132 | 2000 |
+| 202947 | S (RUNAWAY) | 31 / 31 / 35 | 11 / 35 / 57 | 31.3 / 34.2 / 37.7 | 25–38 | — |
+| 210866 | S (BOUNDED_VIABLE) | 34 / 24 / 26 | 15 / 28 / 48 | 29.3 / 34.2 / 29.2 | 24–34 | — |
+
+The first sampled birth was at tick 600 in all 15 worlds: the first sample
+after `maturityAge` 500. At 200-tick resolution this field carries no
+information.
+
+#### Group E (n = 5) against group S (n = 10)
+
+| Metric | Tick | Extinct: median [range] | Established: median [range] | Best single cut: misclassified |
+|---|---:|---|---|---:|
+| population | 1000 | 32 [26–35] | 34.5 [28–49] | 4 / 15 |
+| population | 2000 | 24 [5–33] | 63 [23–104] | 3 / 15 |
+| population | 3000 | 16 [0–27] | 150.5 [24–194] | 2 / 15 |
+| cumulative births | 1000 | 9 [9–12] | 16 [11–34] | 2 / 15 |
+| cumulative births | 2000 | 25 [10–28] | 65 [18–124] | 2 / 15 |
+| cumulative births | 3000 | 42 [10–45] | 192 [30–291] | **1 / 15** |
+| mean energy | 1000 | 27.6 [23.0–32.7] | 32.0 [22.6–34.2] | 2 / 15 |
+| mean energy | 2000 | 33.6 [11.8–39.1] | 37.7 [31.9–49.4] | 3 / 15 |
+| mean energy | 3000 | 33.4 [23.6–38.9] (n = 4) | 36.7 [29.2–41.3] | 3 / 14 |
+
+At tick 3000 the mean energy of 100000 is n/a, because its population is 0;
+that seed is excluded from the energy statistic, as precommitted.
+
+Descriptive fields:
+
+- Maximum population over ticks 0–3000: E 34 [27–37], S 150.5 [34–194].
+- Minimum population over ticks 0–3000: E 15 [0–25], S 25 [21–25].
+- Population reached 50 by tick 3000: **none of the 5 extinct worlds; 7 of
+  the 10 established worlds** (at ticks 1200–2800).
+
+#### Separation by tick 3000: **PARTIAL** (conclusion B)
+
+No tick-3000 field has non-overlapping group ranges. Cumulative births come
+closest: the best cut misclassifies 1 of 15. Population misclassifies 2 and
+mean energy 3 of 14. Under §19.5 that is PARTIAL.
+
+The overlap is not random scatter. It is one specific set of worlds:
+
+- **Fast establishers (7 worlds).** 115838, 123757, 139595, 155433, 163352,
+  171271 and 179190 had passed 50 organisms by ticks 1200–2800. At tick 3000
+  they held 56–194 organisms after 85–291 births. All seven established.
+- **Stalled at founder scale (8 worlds).** The other eight never reached 50 by
+  tick 3000. At tick 3000 they held 0–35 organisms after 10–57 births. Five of
+  them later went extinct: all of group E. Three later established: 107919,
+  202947 and 210866. Those three reached population 200 or their peak only
+  much later: at tick 9793, at tick 18876, and slowly to a peak of 196.
+
+By tick 3000, on these fields, the three late establishers cannot be told apart
+from the five that went extinct. Cumulative births at tick 3000 were 30, 57 and
+48 against 10–45. Population was 24, 35 and 26 against 0–27.
+
+#### Strongest early indicator (observational only)
+
+Cumulative births by tick 3000. All five extinct worlds had at most 45. Nine of
+the ten established worlds had at least 48. The exception is 107919, with 30.
+The margin is narrow — 45 against 48 — and it comes from 15 seeds. It is not a
+biological rule, a fitness score or a selection criterion.
+
+### 19.7 Interpretation — conclusion B: partial early signal
+
+Early establishment contributes, but it does not fully decide the outcome.
+
+- **A fast early take-off predicts establishment.** Every world that doubled
+  its founding population within the first founder lifespan went on to
+  establish (7 of 7).
+- **A stalled start does not predict extinction.** Eight worlds were still near
+  founder scale at tick 3000, when the whole founding cohort dies of age. Five
+  of those eight went extinct and three established much later.
+- **So extinction is decided after tick 3000,** inside the stalled group.
+
+The extinct worlds show low reproduction and low population growth from the
+start. The extinct and stalled-but-established worlds do not differ in mean
+energy in any consistent way. Only 100000 shows clearly falling energy (23.7
+to 11.8 by tick 2000). Falling energy is therefore not a general feature of
+the extinct worlds.
+
+**Causal limit.** Food intake was never recorded for the extinct worlds. None
+of this says any world failed because it could not find food.
+
+### 19.8 Next scientific question
+
+**Among the eight worlds still at founder scale at tick 3000, when do the three
+that later established (107919, 202947, 210866) first become distinguishable
+from the five that went extinct, on population, births and mean energy?**
+
+This is an observational question only. Nothing is implemented, no model or
+parameter changes, and no sweep is proposed.
