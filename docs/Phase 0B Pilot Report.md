@@ -11,7 +11,8 @@ validation seeds are untouched.**
 > of the trajectory-based outcome classifier v2; §17 its implementation and the
 > read-only reclassification of persisted runs; §18 the continuation that
 > completes the 15-seed `0A.2.0` default profile under v2; §19 a read-only
-> analysis of those worlds' early establishment. Every classification in §§2–15
+> analysis of those worlds' early establishment; §20 a read-only comparison of
+> the stalled worlds that recover and those that die. Every classification in §§2–15
 > is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
@@ -2470,3 +2471,122 @@ from the five that went extinct, on population, births and mean energy?**
 
 This is an observational question only. Nothing is implemented, no model or
 parameter changes, and no sweep is proposed.
+
+---
+
+## 20. Stalled cohort after tick 3000 — recovery versus extinction (READ-ONLY; PRECOMMITMENT)
+
+**Written and committed before any group metric value after tick 3000 was
+computed or inspected. §20.6 is empty at this point.** The schedule below was
+derived from coverage metadata only: extinction and stop ticks, and sample
+counts. Nothing is simulated. The model, the ecology and
+`trajectory-outcome-v2` are unchanged.
+
+### 20.1 Question
+
+Among the 8 worlds still near founder size at tick 3000 (§19.6), when do the 3
+that later establish first become distinguishable from the 5 that go extinct?
+
+### 20.2 Groups
+
+- **Group E** — the 5 EXTINCTION seeds: 100000, 131676, 147514, 187109, 195028.
+- **Group L** — exactly the 3 late establishers: 107919, 202947, 210866.
+
+The 7 fast-starting established worlds are not included.
+
+### 20.3 Coverage, and the window it allows (metadata only)
+
+Source: `results/multifounder-default-baseline/timeseries-multifounder-default.csv`,
+standard 200-tick samples.
+
+| Seed | Group | Persisted end | Last sample |
+|---:|---|---|---:|
+| 100000 | E | extinct at 3000 | 3000 |
+| 147514 | E | extinct at 9092 | 9092 |
+| 195028 | E | extinct at 9235 | 9235 |
+| 131676 | E | extinct at 14505 | 14505 |
+| 187109 | E | extinct at 18374 | 18374 |
+| 107919 | L | stopped by v1 cap at 9793 | 9793 |
+| 202947 | L | stopped by v1 cap at 18876 | 18876 |
+| 210866 | L | reached 20000 | 20000 |
+
+**The earliest extinction in Group E is tick 3000 (seed 100000).** So after
+tick 3000 there is **no** point at which all 8 seeds still have comparable
+data: 100000 was already extinct, with population 0, at the very tick §19
+called "stalled". It carries no information about *when* after 3000 the groups
+diverge.
+
+The smallest sensible resolution:
+
+- **Separation counts use the 7 worlds alive at tick 3000.** That is E\* =
+  {131676, 147514, 187109, 195028} (n = 4) against L (n = 3).
+- **100000 appears in the per-seed table but not in any threshold count.**
+  Frozen post-extinction values would be its final state, not observations.
+  They would also sit on the extinct side of any population or births cut and
+  make separation look better. Excluding it is the conservative choice. No
+  variant including it is computed.
+- **The window ends at the last 200-tick grid point before the next extinction
+  in E\*.** That extinction is 147514 at 9092, so the window ends at tick 9000.
+  All 7 seeds are alive and sampled there; 107919's persisted data runs to
+  9793.
+
+### 20.4 Fixed checkpoints and metrics
+
+- **Checkpoints:** ticks **4000, 5000, 6000, 7000, 8000, 9000**. That is the
+  same 1000-tick spacing as §19, and no others.
+- **Metrics,** available for all 7 at every checkpoint:
+  - `population`
+  - `birthsCumulative`
+  - `meanEnergy` (defined, since no seed has population 0 inside the window)
+
+No other metric is used. Food consumption is not reconstructed.
+
+### 20.5 Separation rule (fixed before computing)
+
+At each checkpoint, for each metric:
+
+- report the full range and median for E\* and for L;
+- find the best single threshold, in either direction;
+- report the minimum number of misclassified seeds out of 7.
+
+No composite score is formed.
+
+At each checkpoint the **best observable** decides the strength:
+
+- **CLEAR** — at least one metric has 0 misclassified;
+- **STRONG PARTIAL** — the best metric has exactly 1 misclassified;
+- **WEAK / NONE** — the best metric has 2 or more.
+
+Earliest separation is the earliest checkpoint whose best observable is CLEAR,
+or failing that STRONG PARTIAL. Conclusion: **A** if any checkpoint is CLEAR,
+**B** if the best anywhere is STRONG PARTIAL, **C** otherwise.
+
+**Chance level, stated before looking.** With n = 4 against n = 3 and a free
+threshold direction, suppose the labels were unrelated to the values. For one
+metric at one checkpoint, all 35 ways to place the three L seeds among seven
+ranks give:
+
+- 0 misclassified: 2 of 35 (5.7%);
+- exactly 1: 12 of 35;
+- 1 or fewer: 14 of 35 (40%).
+
+There are 18 looks (6 checkpoints × 3 metrics). A single STRONG PARTIAL is
+therefore close to what chance alone produces, and even an isolated CLEAR is
+weak evidence. To weigh this, two descriptors are recorded alongside the
+verdict without changing it:
+
+- **persistence** — whether a metric that reaches 0 or 1 misclassified stays at
+  or below that level at every later checkpoint through 9000;
+- **per-seed trajectories** — every seed at every checkpoint, so one unusual
+  seed cannot drive the conclusion unseen.
+
+Whether any late establisher's recovery is gradual or sharp is described from
+those trajectories.
+
+**Causal limit.** No claim that food acquisition, sensing or neural quality
+caused recovery or extinction. Interpretation is limited to observed
+reproduction, population, energy, and recovery or failure to recover.
+
+### 20.6 Results
+
+*(empty at precommitment)*

@@ -616,6 +616,31 @@ modifying the model.
 
 ---
 
+## Stalled-cohort analysis (`0A.2.0` default, after tick 3000) — PRECOMMITMENT (read-only, not yet computed)
+
+Full text: pilot report §20. Committed before any post-3000 group metric was
+computed. No simulation.
+
+- Groups:
+  - E = the 5 EXTINCTION seeds;
+  - L = 107919, 202947, 210866.
+- Coverage (metadata only): E's earliest extinction is **tick 3000** (100000).
+  No all-8 window exists after tick 3000.
+- Separation counts therefore use the 7 worlds alive at tick 3000:
+  E\* = 131676, 147514, 187109, 195028 against L. 100000 is shown per seed but
+  not counted.
+- Window: to tick 9000, the last grid point before 147514's extinction at 9092.
+- Checkpoints: 4000, 5000, 6000, 7000, 8000, 9000.
+- Metrics: population, cumulative births, mean energy.
+- Rule: best single cut out of 7.
+  - 0 misclassified is CLEAR (A);
+  - exactly 1 is STRONG PARTIAL (B);
+  - 2 or more is WEAK / NONE (C).
+- Chance level stated in advance: ≤ 1 misclassified arises for 40% of random
+  labellings per look, and 0 for 5.7%, over 18 looks. Persistence and per-seed
+  trajectories are reported alongside.
+- No causal claim about food, sensing or neural quality.
+
 ## Early establishment analysis (`0A.2.0` default) — RESULT: PARTIAL (conclusion B)
 
 Code in `8ca5532` (`src/analysis/earlyEstablishment.ts`, CLI
@@ -976,16 +1001,8 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing computed — a read-only follow-on analysis of
-the persisted 200-tick timeseries that answers pilot report §19.8.**
+**Compute the precommitted stalled-cohort comparison (pilot report §20)
+read-only from the persisted baseline timeseries, apply the §20.5 rule
+unchanged, and record the result.**
 
-It would track the eight founder-scale worlds after tick 3000: 100000, 131676,
-147514, 187109 and 195028 against 107919, 202947 and 210866. It would compare
-population, cumulative births and mean energy at fixed ticks up to each
-extinct world's extinction. The design must fix the ticks and the separation
-rule before anything is computed, and must state the n = 5 against n = 3 limit.
-
-Constraints that still hold: no simulation; no model, ecology,
-`founderGroupCount` or `trajectory-outcome-v2` change; no calibration sweep;
-do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
-Phase 0C.
+No simulation, no model or parameter change.
