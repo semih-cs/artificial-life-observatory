@@ -8,6 +8,7 @@ export * from './experiments/definitions.js';
 export * from './experiments/movementPolicies.js';
 export * from './experiments/installPolicy.js';
 export * from './experiments/foodLimitation.js';
+export * from './experiments/baselineContinuation.js';
 export * from './metrics/compute.js';
 export * from './analysis/degeneracy.js';
 export * from './analysis/outcome.js';

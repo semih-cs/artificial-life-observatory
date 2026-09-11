@@ -17,6 +17,8 @@
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
  *   food-limitation         diagnostic-food-limitation-v1 (pilot report §15): does the 200 cap
  *                           mask food limitation? Fixed seeds, observational only.
+ *   baseline-continuation   continuation-multifounder-default-v1 (pilot report §18): continue the six
+ *                           cap-stopped 0A.2.0 default-baseline seeds. Descriptive; gate already FAIL.
  *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
  *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
@@ -56,12 +58,15 @@ import {
 } from '../analysis/foodLimitation.js';
 import {
   listPersistedExperimentDirectories, readPersistedRuns, reclassifyRun, summarizeCohort, countClasses,
-  ReclassifiedRun, CohortSummary,
+  cohortProfile, ReclassifiedRun, CohortSummary,
 } from '../analysis/reclassify.js';
+import {
+  baselineContinuation, BASELINE_CONTINUATION_ID, BASELINE_CONTINUATION_CHECKPOINTS,
+} from '../experiments/baselineContinuation.js';
 import {
   TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
   TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
-  TRAJECTORY_HIGH_BOUNDED_LEVEL, TRAJECTORY_SAFETY_CEILING, PEAK_CAP_CLASSIFIER_VERSION,
+  TRAJECTORY_HIGH_BOUNDED_LEVEL, TRAJECTORY_SAFETY_CEILING, PEAK_CAP_CLASSIFIER_VERSION, classifyTrajectory,
 } from '../analysis/trajectoryOutcome.js';
 import { MOVEMENT_POLICY_LEVELS, MovementPolicyId } from '../experiments/movementPolicies.js';
 import {
@@ -335,6 +340,11 @@ async function main(): Promise<void> {
   }
 
   printProvenance();
+
+  if (experiment === 'baseline-continuation') {
+    runBaselineContinuation(outputDir ?? `results/${BASELINE_CONTINUATION_ID}`);
+    return;
+  }
 
   // Fixed-seed precommitted diagnostic; ignores --seed-set and --max-ticks.
   if (experiment === 'food-limitation') {
@@ -706,6 +716,111 @@ function runFoodLimitation(outDir: string): void {
 }
 
 /**
+ * continuation-multifounder-default-v1 (pilot report §18). Continues the six
+ * cap-stopped 0A.2.0 default-baseline seeds; enforces the §18.2 per-seed
+ * validity check before any interpretation; classifies valid seeds with
+ * trajectory-outcome-v2. No condition summary is written.
+ */
+function runBaselineContinuation(outDir: string): void {
+  const spec = baselineContinuation();
+  const pilot = new Set(loadPilotSeeds());
+  for (const seed of spec.seeds) {
+    if (!pilot.has(seed)) throw new Error(`continuation seed ${seed} is not a pilot seed`);
+  }
+  const capacity = DEFAULT_SIMULATION_CONFIG.food.worldFoodCapacity;
+
+  console.log(`\nRunning: ${spec.experimentId} — descriptive only; the gate verdict is already FAIL (§17.5)`);
+  console.log(`  seeds: ${spec.seeds.join(', ')}; max ticks ${spec.maxTicks}; 200 cap as early stop: DISABLED; execution safety ceiling ${spec.safetyPopulationCeiling}\n`);
+
+  const recorders = new Map<number, FoodFluxRecorder>();
+  const checkpointHash = new Map<number, string>();
+  const result = runExperiment(spec, {
+    gitCommit,
+    onReplicateComplete: printProgress,
+    tickObserverFor: (_conditionId, seed) => {
+      const cp = BASELINE_CONTINUATION_CHECKPOINTS[seed];
+      const recorder = createFoodFluxRecorder(capacity, (_before, after) => {
+        if (cp && after.tick === cp.tick) checkpointHash.set(seed, canonicalStateHash(after));
+      });
+      recorders.set(seed, recorder);
+      return recorder.observer;
+    },
+  });
+
+  writeExperimentResults(result, outDir, { conditionSummary: false });
+  for (const [seed, recorder] of recorders) {
+    const header = 'tick,population,foodCount,foodCapacityFraction,foodConsumed,foodRegenerated,births,deaths,meanEnergy';
+    const lines = recorder.rows.map(r =>
+      `${r.tick},${r.population},${r.foodCount},${r.foodCapacityFraction.toFixed(6)},${r.foodConsumed},${r.foodRegenerated},${r.births},${r.deaths},${r.meanEnergy}`);
+    fs.writeFileSync(`${outDir}/flux-${seed}.csv`, [header, ...lines].join('\n') + '\n');
+  }
+
+  // ---- §18.2 per-seed validity check, before any interpretation ----------
+  const integrity = spec.seeds.map((seed) => {
+    const cp = BASELINE_CONTINUATION_CHECKPOINTS[seed]!;
+    const rows = recorders.get(seed)!.rows;
+    const upTo = rows.slice(0, cp.tick);
+    const at = upTo[upTo.length - 1];
+    const observed = {
+      tick: at?.tick ?? null,
+      hash: checkpointHash.get(seed) ?? null,
+      population: at?.population ?? null,
+      births: upTo.reduce((s, r) => s + r.births, 0),
+      deaths: upTo.reduce((s, r) => s + r.deaths, 0),
+      food: at?.foodCount ?? null,
+    };
+    const failures: string[] = [];
+    for (const k of ['tick', 'hash', 'population', 'births', 'deaths', 'food'] as const) {
+      if (observed[k] !== cp[k]) failures.push(`${k}: ${String(observed[k])} != ${String(cp[k])}`);
+    }
+    return { seed, checkTick: cp.tick, expected: cp, observed, pass: failures.length === 0, failures };
+  });
+
+  console.log('\n§18.2 validity check:');
+  for (const i of integrity) {
+    console.log(`  seed ${i.seed} @ tick ${i.checkTick}: ${i.pass ? 'PASS' : 'INVALID'} (hash ${i.observed.hash})${i.failures.length ? ' — ' + i.failures.join('; ') : ''}`);
+  }
+
+  // ---- trajectory-outcome-v2 on valid seeds only ---------------------------
+  const seeds = result.replicates.map((r) => {
+    const valid = integrity.find(i => i.seed === r.provenance.seed)!.pass;
+    return {
+      seed: r.provenance.seed,
+      oldStopTick: BASELINE_CONTINUATION_CHECKPOINTS[r.provenance.seed]!.tick,
+      validity: valid ? 'PASS' : 'INVALID',
+      terminationReason: r.terminationReason,
+      endTick: r.endTick,
+      peakPopulation: r.peakPopulation,
+      finalPopulation: r.endingPopulation,
+      totalBirths: r.totalBirths,
+      maxGenerationDepth: r.maxGenerationDepth,
+      classification: valid ? classifyTrajectory({
+        terminationReason: r.terminationReason, endTick: r.endTick, endingPopulation: r.endingPopulation,
+        peakPopulation: r.peakPopulation, samples: r.timeseries,
+      }) : null,
+    };
+  });
+  const allValid = integrity.every(i => i.pass);
+  fs.writeFileSync(`${outDir}/continuation-analysis.json`, JSON.stringify({
+    id: BASELINE_CONTINUATION_ID,
+    precommitmentCommit: 'a8faf6a',
+    classifierVersion: TRAJECTORY_CLASSIFIER_VERSION,
+    status: allValid ? 'VALID' : 'PARTIAL_OR_INVALID',
+    gateNote: 'descriptive only; the 0A.2.0 default baseline gate is already FAIL (pilot report §17.5)',
+    integrity, seeds,
+  }, null, 2));
+
+  console.log('\nseed    | old stop | validity | end                  | peak | final | growth ratio | class');
+  for (const s of seeds) {
+    const c = s.classification;
+    console.log(`${String(s.seed).padEnd(7)} | ${String(s.oldStopTick).padStart(8)} | ${s.validity.padEnd(8)} | ${(s.terminationReason + '@' + s.endTick).padEnd(20)} | ` +
+      `${String(s.peakPopulation).padStart(4)} | ${String(s.finalPopulation).padStart(5)} | ${(c?.growthRatio?.toFixed(4) ?? '-').padStart(12)} | ${c ? c.outcome + ' (' + c.reason + ')' : 'not interpreted'}`);
+  }
+  console.log(`\nResults written to: ${outDir}/`);
+  if (!allValid) process.exitCode = 2;
+}
+
+/**
  * Persisted 20,000-tick experiments excluded from reclassification, with the
  * reason. Everything else on a 20,000-tick horizon is in scope.
  */
@@ -754,22 +869,31 @@ function runTrajectoryReclassification(resultsRoot: string, outDir: string): voi
   }
 
   // 0A.2.0 default, per seed: the baseline record, or — where the baseline run was
-  // stopped by the v1 cap — its verified uncapped continuation from
-  // diagnostic-food-limitation-v1 (same configHash, §15.9 integrity gate passed).
+  // stopped by the v1 cap — a verified uncapped continuation of it: same
+  // configHash, and the source's own integrity/validity gate passed for that
+  // seed (§15.9 for diagnostic-food-limitation-v1, §18.2 for the continuation).
   const baseline = inScope.filter(r => r.experimentId === 'multifounder-default-baseline');
-  const foodLimitation = inScope.filter(r => r.experimentId === FOOD_LIMITATION_DIAGNOSTIC_ID);
-  const flAnalysisPath = path.join(resultsRoot, FOOD_LIMITATION_DIAGNOSTIC_ID, 'food-limitation-analysis.json');
-  const flIntegrity: Array<{ seed: number; pass: boolean }> = fs.existsSync(flAnalysisPath)
-    ? (JSON.parse(fs.readFileSync(flAnalysisPath, 'utf-8')).integrity ?? []) : [];
+  const continuationSources = [
+    { experimentId: FOOD_LIMITATION_DIAGNOSTIC_ID, analysisFile: 'food-limitation-analysis.json' },
+    { experimentId: BASELINE_CONTINUATION_ID, analysisFile: 'continuation-analysis.json' },
+  ].map((src) => {
+    const file = path.join(resultsRoot, src.experimentId, src.analysisFile);
+    const integrity: Array<{ seed: number; pass: boolean }> = fs.existsSync(file)
+      ? (JSON.parse(fs.readFileSync(file, 'utf-8')).integrity ?? []) : [];
+    return { ...src, runs: inScope.filter(r => r.experimentId === src.experimentId), integrity };
+  });
   const assembled = baseline.map((b) => {
     if (b.eligible) return { ...b, assembledFrom: 'multifounder-default-baseline' };
-    const cont = foodLimitation.find(f => f.seed === b.seed && f.eligible
-      && f.source.configHash === b.source.configHash && flIntegrity.some(i => i.seed === b.seed && i.pass));
-    return cont ? { ...cont, assembledFrom: `${FOOD_LIMITATION_DIAGNOSTIC_ID} (verified continuation)` }
-      : { ...b, assembledFrom: 'multifounder-default-baseline (stopped by v1 cap; no continuation)' };
+    for (const src of continuationSources) {
+      const cont = src.runs.find(f => f.seed === b.seed && f.eligible
+        && f.source.configHash === b.source.configHash && src.integrity.some(i => i.seed === b.seed && i.pass));
+      if (cont) return { ...cont, assembledFrom: `${src.experimentId} (verified continuation)` };
+    }
+    return { ...b, assembledFrom: 'multifounder-default-baseline (stopped by v1 cap; no verified continuation)' };
   });
   const assembly = baseline.length === pilotSeeds.length
     ? summarizeCohort('0A.2.0 default: baseline + verified uncapped continuations', assembled) : null;
+  const assemblyProfile = assembly ? cohortProfile(assembled) : null;
 
   // Census of eligible records per model (records, not a cohort statistic).
   const census = [...new Set(inScope.map(r => r.simulationVersion))].sort().map((v) => {
@@ -795,7 +919,7 @@ function runTrajectoryReclassification(resultsRoot: string, outDir: string): voi
     },
     reclassifiedWith: runProvenance(),
     generatedAt: new Date().toISOString(),
-    scan, census, cohorts, nonCohorts, assembly, assembledRuns: assembled, runs: inScope,
+    scan, census, cohorts, nonCohorts, assembly, assemblyProfile, assembledRuns: assembled, runs: inScope,
   };
   fs.writeFileSync(path.join(outDir, 'reclassification.json'), JSON.stringify(report, null, 2));
 
@@ -822,6 +946,13 @@ function runTrajectoryReclassification(resultsRoot: string, outDir: string): voi
   for (const c of [...cohorts, ...(assembly ? [assembly] : [])]) {
     console.log(`  ${c.cohortId} [${c.simulationVersion}] eligible ${c.eligible}/${c.size} ${JSON.stringify(c.counts)} ` +
       (c.complete ? `boundedCompletionRate ${c.boundedCompletionRate!.toFixed(3)}` : `INCOMPLETE (missing ${c.missing}); rate not computable; possible range ${c.boundedCompletionRange.min.toFixed(3)}–${c.boundedCompletionRange.max.toFixed(3)}; gate reachable: ${c.gateReachable}`));
+  }
+  if (assemblyProfile) {
+    console.log('\n0A.2.0 default, 15-seed profile (descriptive; gate verdict already FAIL):');
+    console.log(`  ${JSON.stringify(assemblyProfile)}`);
+    for (const a of assembled) {
+      console.log(`  seed ${a.seed}: ${a.classification ? a.classification.outcome + ' (' + a.classification.reason + ')' : 'NOT CLASSIFIED (' + a.ineligibleReason + ')'} — ${a.assembledFrom}`);
+    }
   }
   console.log('\nEligible trajectory classifications:');
   for (const r of inScope.filter(x => x.eligible && x.classification!.outcome !== 'EXTINCTION')) {

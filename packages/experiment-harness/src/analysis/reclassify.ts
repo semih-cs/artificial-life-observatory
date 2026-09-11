@@ -30,6 +30,9 @@ export interface PersistedRun {
   endTick: number;
   endingPopulation: number;
   peakPopulation: number;
+  totalBirths: number;
+  /** Existing replicate field: deepest generation among organisms alive at run end. */
+  maxGenerationDepth: number;
   /** The label recorded at run time by the v1 rule. Never modified. */
   v1Outcome: string;
   samples: TrajectorySample[];
@@ -93,6 +96,8 @@ export function readPersistedRuns(directory: string): PersistedRun[] {
       peakPopulation: Number.isFinite(Number(e['peakPopulation']))
         ? Number(e['peakPopulation'])
         : Math.max(0, ...samples.map(x => x.population)),
+      totalBirths: Number(e['totalBirths']),
+      maxGenerationDepth: Number(e['maxGenerationDepth']),
       v1Outcome: String(e['outcome']),
       samples,
     };
@@ -141,6 +146,8 @@ export interface ReclassifiedRun {
   classification: TrajectoryClassification | null;
   v1ClassifierVersion: string;
   v1Outcome: string;
+  totalBirths: number;
+  maxGenerationDepth: number;
   source: {
     directory: string; timeseriesFile: string | null; gitCommit: string | null; gitDirty: boolean | null;
     sourceIdentity: string | null; configHash: string; runTimestamp: string | null; maxTicks: number;
@@ -160,6 +167,8 @@ export function reclassifyRun(run: PersistedRun): ReclassifiedRun {
     classification: e.eligible ? classifyTrajectory(run) : null,
     v1ClassifierVersion: PEAK_CAP_CLASSIFIER_VERSION,
     v1Outcome: run.v1Outcome,
+    totalBirths: run.totalBirths,
+    maxGenerationDepth: run.maxGenerationDepth,
     source: {
       directory: run.sourceDirectory, timeseriesFile: run.timeseriesFile, gitCommit: run.gitCommit,
       gitDirty: run.gitDirty, sourceIdentity: run.sourceIdentity, configHash: run.configHash,
@@ -219,6 +228,45 @@ export function summarizeCohort(cohortId: string, runs: readonly ReclassifiedRun
     boundedCompletionRange: { min: size === 0 ? 0 : bounded / size, max },
     gateThreshold: BASELINE_MIN_VIABLE_COMPLETION_RATE,
     gateReachable: max >= BASELINE_MIN_VIABLE_COMPLETION_RATE,
+  };
+}
+
+export interface CohortProfile {
+  size: number;
+  eligible: number;
+  counts: ClassCounts;
+  /** count / size for each class; null while any seed is missing. */
+  rates: Record<TrajectoryClass, number> | null;
+  boundedCompletionRate: number | null;
+  meanFinalPopulation: number | null;
+  medianFinalPopulation: number | null;
+  meanBirths: number | null;
+  maxGenerationDepth: number | null;
+}
+
+/** Descriptive profile of a cohort; every figure is null unless all seeds are eligible. */
+export function cohortProfile(runs: readonly ReclassifiedRun[]): CohortProfile {
+  const eligible = runs.filter(r => r.eligible && r.classification);
+  const counts = countClasses(eligible);
+  const size = runs.length;
+  const complete = size > 0 && eligible.length === size;
+  const finals = eligible.map(r => r.classification!.finalPopulation).sort((a, b) => a - b);
+  const median = finals.length === 0 ? null
+    : finals.length % 2 ? finals[(finals.length - 1) / 2]!
+    : (finals[finals.length / 2 - 1]! + finals[finals.length / 2]!) / 2;
+  const rates = complete
+    ? (Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, v / size])) as Record<TrajectoryClass, number>)
+    : null;
+  return {
+    size,
+    eligible: eligible.length,
+    counts,
+    rates,
+    boundedCompletionRate: complete ? (counts.BOUNDED_VIABLE + counts.HIGH_BOUNDED) / size : null,
+    meanFinalPopulation: complete ? finals.reduce((s, x) => s + x, 0) / size : null,
+    medianFinalPopulation: complete ? median : null,
+    meanBirths: complete ? eligible.reduce((s, r) => s + r.totalBirths, 0) / size : null,
+    maxGenerationDepth: complete ? Math.max(...eligible.map(r => r.maxGenerationDepth)) : null,
   };
 }
 

@@ -171,7 +171,8 @@ describe('reclassification of persisted results (read-only)', () => {
     sourceDirectory: 'x', timeseriesFile: 't.csv', experimentId: 'e', conditionId: 'c', seed: 1,
     simulationVersion: '0A.2.0', configHash: 'h', maxTicks: 20000, gitCommit: 'g', gitDirty: false,
     sourceIdentity: 's', runTimestamp: null, terminationReason: 'MAX_TICKS', endTick: 20000,
-    endingPopulation: 150, peakPopulation: 150, v1Outcome: 'VIABLE_COMPLETION', samples: series(() => 150), ...over,
+    endingPopulation: 150, peakPopulation: 150, totalBirths: 0, maxGenerationDepth: 0,
+    v1Outcome: 'VIABLE_COMPLETION', samples: series(() => 150), ...over,
   });
 
   it('eligibility: complete trajectories only; v1-cap stops and short horizons are not reclassified', () => {
