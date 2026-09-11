@@ -15,7 +15,7 @@ Four workspace packages:
 | `packages/simulation-core` | 0A | the deterministic headless biological simulation |
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
 | `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly; a snapshot store with retention and fallback recovery |
-| `packages/world-runner` | 0C | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly |
+| `packages/world-runner` | 0C → 0D bridge | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly; optional tick pacing and a read-only WebSocket observer stream |
 
 ## Status
 
@@ -24,8 +24,8 @@ Four workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| **Phase 0C — persistent canonical world** | **active — the current phase.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine) and the persistent world runner. Next: a read-only bridge to the Observatory |
-| Phase 0D — Observatory UI | next, after 0C |
+| Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing). Next: the Phase 0D Observatory frontend |
+| **Phase 0D — Observatory UI** | **next — ready to start.** The frontend connects to the read-only observer stream (protocol v1) |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
 inherit and mutate genomes, form lineages and evolve across generations. All of
@@ -104,9 +104,9 @@ Consequences that follow from this, and that you should not "fix":
     ├── persistence/                 Phase 0C — snapshot format v1, atomic save/load, snapshot store
     │   ├── src/                     snapshot.ts, file.ts, store.ts, errors.ts, stableStringify.ts
     │   └── tests/                   continuation, corruption, file, snapshot, store, storeRecovery (+ fixtures/)
-    ├── world-runner/                Phase 0C — the persistent world process and its CLI
-    │   ├── src/                     runner.ts (WorldRunner), cli.ts
-    │   └── tests/                   runner (in process), process (separate OS processes, signals)
+    ├── world-runner/                Phase 0C — the persistent world process, its CLI, the observer stream
+    │   ├── src/                     runner.ts (WorldRunner), cli.ts, observer/ (frame.ts, server.ts, runnerObserver.ts)
+    │   └── tests/                   runner, process, observerFrame, observerStream, golden{Observer,Paced,PacedObserver}
     └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
@@ -441,7 +441,9 @@ Options:
 | `--keep <n>` | snapshots retained | 5 |
 | `--until-tick <tick>` | stop, save and exit at this tick | run until stopped |
 | `--status-every <ticks>` | status line cadence | `--save-every` |
-| `--json` | status as JSON lines (`started`, `status`, `stopping`, `stopped`) | off |
+| `--json` | status as JSON lines (`started`, `observing`, `status`, `stopping`, `stopped`) | off |
+| `--ticks-per-second <n>` | pace the simulation to about n ticks per real second | as fast as possible |
+| `--observe <port>` | serve read-only observer frames on `ws://127.0.0.1:<port>/` (`0` = any free port) | off |
 
 - **Snapshot cadence.** A snapshot is saved whenever the tick is a multiple
   of `--save-every`. The cadence depends only on simulation ticks, so it is
@@ -474,6 +476,95 @@ Options:
   save and still reaches `b95a0b4ef7dd8449`.
 - A corrupt newest snapshot is quarantined at startup.
 - An all-corrupt world refuses to start.
+
+### Watching a running world (observer stream, protocol v1)
+
+A local command that creates a world, runs it at about 10 ticks per second
+and streams it on port 8787:
+
+```bash
+npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787
+# later, the same world again:
+npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787
+```
+
+No demo seed has been chosen yet (see `PROJECT_STATUS.md`). Use any seed
+outside the pilot and validation sets.
+
+- **Two separate rates.** `--ticks-per-second` sets the simulation rate
+  (TPS). It only decides when ticks run, never what they compute. The
+  observer frame rate (FPS) is fixed at 10 frames per second at most.
+  Unpaced, the world may run thousands of TPS and observers still get 10 FPS.
+  Paced at 5 TPS, a frame goes out only when the tick has changed.
+- **Latest frame only.** On connect a client gets the newest frame at once,
+  then the newest frame each round. There is no queue and no history.
+  - A client that reads slowly is skipped while its socket holds more than
+    1 MiB of unsent data, so buffering per client stays bounded.
+  - A slow, stalled or disconnected client never slows the simulation.
+- **Read-only.** The stream accepts no commands.
+  - Anything a client sends is discarded and never routed anywhere; ping
+    gets pong.
+  - Unmasked or oversized (> 4 KiB) client frames close that connection.
+  - Plain HTTP gets `426`.
+  - It binds to `127.0.0.1` only.
+- **Status vs frames.** Operational status stays on the runner's stdout; the
+  WebSocket carries only frames.
+
+Each WebSocket message is one JSON **frame**:
+
+```jsonc
+{
+  "type": "frame",
+  "observerProtocolVersion": 1,
+  "simulationVersion": "0A.2.0",
+  "configHash": "d42a0b850f579fb2",   // world identity (with simulationVersion)
+  "rootSeed": 20260910,
+  "tick": 1000,
+  "snapshotTick": 1000,               // newest durable snapshot
+  "world": { "width": 500, "height": 500 },
+  "population": 34,
+  "foodCount": 60,
+  "organisms": [ { "id": 1, "parentId": null, "generationDepth": 0, "lineageRootId": 1,
+                   "x": 246.36, "y": 333.77, "heading": 3.43, "size": 0.994, "energy": 57.32, "age": 1000,
+                   "maxSpeed": 1.282, "visionRange": 148.021, "visionAngle": 1.788, "metabolism": 0.995 }, … ],
+  "food": [ { "id": 5, "x": 372.6, "y": 430.11 }, … ]
+}
+```
+
+This is the golden world at tick 1,000 — about 9.5 KB as JSON. A world of
+about 400 organisms (tick 10,000) is about 90 KB per frame.
+
+- Organisms and food are in ascending id order.
+- Values are rounded for display: positions and energy to 0.01, heading and
+  morphology to 0.001.
+- Neural weights, RNG state and the fertility lattice are not in live
+  frames.
+- A frame is a view, not canonical state; nothing restores from it.
+
+Minimal browser client:
+
+```js
+const ws = new WebSocket('ws://127.0.0.1:8787/');
+ws.onmessage = (e) => { const f = JSON.parse(e.data); console.log(f.tick, f.population); };
+```
+
+From code: `observeRunner(runner, { port })` or
+`startObserverServer({ port, latest })`, and `toObserverFrame(world, status)`.
+
+**Proven by test.** Seed 20260910 to tick 10,000 gives
+`b95a0b4ef7dd8449` in all three cases:
+
+- unpaced with an observer and a connected client;
+- paced (1,500 TPS) without an observer;
+- paced with an observer and a client that keeps sending commands.
+
+Also tested:
+
+- building frames every tick changes nothing;
+- two clients get byte-identical frames for the same tick;
+- a stalled client is bounded at one frame over the cap;
+- disconnect and reconnect do not affect the world, and a reconnect gets
+  the current frame at once.
 
 **Throughput** (observational, seed 20260910, 0 → 10,000 ticks, one core):
 
@@ -749,7 +840,10 @@ npm run test:watch --workspace=packages/simulation-core
 | File               | Covers                                                                    |
 |--------------------|---------------------------------------------------------------------------|
 | `runner.test.ts`   | fresh launch, controlled run vs direct simulation, restart off the save cadence, golden multi-restart 0 → 3,000 → 7,000 → 10,000, corrupt newest snapshot (recover, quarantine, continue), all-corrupt / missing / empty refusal, create-over-existing refusal, save purity, graceful stop through `run()`, option validation |
-| `process.test.ts`  | separate OS processes through the built CLI: create → exit → recover → 10,000 at `b95a0b4ef7dd8449`; SIGINT and SIGTERM graceful stop; SIGKILL between saves; CLI refusals (`--new` over a world, no valid snapshot, bad arguments); corrupt snapshot quarantined at startup |
+| `process.test.ts`  | separate OS processes through the built CLI: create → exit → recover → 10,000 at `b95a0b4ef7dd8449`; SIGINT and SIGTERM graceful stop; SIGKILL between saves; CLI refusals (`--new` over a world, no valid snapshot, bad arguments); corrupt snapshot quarantined at startup; `--observe` + `--ticks-per-second` end to end; busy observer port refused before any world is created |
+| `observerFrame.test.ts` | protocol v1 frame fields for a known world (pinned frame hash), ordering, no neural weights; purity: frames every tick leave world/RNG/config untouched, work on deep-frozen input |
+| `observerStream.test.ts` | frame on connect, ≤ 10 fps, 426 / 400 for non-WebSocket requests, read-only (commands, binary, ping, unmasked, oversized), two clients, stalled clients (bounded buffering, simulation unaffected), disconnect/reconnect, short pacing checks |
+| `goldenObserver.test.ts`, `goldenPaced.test.ts`, `goldenPacedObserver.test.ts` | seed 20260910 to 10,000 = `b95a0b4ef7dd8449` with observer + client, paced, and paced + observer + client |
 
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
@@ -787,8 +881,8 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`). Next: a read-only observer bridge |
-| 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
+| 0D      | the Observatory UI — rendering, organism and lineage inspection. **Next.** It connects to the observer stream (protocol v1) |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 

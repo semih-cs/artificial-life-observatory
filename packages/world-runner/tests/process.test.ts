@@ -13,6 +13,8 @@ import { canonicalStateHash } from '@alo/simulation-core';
 import { listSnapshots, recoverLatestValid, snapshotFileName } from '@alo/persistence';
 import { WorldRunner } from '../src/index.js';
 import { GOLDEN_SEED, GOLDEN_HASH_10000, directHash, newWorldDir, dirState, flipByte } from './helpers.js';
+import { recordingClient, until } from './wsHelpers.js';
+import * as net from 'node:net';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli.js');
 type Event = Record<string, any> & { event: string };
@@ -160,5 +162,50 @@ describe('CLI refusals', () => {
     expect(cli(['--dir', d, '--seed', '5']).code).toBe(2); // seed without --new
     expect(cli(['--dir', d, '--bogus']).code).toBe(2);
     expect(fs.existsSync(d)).toBe(false);
+  });
+});
+
+describe('CLI observer and pacing', () => {
+  it('--observe 0 --ticks-per-second: prints the stream URL, serves frames to a client, exits cleanly, exact result', async () => {
+    const d = newWorldDir();
+    const child = spawn(process.execPath, [CLI, '--dir', d, '--new', '--seed', '11', '--ticks-per-second', '400', '--observe', '0', '--until-tick', '800', '--save-every', '200', '--json'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const events: Event[] = [];
+    let client: ReturnType<typeof recordingClient> | undefined;
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      if (!line.startsWith('{')) return;
+      const e = JSON.parse(line) as Event;
+      events.push(e);
+      if (e.event === 'observing') client = recordingClient(e['url']);
+    });
+    const t0 = Date.now();
+    const code = await new Promise<number | null>((resolve) => child.on('close', (c) => resolve(c)));
+    const seconds = (Date.now() - t0) / 1000;
+    expect(code).toBe(0);
+    expect(events.find((e) => e.event === 'started')).toMatchObject({ ticksPerSecondTarget: 400 });
+    expect(events.find((e) => e.event === 'observing')).toMatchObject({ observerProtocolVersion: 1 });
+    expect(events.at(-1)).toMatchObject({ event: 'stopped', tick: 800 });
+    expect(seconds).toBeGreaterThanOrEqual(1.8); // 800 ticks at 400/s ≈ 2 s
+    expect(client).toBeDefined();
+    await until(() => client!.ws.readyState === WebSocket.CLOSED); // the server closed the stream on exit
+    expect(client!.frames.length).toBeGreaterThan(5);
+    expect(client!.frames.every((f) => f.rootSeed === 11 && f.observerProtocolVersion === 1)).toBe(true);
+    expect(recoverLatestValid(d).report.selected?.stateHash).toBe(directHash(11, 800));
+  }, 60_000);
+
+  it('a busy --observe port fails before any world is created', async () => {
+    const blocker = net.createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
+    const port = (blocker.address() as net.AddressInfo).port;
+    try {
+      const d = newWorldDir();
+      const r = cli(['--dir', d, '--new', '--seed', '11', '--observe', String(port), '--until-tick', '100']);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toContain('cannot serve observer frames');
+      expect(fs.existsSync(d)).toBe(false);
+      expect(cli(['--dir', d, '--new', '--seed', '11', '--ticks-per-second', '0']).code).toBe(2);
+      expect(cli(['--dir', d, '--new', '--seed', '11', '--observe', '70000']).code).toBe(2);
+    } finally {
+      blocker.close();
+    }
   });
 });

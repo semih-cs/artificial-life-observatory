@@ -146,7 +146,7 @@ reopened.
 
 ### Phase 0C — Persistent Canonical World
 
-**ACTIVE — the current phase.** Scope, in order:
+**COMPLETE FOR V1** (runner and observer bridge done; Phase 0D is next). Scope, in order:
 
 1. **deterministic snapshot save/load/resume** — first, and alone;
 2. snapshot validation, checksum, rotation and fallback;
@@ -161,9 +161,10 @@ workspace package that consumes `simulation-core`, never inside it.
 (slice 1), the folder-based snapshot store (slice 2) and quarantine of corrupt
 snapshots (slice 3). The snapshot store is complete; do not open another
 persistence sub-project. The persistent world process is also done:
-`packages/world-runner`. The next step is a read-only bridge to the
-Observatory. The following persistence and runner invariants are proven by
-test and must hold from now on:
+`packages/world-runner`, and so is its read-only observer bridge (WebSocket
+frames, observer protocol v1, tick pacing). The next step is the Phase 0D
+Observatory frontend. The following persistence, runner and observer
+invariants are proven by test and must hold from now on:
 
 - **Exact continuation.** A snapshot restores to a world that continues bit for
   bit: continuous run == save → load → resume. The continuation and golden-resume
@@ -204,6 +205,18 @@ test and must hold from now on:
 - **Restart equivalence.** Stop/restart at any tick continues exactly. The
   golden multi-restart and separate-process tests in
   `packages/world-runner/tests` are live regressions.
+- **Observation is read-only and pure.** `toObserverFrame` draws no RNG,
+  writes nothing and changes no ordering. The observer stream routes nothing
+  from clients anywhere: there are no mutation commands, as Spec §14.50
+  [LOCKED] requires. It only reads the world between ticks. It sends the
+  latest frame only, and a slow client is skipped, never buffered without
+  bound and never waited for.
+- **TPS is not FPS.** Tick pacing (`ticksPerSecond`) only decides when ticks
+  run. The observer frame rate is independent. Paced, unpaced, observed and
+  unobserved runs reach the same hash — the golden observer/pacing tests are
+  live regressions.
+- **Observer protocol versioning.** Any change to the frame shape bumps
+  `OBSERVER_PROTOCOL_VERSION`. Neural weights stay out of live frames.
 
 ### Demo seeds (product only)
 
@@ -216,7 +229,9 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-Follows Phase 0C. Scope:
+**NEXT — ready to start.** The frontend consumes the read-only observer
+stream from `packages/world-runner`: `--observe <port>`, observer protocol
+v1, see README. It never sends commands that change the world (§14.50). Scope:
 
 - observer UI,
 - React/PixiJS,
@@ -401,9 +416,15 @@ including fallback recovery that resumes to `b95a0b4ef7dd8449`. It takes about
 75–100 s.
 
 World-runner regression, part of `npm test`: `npm test -w packages/world-runner`.
-It covers the golden multi-restart and a separate-process restart, both to
-`b95a0b4ef7dd8449`, plus SIGINT/SIGTERM/SIGKILL and the no-silent-new-world
-refusals. It takes about 40 s.
+It covers:
+
+- the golden multi-restart and a separate-process restart, both to
+  `b95a0b4ef7dd8449`;
+- SIGINT/SIGTERM/SIGKILL and the no-silent-new-world refusals;
+- observer purity and the read-only stream;
+- golden runs with an observer, with pacing, and with both.
+
+It takes about 50 s. The full `npm test` takes about 2.5–3 minutes.
 
 Phase 0B CLI:
 

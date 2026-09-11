@@ -83,6 +83,13 @@ export interface WorldRunOptions {
   statusEvery?: number;
   onStatus?: (status: RunnerStatus) => void;
   batchTicks?: number;
+  /**
+   * Wall-clock pacing: run about this many ticks per real second. It only
+   * decides WHEN ticks run, never what they compute. If the loop falls more
+   * than a second behind (a slow machine, a paused process), the backlog is
+   * dropped rather than replayed in a burst. Default: as fast as possible.
+   */
+  ticksPerSecond?: number;
 }
 
 export interface WorldRunResult {
@@ -105,6 +112,9 @@ export function worldExists(dir: string): boolean {
 }
 
 const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Longest single wait while paced, so stop() is still seen promptly at very low rates. */
+const MAX_PACED_WAIT_MS = 50;
 
 export class WorldRunner {
   readonly dir: string;
@@ -209,10 +219,29 @@ export class WorldRunner {
     if (until !== undefined && (!Number.isInteger(until) || until < 0)) {
       throw new WorldRunnerError('INVALID_OPTIONS', `untilTick must be a non-negative integer, got ${until}`);
     }
+    const tps = options.ticksPerSecond;
+    if (tps !== undefined && !(Number.isFinite(tps) && tps > 0)) {
+      throw new WorldRunnerError('INVALID_OPTIONS', `ticksPerSecond must be a positive number, got ${tps}`);
+    }
     this.running = true;
+    // Pacing anchor: tick `anchorTick` was due at wall-clock `anchorMs`.
+    let anchorMs = performance.now();
+    let anchorTick = this.current.tick;
     try {
       while (!this.stopFlag && (until === undefined || this.current.tick < until)) {
-        for (let i = 0; i < batch && !this.stopFlag && (until === undefined || this.current.tick < until); i++) {
+        let budget = batch;
+        if (tps !== undefined) {
+          const now = performance.now();
+          let due = anchorTick + Math.floor(((now - anchorMs) * tps) / 1000) - this.current.tick;
+          if (due > tps) { anchorMs = now; anchorTick = this.current.tick; due = 0; } // more than 1 s behind: drop the backlog
+          if (due <= 0) {
+            const nextAt = anchorMs + ((this.current.tick - anchorTick + 1) * 1000) / tps;
+            await sleep(Math.min(MAX_PACED_WAIT_MS, Math.max(1, nextAt - now)));
+            continue;
+          }
+          budget = Math.min(batch, due);
+        }
+        for (let i = 0; i < budget && !this.stopFlag && (until === undefined || this.current.tick < until); i++) {
           this.step();
           if (statusEvery !== undefined && this.current.tick % statusEvery === 0) options.onStatus?.(this.status());
         }

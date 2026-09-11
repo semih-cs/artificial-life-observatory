@@ -17,8 +17,8 @@
 | **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
-| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`). **Next: a read-only observer bridge to Phase 0D** |
-| **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
+| **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
+| **Phase 0D** — Observatory / visualisation | **READY TO START** — the frontend connects to the observer stream. **Next** |
 
 **Frozen v1 biological model:**
 
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-the Phase 0C world runner:
+the Phase 0D observer bridge:
 
 ```text
-(HEAD)  Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop) — see `git log -1`
+(HEAD)  Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing — see `git log -1`
+68865c7 Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop)
 3b040ac Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery
 c7dcd11 Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery
 bdcc156 Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume
@@ -121,8 +122,9 @@ experiment-harness tests: 138 / 138 passed
 persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuation, golden resume, separate process;
                                              slice 2: 28 — snapshot store 25, fallback-recovery regression 3;
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
-world-runner tests:        21 / 21  passed   (in process 13; separate OS processes and signals 8)
-workspace total:          408 / 408 passed
+world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
+                                             golden observer / paced / paced+observer 3)
+workspace total:          428 / 428 passed   (root `npm test` ≈ 2.5–3 min on this VM)
 workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -130,7 +132,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Phase 0C world-runner checkpoint (and at slices 1–3 before it):
+Re-confirmed at the observer-bridge checkpoint (and at every Phase 0C checkpoint before it):
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -533,8 +535,8 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
-| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; four packages, the world-runner section (create, run/recover, cadence, graceful shutdown, crash recovery, no silent new world, throughput), the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete; world-runner invariants (runner never changes the simulation, no silent new world, restart equivalence), package list and runner regression |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; four packages, the world-runner section (create, run/recover, cadence, graceful shutdown, crash recovery, no silent new world, throughput), the observer stream (protocol v1, WebSocket usage, pacing, TPS vs FPS, read-only guarantee), the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete; world-runner invariants (runner never changes the simulation, no silent new world, restart equivalence), package list and runner regression; observer invariants (read-only and pure, TPS is not FPS, protocol versioning) |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 
 ---
@@ -1585,49 +1587,115 @@ session's VM):
 
 A tick-10,000 snapshot is ≈ 0.9 MB. No optimisation was needed.
 
-## Phase 0C remaining — only what Phase 0D genuinely needs
+## Phase 0C remaining — assessed at the runner checkpoint (historical)
 
-Spec §14.45–§14.50 define Phase 0D as a read-only live observatory:
+The runner checkpoint found that Phase 0D (Spec §14.45–§14.50) needs only
+two things from the backend. It needs a read-only observer interface, and
+optional tick pacing (≈ 10 Hz, §14.47). Both are now done (next section).
 
-- React, PixiJS and WebSocket;
-- a server that periodically publishes observer state, with simulation
-  ≈ 10 Hz and network 5–10 Hz (§14.47);
-- organism inspection (§14.49);
-- no mutation commands (§14.50 [LOCKED]).
+PostgreSQL, event records, soak tests and cloud are not required before
+Phase 0D. §14.37 keeps world continuity in snapshots.
 
-What that needs from the backend:
+## Phase 0D bridge — RESULT: DONE (read-only observer stream, tick pacing)
 
-1. **A read-only observer interface on the running world.** This is the next
-   step.
-2. **Optional tick pacing** for a watchable world (≈ 10 Hz, §14.47). The
-   runner currently runs as fast as possible. Pacing only schedules when
-   ticks run and never reaches world state.
+No change to simulation-core, biology, `simulationVersion`, snapshot format
+or the store. There is no REST API, no authentication and no mutation
+command. There are no new dependencies: the WebSocket server is a
+self-contained RFC 6455 subset on `node:http`.
 
-Not required before Phase 0D:
+**Code** (`packages/world-runner/src`):
 
-- PostgreSQL historical storage, event records and soak tests (§14.35). The
-  spec does not require a database to execute or observe the world (§14.37:
-  continuity is snapshots). Births and deaths for a recent-event feed can
-  come from `stepWorld` telemetry, which is optional in §14.46.
-- Cloud deployment.
+- **`observer/frame.ts`** — `toObserverFrame(world, status)` and
+  `OBSERVER_PROTOCOL_VERSION = 1`.
+  - Frame fields: `type: 'frame'`, `observerProtocolVersion`,
+    `simulationVersion`, `configHash`, `rootSeed`, `tick`, `snapshotTick`,
+    `world {width,height}`, `population`, `foodCount`.
+  - `organisms[]`: id, parentId, generationDepth, lineageRootId, x, y,
+    heading, size, energy, age, maxSpeed, visionRange, visionAngle,
+    metabolism.
+  - `food[]`: id, x, y.
+  - It is pure, keeps the world's ascending-id order, and rounds display
+    values (positions and energy 0.01, heading and morphology 0.001).
+  - No neural weights, RNG or fertility.
+  - Size: ≈ 9.5 KB at tick 1,000 (34 organisms), ≈ 90 KB at 10,000 (407).
+- **`observer/server.ts`** — `startObserverServer({ port, host = 127.0.0.1,
+  maxFps = 10, maxClientBufferedBytes = 1 MiB, latest })`.
+  - Latest frame only: sent on connect, then each round when it changed.
+  - A client over its buffer cap is skipped that round, never queued.
+  - Client data frames are counted and discarded; ping → pong;
+    close → close.
+  - Unmasked frames close the connection with 1002, frames over 4 KiB with
+    1009.
+  - Plain HTTP → 426; a bad upgrade → 400.
+  - `stats()` reports clients, frames sent and skipped, the maximum buffered
+    bytes, and ignored messages.
+- **`observer/runnerObserver.ts`** — `runnerFrameSource(getRunner)` caches
+  the frame per (tick, snapshotTick); `observeRunner(runner, opts)`.
+- **`runner.ts`** — `run({ ticksPerSecond })`: wall-clock pacing decides only
+  when ticks run. A backlog of more than 1 s is dropped rather than burst,
+  waits are capped at 50 ms so `stop()` stays prompt, and invalid rates are
+  refused.
+- **CLI:**
+  - `--ticks-per-second <n>` and `--observe <port>` (`0` = any free port).
+  - An `observing` event carries the URL.
+  - The observer binds before the world is created or opened, so a busy port
+    changes nothing (exit 1).
+  - The stream closes before exit.
+
+**Proof** (20 new tests; 41 in world-runner):
+
+| Requirement | Test | Result |
+|---|---|---|
+| frame correctness | `observerFrame.test.ts` | golden world at tick 1,000: every field, population 34, food 60, world 500×500, id order, no weights; frame text hash pinned `3e022ea0723de971` |
+| frame purity | `observerFrame.test.ts` | 3 frames per tick for 1,500 ticks: canonical state and RNG unchanged every tick, final hash = direct; deep-frozen world and status accepted |
+| observer-connected golden | `goldenObserver.test.ts` | unpaced, observer + client throughout → **`b95a0b4ef7dd8449`**; client ends on the tick-10,000 frame |
+| pacing golden | `goldenPaced.test.ts` | 1,500 TPS (≥ 1.9 s to reach 3,000, so pacing engaged) → **`b95a0b4ef7dd8449`** |
+| paced + observer golden | `goldenPacedObserver.test.ts` | 1,500 TPS, observer, client sending 20 commands (all discarded) → **`b95a0b4ef7dd8449`** |
+| read-only protocol | `observerStream.test.ts` | commands, binary, raw frames and ping mid-run: all discarded (pong answered); hash = direct; unmasked → 1002, oversize → 1009, only that client |
+| multiple clients | `observerStream.test.ts` | two clients: valid frames, byte-identical text for shared ticks, hash = direct |
+| slow client | `observerStream.test.ts` | a non-reading client with 512 KB frames at 100 fps: frames skipped, maximum buffer ≤ cap + one frame, the reading client keeps receiving; on a running world a stalled client leaves progress and hash unchanged |
+| disconnect/reconnect | `observerStream.test.ts` | the reconnect gets the current frame on connect (with 5 s publish rounds, it arrives in < 1 s); hash = direct |
+| pacing | `observerStream.test.ts`, `process.test.ts` | 60 ticks at 40 TPS ≥ 1.4 s, hash = unpaced; `stop()` prompt at 0.5 TPS; CLI 800 ticks at 400 TPS ≥ 1.8 s with frames served; busy port refused before any world exists |
+
+A mutation check was done during implementation:
+
+- removing the buffer-cap skip fails the slow-client test;
+- removing the send-on-connect fails the on-connect test;
+- removing the per-round pacing budget fails the short pacing test.
+
+**Manual check** (verified during implementation, seed 20260910, 50 TPS,
+port 18787): a Node WebSocket client received a frame within 6 ms of
+connecting, then about 10 frames per second. Plain HTTP returned 426, and
+SIGTERM stopped and saved cleanly.
+
+**Local usage:**
+
+```bash
+npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # create
+npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787                       # recover
+# connect: ws://127.0.0.1:8787/
+```
+
+No demo seed has been chosen; the command stays generic.
+
+**Phase 0D readiness: READY.** A frontend can connect to
+`ws://127.0.0.1:<port>/` and render protocol-v1 frames. It has what it needs
+to show organism positions, headings, sizes, energy, generation and lineage,
+food, population, and tick. Organism detail beyond the live frame, such as
+neural fingerprints, needs a later on-demand message and a protocol bump.
 
 ## NEXT EXACT STEP
 
-**Phase 0D bridge — a read-only local observer stream from the world
-runner.**
+**Phase 0D — create the first Observatory frontend.** It connects to the
+observer WebSocket stream and renders the live world.
 
-1. Add a pure projection `toObserverFrame(world, status)` to
-   `packages/world-runner`. It returns tick, population, the world size, the
-   food positions, and per organism: id, x, y, heading, size, energy, age,
-   generation depth, `parentId` and `lineageRootId`.
-2. Add an opt-in `--observe <port>` to the runner. It serves the latest frame
-   read-only over a minimal local WebSocket (or HTTP) at ≤ 10 Hz, independent
-   of the tick rate. There are no mutation endpoints.
-3. Add an optional `--ticks-per-second` pace (§14.47), which schedules ticks
-   only.
+- **Package:** a new workspace package, e.g. `packages/observatory`, using
+  React + TypeScript + PixiJS (Spec §14.45).
+- **Connection:** connect to `ws://127.0.0.1:<port>/` and consume observer
+  protocol v1.
+- **Render:** draw the world bounds, food and organisms (position, heading,
+  size; colour by lineage), with a tick / population / snapshot status bar.
+- **Interpolation:** visual only (§14.48).
+- **Read-only:** no mutation controls (§14.50).
 
-Prove it with a test: the canonical hash with observers connected and
-pacing on equals the hash without them (`b95a0b4ef7dd8449` at 10,000).
-
-No React or PixiJS in this step. No database or cloud. No change to
-simulation-core or biology.
+Backend work is limited to what the frontend demonstrably needs.
