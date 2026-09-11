@@ -12,7 +12,8 @@ validation seeds are untouched.**
 > read-only reclassification of persisted runs; §18 the continuation that
 > completes the 15-seed `0A.2.0` default profile under v2; §19 a read-only
 > analysis of those worlds' early establishment; §20 a read-only comparison of
-> the stalled worlds that recover and those that die. Every classification in §§2–15
+> the stalled worlds that recover and those that die; §21 whether that split is
+> reproduction participation or repeat reproduction. Every classification in §§2–15
 > is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
@@ -2697,3 +2698,147 @@ reproduce, or the same fraction reproducing less often?**
 
 This is a question only. Nothing is implemented, no model or parameter
 changes, and no sweep is proposed.
+
+---
+
+## 21. Reproduction participation versus repeat reproduction in the stalled cohort (READ-ONLY; PRECOMMITMENT)
+
+**Written and committed before any group value of these metrics was computed.
+§21.6 is empty at this point.** Nothing is simulated. The model, the ecology
+and `trajectory-outcome-v2` are unchanged. The only data inspection before this
+commit was a structural check of the stored field's precision (§21.2). It
+compared no groups.
+
+### 21.1 Question
+
+After the founders die, is the reproduction deficit of the stalled worlds that
+go extinct mainly (A) fewer organisms ever reproducing, or (B) a similar share
+reproducing but with lower repeated output?
+
+### 21.2 What `fractionEverReproduced` actually is (verified in code)
+
+`src/runner/replicate.ts` keeps two sets for the whole run:
+
+- `seenOrganismIds` — every organism id ever present in the world state. It is
+  seeded with the 25 bootstrap organisms. After each tick every id not yet seen
+  is added.
+- `organismsEverReproduced` — for every newly seen organism with a
+  `parentId`, that parent's id is added.
+
+`src/metrics/compute.ts` stores:
+
+```
+fractionEverReproduced = |organismsEverReproduced| / |seenOrganismIds|
+```
+
+| Property | Fact |
+|---|---|
+| Numerator | the number of distinct organisms that have produced at least one offspring since tick 0 |
+| Denominator | every organism ever present: the 25 founders plus every organism born so far, i.e. **25 + cumulative births** |
+| Dead organisms | stay in **both** numerator and denominator (the sets are never pruned) |
+| Founders and descendants | **mixed** — founders are in both sets |
+| Time basis | **lifetime cumulative** since tick 0, not the current population |
+| Newborns | enter the denominator at birth, long before they can reproduce (`maturityAge` 500) |
+
+A structural check on all 669 rows of the baseline timeseries confirms two
+things. The stored value is full double precision. And
+`fractionEverReproduced × (25 + birthsCumulative)` is an integer to within
+6 × 10⁻¹⁴ in every row, so the denominator is exactly 25 + births. This compares
+no groups.
+
+**Exactly derivable per sample:**
+
+- `R = fractionEverReproduced × (25 + birthsCumulative)`, the number of
+  distinct organisms that have ever reproduced;
+- from it, `I = birthsCumulative / R`, the lifetime mean number of offspring
+  per organism that ever reproduced.
+
+**Descendant-only participation after tick 3000 is NOT derivable.** All
+founders die at tick 3000, so every new reproducer and every birth after 3000
+is a descendant. But two things cannot be recovered from the persisted
+aggregates:
+
+- **The share of post-3000 descendants who reproduce.** It needs to know which
+  of the descendants alive at tick 3000 had already reproduced before 3000.
+- **Births per descendant reproducer.** It needs post-3000 births attributed to
+  individual parents, some of whom first reproduced before 3000.
+
+Neither is reconstructed or inferred.
+
+**The two derivable metrics are not independent.** By definition:
+
+```
+fractionEverReproduced × I = birthsCumulative / (25 + birthsCumulative)
+```
+
+When births far exceed 25 the right side is close to 1, so the participation
+fraction is close to the reciprocal of the intensity. Both are also biased by
+population growth. A growing world has many newborns in the denominator of the
+fraction who are not yet mature. It also has many reproducers early in their
+reproductive lives, which pulls `I` down. Both biases work **against** the
+faster-growing late establishers.
+
+### 21.3 Groups
+
+The same seven worlds as §20:
+
+- **E\*** (extinct), n = 4: 131676, 147514, 187109, 195028.
+- **L** (late establishers), n = 3: 107919, 202947, 210866.
+
+100000 remains excluded, since it was extinct at tick 3000.
+
+### 21.4 Fixed checkpoints and metrics
+
+**Checkpoints: 3000, 4000, 5000, 6000, 7000, 8000, 9000.**
+Source: `results/multifounder-default-baseline/timeseries-multifounder-default.csv`.
+All seven worlds are alive and sampled at each checkpoint (§20.3).
+
+| Metric | Definition | Role |
+|---|---|---|
+| M1 `fractionEverReproduced` | as persisted (§21.2) | lifetime participation share, founders and dead included |
+| M2 cumulative births | `birthsCumulative` | reproductive output, as in §20 |
+| M3 births per reproducer | `birthsCumulative / R` | lifetime repeat-reproduction intensity |
+
+`R` itself is shown per seed as context. It is a count that scales with world
+size, so it is not compared between groups.
+
+### 21.5 Rule (fixed before computing)
+
+For each metric at each checkpoint: median and full range per group, the best
+single threshold (either direction), and the minimum misclassified out of 7.
+
+- **CLEAR** = 0 misclassified.
+- **STRONG PARTIAL** = 1.
+- **WEAK / NONE** = 2 or more.
+
+No composite score is formed.
+
+Chance level is as in §20.5: 0 misclassified for 5.7% and ≤ 1 for 40% of
+random labellings per look. There are 21 looks (7 checkpoints × 3 metrics). So
+a metric **differs** between the groups only if it reaches CLEAR at some
+checkpoint from 4000 on **and** stays at ≤ 1 misclassified at every later
+checkpoint. The direction is recorded as whether L is higher or lower.
+
+Mechanism call, using M1 and M3 only:
+
+- **A — PARTICIPATION** if M1 differs with L higher and M3 does not differ.
+  Growth biases the fraction against L, so an M1 gap in L's favour is
+  conservative.
+- **B — REPEAT REPRODUCTION** if M3 differs with L higher and M1 does not
+  differ with L higher. Growth biases M3 against L as well.
+- **C — MIXED** if M1 and M3 both differ with L higher.
+- **D — NOT IDENTIFIABLE FROM SAVED DATA** in every other case. That includes a
+  metric that differs with L *lower*, because the age-structure bias in §21.2
+  can produce that on its own. It also includes a case where neither differs.
+
+Whatever the call, it describes **lifetime, founder-inclusive** participation
+and intensity, not descendant-only reproduction (§21.2).
+
+**Causal limit.** No claim that neural quality, food or sensing caused any
+difference. Permitted language: reproduction participation differs,
+reproduction intensity differs, births accumulate faster, the groups separate
+on reproductive dynamics.
+
+### 21.6 Results
+
+*(empty at precommitment)*

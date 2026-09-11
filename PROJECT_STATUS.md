@@ -623,6 +623,46 @@ modifying the model.
 
 ---
 
+## Reproduction participation analysis — PRECOMMITMENT (read-only, not yet computed)
+
+Full text: pilot report §21. Committed before any group value was computed. No
+simulation.
+
+**What `fractionEverReproduced` is** (verified in code):
+
+- It equals distinct organisms that ever produced offspring, divided by all
+  organisms ever present (25 founders + cumulative births).
+- It is lifetime cumulative, keeps the dead, and mixes founders with
+  descendants.
+- The denominator is exactly 25 + births: verified integral in all 669 baseline
+  rows.
+
+**What can be derived exactly:**
+
+- R = f × (25 + B), the distinct reproducers ever;
+- I = B / R, the lifetime births per reproducer.
+
+**What cannot:** descendant-only participation or intensity after tick 3000 is
+**NOT derivable**. It is not reconstructed.
+
+**Coupling:** f × I = B / (25 + B), so the two metrics are coupled.
+Population growth biases both against the late establishers.
+
+**Design:**
+
+- Groups: the same 7 worlds as §20 — E\* 131676, 147514, 187109, 195028
+  against L 107919, 202947, 210866.
+- Checkpoints: 3000, 4000, 5000, 6000, 7000, 8000, 9000.
+- Metrics: M1 f, M2 cumulative births, M3 I.
+- A metric *differs* if it is CLEAR (0 of 7 misclassified) at some checkpoint
+  from 4000 on and stays ≤ 1 afterwards.
+- Mechanism call:
+  - A if M1 differs with L higher and M3 does not;
+  - B if M3 differs with L higher and M1 does not;
+  - C if both differ;
+  - D otherwise, including any L-lower difference.
+- The call is lifetime and founder-inclusive only.
+
 ## Stalled-cohort analysis (`0A.2.0` default, after tick 3000) — RESULT: conclusion A
 
 Code in `a79401e` (`src/analysis/stalledCohort.ts`, CLI `stalled-cohort`,
@@ -1039,17 +1079,8 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing computed — a read-only analysis answering
-pilot report §20.7 from the persisted 200-tick timeseries.** It would compare
-the persisted standard field `fractionEverReproduced` for the same 7 worlds
-(E\* against L) over ticks 3000–9000.
+**Compute the precommitted reproduction-participation comparison (pilot report
+§21) read-only from the persisted baseline timeseries, apply the §21.5 rule
+unchanged, and record the result.**
 
-First document exactly what that field counts. It is cumulative from tick 0,
-founders included, so the design must state how the post-founder fraction is
-isolated from it — or whether it cannot be. Fix the checkpoints and the rule
-before computing, and state the n = 4 against n = 3 limit.
-
-Constraints that still hold: no simulation; no model, ecology,
-`founderGroupCount` or `trajectory-outcome-v2` change; no calibration sweep;
-do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
-Phase 0C.
+No simulation, no model or parameter change.
