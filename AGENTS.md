@@ -103,6 +103,17 @@ Deterministic, headless organism lifecycle and evolutionary substrate.
 
 Phase 0A is **frozen** unless a later phase demonstrates a genuine implementation bug or violation of a locked invariant.
 
+**Frozen v1 biological model:** `simulationVersion 0A.2.0`, `founderGroupCount 5`,
+`DEFAULT_SIMULATION_CONFIG`.
+
+- Its regression hash is `b95a0b4ef7dd8449`.
+- The historical single-founder model `0A.1.0` (`6a6576bd49e86b27`) stays
+  documented and tested.
+- Biology is not changed during Phase 0C or 0D unless a genuine implementation
+  bug is found, and any such change must be versioned.
+- This is a **product freeze**. It is not a research baseline qualification:
+  the Phase 0B gate was not met.
+
 ### Phase 0B — Calibration and Validation Harness
 
 Package:
@@ -115,21 +126,49 @@ Run deterministic multi-seed experiments, collect observational metrics, perform
 
 Phase 0B must not add new biological intelligence features.
 
+**Status — closed for v1** (project decision, 2026-09-11):
+
+- **Phase 0B Engineering: COMPLETE / FROZEN.** The harness, diagnostics,
+  probes, outcome classifiers and provenance are operational.
+- **Phase 0B Research Calibration: EXPLORATORY — CLOSED FOR V1.** The ~70%
+  research gate was not met, and no core simulation defect was found. See
+  `docs/Phase 0B Pilot Report.md` §23.
+- **Not a v1 blocker.** Product development is unblocked.
+
+Do **not**:
+
+- start further calibration sweeps, diagnostics or tuning;
+- reopen Phase 0B questions;
+- use the validation seeds.
+
+Those stay reserved for future research, which must follow §7 if it is ever
+reopened.
+
 ### Phase 0C — Persistent Canonical World
 
-Future scope:
+**ACTIVE — the current phase.** Scope, in order:
 
-- persistent canonical process,
-- exact snapshots,
-- RNG-state recovery,
-- crash recovery,
-- durable storage.
+1. **deterministic snapshot save/load/resume** — first, and alone;
+2. snapshot validation, checksum, rotation and fallback;
+3. a persistent canonical process and world lifecycle;
+4. durable storage and events.
 
-Do not begin this while Phase 0B is still open.
+Do not add a database, server or UI before the deterministic save/resume
+invariant (Spec §18.60, §19.27) is proven. Persistence code lives in its own
+workspace package that consumes `simulation-core`, never inside it.
+
+### Demo seeds (product only)
+
+A clearly labelled DEMO seed may be chosen for the product UI because it
+produces a long-lived, interesting world.
+
+- It must be kept separate from the pilot and validation seed sets.
+- Choosing it is **not** a scientific claim.
+- It must never be used as research evidence.
 
 ### Phase 0D — Observatory
 
-Future scope:
+Follows Phase 0C. Scope:
 
 - observer UI,
 - React/PixiJS,
@@ -204,6 +243,9 @@ Any intentional change to canonical RNG consumption or simulation semantics must
 
 ## 7. Experiment rules for Phase 0B
 
+Phase 0B research is closed for v1 (§4). These rules govern any future reopening
+of research work. They also bind any use of the pilot and validation seed sets.
+
 The experiment harness observes the simulation; it does not become part of biological selection.
 
 ### Pilot vs validation
@@ -255,9 +297,14 @@ Current npm workspace:
 - `packages/simulation-core`
 - `packages/experiment-harness`
 
+Planned for Phase 0C: a separate persistence package that depends only on
+`simulation-core`.
+
 Keep experiment-specific code out of `simulation-core`.
 
-Keep UI/server/database/persistence code out of both packages until their designated phase.
+Keep UI/server/database/persistence code out of `simulation-core` and
+`experiment-harness`. Persistence belongs in its own Phase 0C package, and
+UI/server belong to Phase 0D.
 
 Generated artifacts should not be committed unless intentionally selected as small fixtures.
 

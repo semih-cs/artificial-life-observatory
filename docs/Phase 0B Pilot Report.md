@@ -1,7 +1,14 @@
 # Phase 0B Pilot Report
 
-**Status: pilot evidence only. No configuration has been frozen. The held-out
-validation seeds are untouched.**
+**Status: CLOSED FOR V1 (§23).**
+
+- **Phase 0B Engineering:** COMPLETE / FROZEN.
+- **Research Calibration:** EXPLORATORY — CLOSED FOR V1. The ~70% research
+  gate was **not** met.
+- **No research baseline was qualified or frozen.** The v1 product freezes
+  biology at `0A.2.0` for product reasons only.
+- **The held-out validation seeds are untouched.**
+- **Everything below is pilot evidence.**
 
 > **Model scope.** Sections 1–11 describe the historical **single-founder**
 > model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
@@ -14,8 +21,9 @@ validation seeds are untouched.**
 > analysis of those worlds' early establishment; §20 a read-only comparison of
 > the stalled worlds that recover and those that die; §21 whether that split is
 > reproduction participation or repeat reproduction; §22 an observational
-> per-organism lifecycle diagnostic of the same worlds. Every classification in §§2–15
-> is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
+> per-organism lifecycle diagnostic of the same worlds; §23 closes the research
+> calibration for v1. Every classification in §§2–15 is a v1 (peak ≥ 200)
+> result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -1173,6 +1181,7 @@ condition, it does not make an organism better at anything.
 | The stalled-cohort split is repeat reproduction rather than participation | Yes, at pilot level, lifetime and founder-inclusive | §21.6: births per reproducer CLEAR from 6000 (1.81–2.24 vs 2.25–2.41); the fraction ever reproducing never separates; descendant-only figures are not derivable |
 | Extinct-world reproducers produce fewer offspring because they die sooner after first reproducing | **No** | §22.9: post-first-reproduction survival overlaps (2 of 7 worlds misclassified; best cut has E\* longer) |
 | …because of longer intervals between reproductions | **Not established** | §22.9: median interval is STRONG PARTIAL (1 of 7 misclassified), below the precommitted CLEAR bar; call NEITHER / INCONCLUSIVE |
+| The `0A.2.0` model is fit for the v1 artificial-life product | Yes, as a product decision (§23) | Mechanics operational and deterministic; long-lived bounded worlds occur; the research gate was **not** met, and this is not a research qualification |
 
 ---
 
@@ -3259,7 +3268,7 @@ morphology caused any difference. What is observed is this: reproducers in the
 extinct stalled worlds do not die sooner after first reproducing, and in most
 of those worlds a larger share never reproduce a second time.
 
-### 22.10 Next scientific question
+### 22.10 Next scientific question — not pursued (research closed for v1, §23)
 
 **After a first reproduction, do reproducers in the extinct stalled worlds take
 longer to climb back from their post-reproduction energy to the reproduction
@@ -3268,3 +3277,89 @@ in the worlds that establish?**
 
 This is a question only. It needs a per-organism energy record between
 reproductions, which does not exist.
+
+---
+
+## 23. Closure of Phase 0B research calibration for v1
+
+**Project decision, 2026-09-11.** The research and calibration investigation
+ends here. The proposed follow-up on post-reproduction energy recovery (§22.10)
+is **not** pursued. No further diagnostic, sweep or tuning is run. The
+validation seeds stay untouched and reserved for future research work.
+
+### 23.1 What Phase 0B established
+
+- **The mechanics work.** Phase 0A / `0A.2.0` simulation mechanics are
+  operational and deterministic. Golden hashes are reproduced across builds and
+  processes. Observation leaves trajectories unchanged, as proven by test in
+  §8, §15, §22 and elsewhere.
+- **The engineering is verified.** The energy model is verified against
+  closed-form predictions (§7). The diagnostic interventions do what they claim
+  (§2). Inheritance and both mutation channels operate under configuration
+  control (§3). Provenance is hardened (§9).
+- **The tooling is operational.** The experiment harness and its diagnostics
+  work: multi-seed runners, pilot/validation seed discipline, functional
+  probes, the v1 and `trajectory-outcome-v2` outcome classifiers, read-only
+  analyses and per-organism life-history recording.
+- **Multi-founder initialization (`0A.2.0`) is the canonical model.**
+- **Long-lived bounded worlds demonstrably occur.** Uncapped, several worlds
+  hold stable populations of roughly 150–320 organisms for more than 10,000
+  ticks (§15, §18).
+- **The complete 15-seed `0A.2.0` default pilot** under `trajectory-outcome-v2`
+  (§18.6):
+
+  | Class | Count |
+  |---|---:|
+  | EXTINCTION | 5 |
+  | BOUNDED_VIABLE | 3 |
+  | HIGH_BOUNDED | 5 |
+  | RUNAWAY | 2 |
+  | INCONCLUSIVE | 0 |
+
+  **Bounded completion: 8 / 15 (0.533).**
+
+### 23.2 What it did not establish
+
+- **The research-grade ~70% gate was not met** (§16.35 [BASELINE]). It was not
+  met under the v1 classifier in any of the 22 single-founder configurations,
+  and not under v2 for the `0A.2.0` default (0.533). The gate has not been
+  weakened, and this report does not claim it passed.
+- **Extensive pilot analysis found no core simulation defect** (§7, §9, §14–§22).
+- **Scientific calibration remains exploratory and inconclusive.** Extinction
+  in the default model is an establishment failure. It is decided after the
+  founder lifespan, among worlds that stall near founder scale (§19–§20). It
+  goes with lower repeat reproduction (§21). The lifecycle mechanism behind
+  that was not identified (§22).
+- **No claim** is made about adaptation, intelligence or evolutionary
+  advantage.
+
+### 23.3 Status
+
+| Track | Status |
+|---|---|
+| Phase 0B Engineering | **COMPLETE / FROZEN** |
+| Phase 0B Research Calibration | **EXPLORATORY — CLOSED FOR V1** |
+| V1 artificial-life product | **UNBLOCKED.** Failing the research gate is not a blocker for v1 |
+
+For v1 the biological model is frozen at `simulationVersion 0A.2.0` with
+`founderGroupCount 5` (golden hash `b95a0b4ef7dd8449`). The historical
+single-founder model `0A.1.0` (`6a6576bd49e86b27`) remains documented and
+tested.
+
+This is a **product freeze, not a research baseline qualification.** It does
+not satisfy §14.27, and no validation run follows from it.
+
+### 23.4 What remains valid
+
+Every result in §§1–22 stays on record exactly as written, each under the
+classifier and model version it was produced with. Nothing is deleted or
+rewritten.
+
+If research calibration is ever reopened, it:
+
+- starts from this record;
+- follows the precommitment discipline used throughout this report;
+- keeps the validation seeds held out until a configuration is frozen for
+  confirmatory testing.
+
+Next phase: Phase 0C — Persistent Canonical World (see `PROJECT_STATUS.md`).

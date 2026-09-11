@@ -1,4 +1,4 @@
-# Artificial Life Observatory — Phase 0A core + Phase 0B harness
+# Artificial Life Observatory
 
 A headless, deterministic artificial-life simulation core, plus the
 experiment harness that calibrates and validates it. Organisms with a
@@ -13,13 +13,35 @@ Two workspace packages:
 | `packages/simulation-core` | 0A | the deterministic headless biological simulation |
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
 
-**Status: Phase 0A complete and frozen.** The simulation is technically correct
-enough to calibrate. It is *not* scientifically validated.
+## Status
 
-**Status: Phase 0B in progress.** The harness runs; the diagnostics, the 2×2
-mutation factorial and the first calibration sweep have been executed on pilot
-seeds. **No baseline configuration has been frozen yet, and the held-out
-validation seeds are untouched.** See `docs/Phase 0B Pilot Report.md`.
+| Track | Status |
+|---|---|
+| Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
+| Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
+| Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
+| **Phase 0C — persistent canonical world** | **active — the current phase** |
+| Phase 0D — Observatory UI | next, after 0C |
+
+**The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
+inherit and mutate genomes, form lineages and evolve across generations. All of
+it is deterministic: the same seed and configuration always give the same world
+(golden hash `b95a0b4ef7dd8449`).
+
+Under the default configuration some worlds die out, some grow without settling,
+and many live for tens of thousands of ticks at a stable population of about
+150–320 organisms. The 15-seed pilot profile and everything learned in Phase 0B
+are in `docs/Phase 0B Pilot Report.md`; its closure is §23.
+
+**What comes next is persistence, then visualisation — not more calibration.**
+
+- Phase 0C makes a world save, load and resume exactly.
+- Phase 0D lets you watch it live and inspect organisms, lineages and
+  mutations.
+
+The biology is frozen for v1: do not change it unless a genuine bug is found.
+The held-out validation seeds are reserved for future research and must not be
+used.
 
 ---
 
@@ -458,25 +480,25 @@ actually is.
 
 ## Current baseline behaviour
 
-With the shipped defaults, most seeds go extinct within a few thousand ticks.
-Across seeds 1–10 at 10,000 ticks: births 3–91, peak population 26–55, nine of
-ten extinct (earliest ~2,450 ticks), one seed surviving with a population of 10
-and lineages eight generations deep.
+The frozen v1 model is `0A.2.0` at `DEFAULT_SIMULATION_CONFIG`. Its 15 pilot
+seeds were run to 20,000 ticks with no population cap, and classified by
+long-horizon trajectory (`trajectory-outcome-v2`, pilot report §16–§18):
 
-The Phase 0B pilot runs sharpen this picture rather than contradicting it. On
-the 15 pilot seeds at 10,000 ticks, the default configuration produces a
-*bimodal* outcome: most replicates go extinct, and most of the survivors climb
-past the §14.29 runaway cap of 200. Applying the §16.35 viable-completion
-measure to the persisted results, no tested configuration — default or swept —
-reaches the [BASELINE] 70% gate. Numbers and their sources are in
-`docs/Phase 0B Pilot Report.md`.
+| Outcome | Worlds |
+|---|---:|
+| extinct | 5 |
+| bounded, below 200 organisms | 3 |
+| bounded, 200 or more organisms | 5 |
+| still growing at 20,000 ticks | 2 |
 
-**This is reported, not hidden, and must not be tuned away here.** The energy
-economy is uncalibrated by design: `foodEnergyValue`, `regenAttemptsPerTick`,
-`worldFoodCapacity`, world size and the action thresholds are exactly the
-coupled parameters Phase 0B exists to calibrate, with a protocol that separates
-pilot from confirmatory runs. Random ad-hoc knob turning now would destroy that
-separation.
+The extinct worlds never get established. They stay near founder size, and the
+descendants reproduce too little. The others typically reach stable populations
+of about 150–320 organisms, with 17–29 generations of descent.
+
+This fails the Phase 0B research-grade gate (8 of 15 bounded against about
+70%). It is recorded, not hidden, and is **not** a v1 blocker. Do not tune it
+away. The historical single-founder results (`0A.1.0`) are kept separately and
+are never pooled with these.
 
 ---
 
@@ -484,10 +506,10 @@ separation.
 
 | Phase   | Scope                                                          |
 |---------|----------------------------------------------------------------|
-| **0A**  | headless deterministic biological simulation core — complete and frozen |
-| **0B**  | **in progress** — calibration and validation experiments; the 2×2 mutation factorial, paired seeds, functional probes |
-| 0C      | persistence, snapshots, recovery, the canonical continuous world |
-| 0D      | the Observatory UI — realtime stream, rendering, creature inspection |
+| **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
+| **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. The deterministic save/load/resume invariant comes first |
+| 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 

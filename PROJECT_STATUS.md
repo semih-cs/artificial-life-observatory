@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -12,101 +12,100 @@
 
 ## Current phase
 
-**Phase 0A:** COMPLETE / FROZEN, with ONE adopted versioned amendment —
-multi-founder initialization (`0A.1.0` → `0A.2.0`). See
-`docs/Phase 0A Amendment - Multi-Founder Initialization.md`.
-**Phase 0B:** harness, probes, diagnostics and analysis COMPLETE.
-**The single-founder parameter-sweep calibration cycle is CLOSED and
-UNSUCCESSFUL.** No baseline was frozen, no candidate qualified, validation seeds
-untouched. The model-level question it identified was answered by the Phase 0A
-amendment above.
-**Multi-founder default baseline (`0A.2.0`): RUN — outcome C, NO MEANINGFUL
-IMPROVEMENT.** 1 of 15 viable (6.7%), identical to the single-founder default;
-extinction 9 → 5, runaway 5 → 9. The single-founder bottleneck is not sufficient
-to explain the calibration failure. Nothing frozen; no calibration cycle for
-`0A.2.0` has begun.
-**Food-limitation diagnostic (`diagnostic-food-limitation-v1`): RUN — integrity
-gate PASS, outcome INCONCLUSIVE** (decision seeds C, A, B; no 2-of-3 majority).
-Pilot report §15. Cap, ecology and model unchanged.
-**Outcome classifier v2 (`trajectory-outcome-v2`): IMPLEMENTED; persisted runs
-reclassified read-only.** Pilot report §16 (design) and §17 (implementation and
-reclassification). Every recorded classification remains a v1 (peak ≥ 200)
-result.
-**Complete 15-seed `0A.2.0` default profile (v2): DONE** via
-`continuation-multifounder-default-v1` (pilot report §18). The profile is
-5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY and 0 INCONCLUSIVE.
-boundedCompletionRate is 0.533: **BASELINE GATE FAILED**, as already fixed.
-Dominant failure mode: extinction (establishment failure).
-**Early establishment analysis (read-only, §19): PARTIAL separation by tick
-3000.** All 7 worlds that doubled by tick 3000 established. The 8 still at
-founder scale include all 5 extinct worlds and 3 later establishers, which
-cannot be told apart at tick 3000.
-**Stalled-cohort analysis (read-only, §20): conclusion A.** By tick 4000,
-population cleanly separates the 3 late establishers from the 4 extinct worlds
-still alive at 3000, and stays separated through 9000. Births separate from
-5000. Mean energy never does.
-**Reproduction participation analysis (read-only, §21): B — repeat
-reproduction.** Lifetime births per reproducer separate the groups from tick
-6000; the fraction of organisms ever reproducing never does. This is lifetime
-and founder-inclusive; descendant-only figures are not derivable.
-**Reproducer-lifecycle diagnostic (§22): VALID, NEITHER / INCONCLUSIVE.**
-Survival after first reproduction does not separate the groups. The
-inter-reproduction interval is STRONG PARTIAL (1 of 7 worlds misclassified).
-**Phase 0C:** NOT STARTED
-**Phase 0D:** NOT STARTED
+| Track | Status |
+|---|---|
+| **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
+| **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
+| **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
+| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** The first slice is deterministic save/load/resume (below) |
+| **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
 
-Do not begin Phase 0C.
+**Frozen v1 biological model:**
+
+| Setting | Value |
+|---|---|
+| `simulationVersion` | `0A.2.0` |
+| `bootstrap.founderGroupCount` | `5` |
+| configuration | `DEFAULT_SIMULATION_CONFIG` |
+| golden hash (seed 20260910, 10,000 ticks) | `b95a0b4ef7dd8449` |
+
+The historical single-founder model `0A.1.0` (`6a6576bd49e86b27`) stays
+documented and tested. Biology does not change in Phase 0C or 0D unless a
+genuine implementation bug is found, and any such change must be versioned.
+This is a **product freeze, not a research baseline qualification**.
+
+### Phase 0B closure — what is recorded
+
+Full account: `docs/Phase 0B Pilot Report.md` §23.
+
+- **The mechanics are operational and deterministic.** Engineering
+  verification is complete. The experiment harness and its diagnostics are
+  operational.
+- **Multi-founder initialization (`0A.2.0`) is the canonical model.**
+- **Long-lived bounded worlds demonstrably occur.**
+- **Complete 15-seed `0A.2.0` default pilot** (`trajectory-outcome-v2`):
+  5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY. **Bounded
+  completion 8 / 15.**
+- **The research-grade ~70% baseline gate was NOT met.** It has not been
+  weakened and is not claimed to have passed.
+- **No core simulation defect was found** by the extensive pilot analysis
+  (§§7, 9, 14–22).
+- **Scientific calibration remains exploratory and inconclusive.** Extinction
+  is an establishment failure that goes with lower repeat reproduction; its
+  lifecycle mechanism was not identified.
+- **Failing the research gate is NOT a blocker for the v1 artificial-life
+  product.**
+- **The validation seeds remain untouched** and reserved for future research.
+
+**Do not:**
+
+- run further Phase 0B calibration sweeps or diagnostics, or tune;
+- reopen Phase 0B questions;
+- use the validation seeds.
+
+The Phase 0B sections below are kept as the historical record.
+
+### Product direction
+
+v1 is a functioning, observable artificial-life world. It is built in two steps:
+
+- **Phase 0C** makes the existing world persistent. It can be started or
+  loaded, continue across sessions, and resume exactly.
+- **Phase 0D** then makes it visible live. You will be able to inspect
+  organisms (id, parent, generation, lineage, age, energy, morphology genes,
+  neural genome), watch births, deaths and mutations, follow lineages across
+  generations, and view population, generation and lineage trends.
+
+No RL, learning, memory, predators, signalling, new actions or richer biology.
+The existing life is made persistent and visible first.
+
+A clearly labelled DEMO seed may later be chosen for the UI. It stays separate
+from the pilot and validation seeds, and it is never research evidence. None
+has been chosen yet.
 
 ---
 
 ## Git state
 
-Branch: `master`
-
-Most recent work is the observational reproducer-lifecycle diagnostic.
-`git log -1` is authoritative; recent history:
+Branch: `master`. `git log -1` is authoritative. The most recent work is the
+Phase 0B closure and the Phase 0C transition:
 
 ```text
-(HEAD)  diagnostic-reproducer-lifecycle-v1: results — NEITHER / INCONCLUSIVE — see `git log -1`
+(HEAD)  Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked — see `git log -1`
+511aa10 diagnostic-reproducer-lifecycle-v1: results — VALID, NEITHER / INCONCLUSIVE
 1f07f69 diagnostic-reproducer-lifecycle-v1: read-only recorder, analysis and CLI
-ff7e2b1 diagnostic-reproducer-lifecycle-v1 PRECOMMITMENT: longer gaps or earlier death?
 80766e0 reproduction-participation: results — B, repeat-reproduction difference (read-only)
-8cf1759 reproduction-participation: read-only analysis code for the precommitted §21 comparison
-18fe6e3 reproduction-participation analysis PRECOMMITMENT (read-only, stalled cohort)
 b3a3f30 stalled-cohort: results — conclusion A, recovery signal clear from tick 4000 (read-only)
-a79401e stalled-cohort: read-only analysis code for the precommitted §20 comparison
-d08ce41 stalled-cohort analysis PRECOMMITMENT (read-only, 0A.2.0 default, after tick 3000)
 bfa81a9 early-establishment: results — PARTIAL separation by tick 3000 (read-only)
-8ca5532 early-establishment: read-only analysis code for the precommitted §19 comparison
-e5f368c early-establishment analysis PRECOMMITMENT (read-only, 0A.2.0 default)
 8b7a6bd continuation-multifounder-default-v1: results — complete 15-seed 0A.2.0 profile
-58d3cd1 continuation-multifounder-default-v1: minimal harness support for the precommitted run
-a8faf6a continuation-multifounder-default-v1 PRECOMMITMENT: complete the 15-seed 0A.2.0 profile
 3ad28cb trajectory-outcome-v2: reclassification of persisted results (read-only)
-daab8b6 trajectory-outcome-v2: implement the §16 long-horizon outcome classifier
-7c60f3d outcome classifier v2 (trajectory-outcome-v2): design only
-d3edab2 diagnostic-food-limitation-v1: results — integrity PASS, outcome INCONCLUSIVE
-60bd999 diagnostic-food-limitation-v1: minimal harness support for the precommitted run
-6b14031 diagnostic-food-limitation-v1 PRECOMMITMENT: design only, nothing run
-ae145aa multifounder-default-baseline: results — outcome C, no meaningful improvement
-d9dfb92 multifounder-default-baseline: minimal CLI support for the precommitted run
-fb1c1b1 multifounder-default-baseline PRECOMMITMENT: protocol, readout, decision rule
 da79527 Phase 0A amendment: multi-founder initialization (0A.1.0 -> 0A.2.0)
-dd9ab38 calibration-v3: no candidate — Phase 0B calibration cycle declared unsuccessful
-fc05ad1 calibration-v3: implement the precommitted sweep
-42e63e7 calibration-v3 PRECOMMITMENT: axes, design, selection rule, terminal rule
-7521456 calibration-v2: no candidate — 49 extinct, 40 runaway, 1 viable in 90 replicates
-7fd7135 provenance: record worktree dirty state and a deterministic source identity
-700338c Phase 0B provenance repair: re-verify C, D, 2x2 and calibration-v1 on the current build
-1fa6de6 Diagnostic A2 (§16.9): results — energy model verified, Diagnostic A explained
-388646e Phase 0B checkpoint: experiment harness, functional neural probes, calibration decision
-a568d01 fix: mutation RNG isolation (§15.7) — disabled channels consume full draw schedule
 db294c2 Phase 0A: complete the headless deterministic simulation core
 ```
 
-Worktree after the Phase 0B checkpoint: clean apart from generated artifacts,
-which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
-`.DS_Store`, `*.log`).
+The full history is in `git log`. The worktree is clean apart from generated
+artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
+`results/`, `.DS_Store`, `*.log`).
 
 ---
 
@@ -114,20 +113,21 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 138 / 138 passed   (+7: reproducerLifecycle.test.ts)
+experiment-harness tests: 138 / 138 passed
 workspace total:          317 / 317 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
-  0A.2.0 amended multi-founder (default):  b95a0b4ef7dd8449  CONFIRMED
-  0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
+  0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
+  0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed after the reproducer-lifecycle diagnostic, via
-`npm run simulate`, via `singleFounderModelConfig()` on the built core, and as
-live tests in the suite: the amended hash via
-`npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
-built core, and both as live tests in the suite.
+Re-confirmed at the Phase 0B closure checkpoint (documentation only, no code
+change):
+
+- the amended hash via `npm run simulate`;
+- the historical hash via `singleFounderModelConfig()` on the built core;
+- both hashes as live tests in the suite.
 
 Commands:
 
@@ -525,8 +525,9 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2 |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
 
@@ -534,7 +535,7 @@ implemented as specified. **The model was not modified.**
 
 ## Known gaps and uncertainties
 
-1. **Ecology is not calibrated.** Every tested configuration, in both models, is bimodal between
+1. **Ecology is not calibrated — research calibration closed for v1 (§23).** Every tested configuration, in both models, is bimodal between
    early extinction and runaway growth. This is the open Phase 0B problem.
 2. **Original result folders predate cap enforcement.** In those, runaway
    counts are recovered post hoc from sampled timeseries and are therefore lower
@@ -676,7 +677,7 @@ with no simulation-core change. Run from that clean commit: `gitDirty false`,
 - **Causal limit:** no claim about food, neural quality, sensing or
   morphology.
 
-**Next scientific question (§22.10):** after a first reproduction, do
+**Next scientific question (§22.10) — NOT PURSUED: Phase 0B research closed for v1 (§23):** after a first reproduction, do
 extinct-world reproducers take longer to regain the reproduction threshold (75)
 from their post-reproduction energy — or fail to regain it at all — than
 reproducers in establishing worlds?
@@ -1212,18 +1213,89 @@ movement in the intended direction. `founderGroupCount` is not a calibration
 axis. Validation seeds are not used. Optional, observational, non-decisional:
 pairwise founder functional distance per world (§14.6).
 
+## Phase 0C — first slice: deterministic save / load / resume
+
+The authority is Spec v4: §14.34–§14.38, §18.24–§18.26, §18.60–§18.62,
+§19.4–§19.17 and §19.27–§19.28. The first slice proves one invariant before
+anything else is built:
+
+> **continuous run == save → load → resume run**, bit for bit (canonical
+> state hash), for the frozen `0A.2.0` model (§18.60 [LOCKED]).
+
+What already exists:
+
+- **`WorldState` is plain data.** It covers tick, version, world size, the
+  fertility lattice, organisms with genomes and runtime state, food, the ID
+  counters, and both BootstrapRNG and CanonicalRNG states (xoshiro128\*\*
+  words).
+- **`stepWorld(state, config)` is a pure function of that state and the
+  configuration.**
+- **`canonicalizeWorldState` already serializes every future-affecting field
+  in a fixed order**, and `canonicalStateHash` fingerprints it.
+
+The missing pieces are a versioned snapshot envelope, the inverse (restore),
+validation, file I/O, and the proof.
+
+Scope of slice 1:
+
+- **A new workspace package, `packages/persistence`.** It depends only on
+  `@alo/simulation-core`. simulation-core is not changed.
+- **Snapshot schema v1.** It contains:
+  - `snapshotSchemaVersion: 1`, `simulationVersion` and `tick`;
+  - the complete immutable `SimulationConfig`, including `rootSeed`, with its
+    hash (§19.14);
+  - the canonical world state from `canonicalizeWorldState`, which covers both
+    RNG states and the full fertility lattice;
+  - `stateHash` (the canonical hash);
+  - a checksum over the payload;
+  - non-canonical metadata (`createdAt`, `snapshotId`) kept outside the hashed
+    payload.
+- **Conventions to decide and document** (they close §19.6 and §19.11 [OPEN]
+  for this implementation):
+  - a snapshot at tick N is the world state after tick N completes, which is
+    `WorldState.tick`;
+  - the fertility lattice is stored in full.
+- **Functions:**
+  - `createSnapshot(world, config)`;
+  - `serializeSnapshot` / `parseSnapshot` (JSON);
+  - `restoreWorld(snapshot) → { world, config }`, which builds fresh objects;
+  - `validateSnapshot`: schema version, supported `simulationVersion`,
+    `validateConfig`, checksum, RNG state present and well-formed (§18.62),
+    and the restored state re-hashing to `stateHash`;
+  - file `saveSnapshot` / `loadSnapshot`, with an atomic write (temp file then
+    rename, §19.18).
+- **Tests — the proof:**
+  - **§18.60 continuation.** Run 20,000 ticks without interruption, against
+    10,000 ticks → save to file → load → resume to 20,000. The final hash and
+    the hash every 1,000 ticks after restore must match. Test at least the
+    golden seed and one other non-validation seed.
+  - **Golden resume.** Seed 20260910: save at 5000, resume to 10,000, and get
+    exactly `b95a0b4ef7dd8449`.
+  - **Separate process.** Restore in a separate Node process, so nothing
+    carries over in memory.
+  - **Edge ticks.** Save at tick 0 and at a tick with same-tick births and
+    deaths.
+  - **§19.28 corrupt-snapshot rejection.** A flipped byte, a missing or
+    malformed RNG state, a wrong schema version and a mismatched
+    `simulationVersion` must all be rejected.
+
+Out of scope for slice 1: snapshot rotation and fallback, the persistent server
+process and tick scheduler, PostgreSQL, events, the UI, and choosing a demo
+seed.
+
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing run — an extension of the observational
-lifecycle recorder that, for the same 7 seeds and the same eligible reproducers
-(§22.6), records each reproducer's energy after every reproduction and the
-first tick, if any, at which it next reaches the reproduction threshold (75).**
+**Implement Phase 0C slice 1 as specified above.**
 
-Its purpose is to answer pilot report §22.10. The design must keep the purity
-tests and the §22.5 validity checks, and must fix the decision rule before
-anything runs.
+1. Create `packages/persistence`, depending only on `@alo/simulation-core`,
+   with snapshot schema v1: create, serialize, parse, validate and restore, plus
+   an atomic file save/load.
+2. Add the §18.60 continuation test (20,000 continuous against
+   10,000 → save → load → resume, with the hash every 1,000 ticks equal).
+3. Add the golden resume test (seed 20260910: save at 5000 → resume →
+   `b95a0b4ef7dd8449`).
+4. Add the separate-process restore test and the §19.28 corrupt-snapshot
+   rejection tests.
 
-Constraints that still hold: no simulation-core, biological, neural,
-ecological or parameter change; `founderGroupCount` and `trajectory-outcome-v2`
-unchanged; no calibration sweep; do not touch
-`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
+No change to simulation-core or biology. No database, server or UI in this
+step.
