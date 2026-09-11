@@ -229,7 +229,7 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-**ACTIVE — slices 1–3 done.** `packages/observatory` (React + TypeScript +
+**ACTIVE — slices 1–4 done.** `packages/observatory` (React + TypeScript +
 Vite + PixiJS) consumes the read-only observer stream from
 `packages/world-runner`: `--observe <port>`, observer protocol v1, see
 README. It never sends commands that change the world (§14.50). Scope:
@@ -246,8 +246,11 @@ is evolution visibility: a living-lineage panel, a birth/death event feed
 and session-only population/generation trends, all derived in the browser
 from received frames. Slice 3 is inherited morphology: the inspector shows
 the five protocol morphology genes next to the parent's with exact deltas
-(from a bounded session cache), births carry a Δ count. Later slices:
-genealogy, neural fingerprints — see `PROJECT_STATUS.md`.
+(from a bounded session cache), births carry a Δ count. Slice 4 is a
+compact ancestry strip: the observed parent chain walked backwards through
+that cache, one Δ badge per hop, stopping honestly at the first unobserved
+ancestor. Next: final v1 polish and the Phase 0D freeze — see
+`PROJECT_STATUS.md`.
 
 Frontend rules that hold from now on:
 
@@ -291,6 +294,12 @@ Frontend rules that hold from now on:
   for life and change only at reproduction (§13). It is never called
   beneficial, harmful, fit or adapted. Neural genomes are not in the frame
   and are not shown.
+- **Ancestry is a view, not a store.** `world/ancestry.ts` walks parent
+  links only through the bounded session morphology cache and stops at
+  the first parent it does not hold (or at `DEFAULT_MAX_ANCESTRY_DEPTH`),
+  reporting the boundary. No ancestor id or morphology is ever inferred,
+  no descendants/siblings/tree exist, and there is no genealogy storage;
+  a full genealogy needs its own bounded design and is not v1.
 - **Organisms live in Pixi, not React.** React owns the shell (HUD,
   inspector, controls, connection); entities are Pixi display objects reused
   across frames. React state updates at most once per frame.
@@ -495,8 +504,9 @@ colour determinism and the camera; and (slice 2) lineage aggregation,
 birth/death derivation, frame-gap safety, bounded feed and trend,
 world-identity reset, reconnect preservation and the rendered evolution
 panel; and (slice 3) parent → child morphology deltas, the morphology cache
-bound and reset, birth Δ counts and the rendered inheritance section.
-`npm run build` type-checks and bundles it. The live check — a world runner with `--observe` plus the built
+bound and reset, birth Δ counts and the rendered inheritance section; and
+(slice 4) the ancestry walk and strip. `npm run build` type-checks and
+bundles it. The live check — a world runner with `--observe` plus the built
 Observatory in a browser — is manual (or scripted with a headless browser
 where one is available) and is recorded in `PROJECT_STATUS.md`.
 

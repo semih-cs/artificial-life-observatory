@@ -6,6 +6,7 @@ import { Hud } from '../src/ui/Hud.js';
 import { FrameStore } from '../src/world/frameStore.js';
 import { MorphologyCache } from '../src/world/morphologyCache.js';
 import { inheritanceView } from '../src/world/inheritance.js';
+import { ancestryChain } from '../src/world/ancestry.js';
 
 const inspector = (view: NonNullable<ReturnType<typeof resolveSelection>>) => (
   <Inspector
@@ -13,6 +14,7 @@ const inspector = (view: NonNullable<ReturnType<typeof resolveSelection>>) => (
     energyScale={100}
     lineageFocused={false}
     inheritance={inheritanceView(view.organism, new MorphologyCache(), () => false)}
+    ancestry={ancestryChain(view.organism, new MorphologyCache(), () => false)}
     isAlive={() => false}
     onSelectOrganism={() => {}}
     onToggleLineageFocus={() => {}}

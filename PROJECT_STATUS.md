@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-11 (Phase 0D slice 3)
+**Last updated:** 2026-09-11 (Phase 0D slice 4)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -18,7 +18,7 @@
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
-| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1–3 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. **Next:** a compact genealogy view |
+| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1–4 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. **Next:** final v1 polish, demo experience, integration check, Phase 0D freeze |
 
 **Frozen v1 biological model:**
 
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0D slice 3, inherited morphology in the Observatory:
+Phase 0D slice 4, the ancestry strip in the Observatory:
 
 ```text
-(HEAD)  Phase 0D slice 3: Observatory inherited morphology — parent → child gene deltas, birth Δ counts, morphology cache — see `git log -1`
+(HEAD)  Phase 0D slice 4: Observatory compact ancestry strip — observed parent chain, Δ per hop, honest boundaries — see `git log -1`
+47f7e87 Phase 0D slice 3: Observatory inherited morphology — parent → child gene deltas, birth Δ counts, morphology cache
 ddfcda3 Phase 0D slice 2: Observatory evolution visibility — lineage panel, birth/death feed, session-only trends
 e809686 Phase 0D slice 1: Observatory frontend — live world view over observer protocol v1
 96732ab Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing
@@ -127,25 +128,25 @@ persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuati
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
 world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
                                              golden observer / paced / paced+observer 3)
-observatory tests:         69 / 69  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
+observatory tests:         77 / 77  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
                                              frame store 4; interpolation 5; lineage colour 5; camera 5;
                                              slice 2: lineage aggregation 4; session history 10; evolution panel 6;
-                                             slice 3: inheritance, cache, birth feed, inspector section 10) — ≈ 1.3 s
-workspace total:          497 / 497 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
+                                             slice 3: inheritance, cache, birth feed, inspector section 10;
+                                             slice 4: ancestry walk + strip 8) — ≈ 1.4 s
+workspace total:          505 / 505 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
 workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner, then observatory:
                                 tsc --noEmit + vite build, ≈ 8 s total)
-live integration:          34 / 34 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 3 section)
+live integration:          42 / 42 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 4 section)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Observatory slice 3 checkpoint (the biology, persistence
-and runner packages are byte-for-byte unchanged by slices 2 and 3: `git
+Re-confirmed at the Observatory slice 4 checkpoint (the biology, persistence
+and runner packages are byte-for-byte unchanged by slices 2–4: `git
 diff --stat` touches only `packages/observatory/` and the three
-documentation files; no dependency was added), at the slice 2 and slice 1
-checkpoints, at the
+documentation files; no dependency was added), at the slice 3, 2 and 1 checkpoints, at the
 observer-bridge checkpoint, and at every Phase 0C checkpoint before it:
 
 - the amended hash via `npm run simulate`;
@@ -2105,21 +2106,108 @@ wrapped at 340 px, so the table now uses 11.5 px, a 40 px bar and the
 **Not in this slice** (later Observatory slices): a genealogy view, neural
 fingerprints / neural mutation visibility (needs an on-demand message and a
 protocol bump), organism search, a world-side mutated-birth cue, mobile
-polish, persistent history.
+polish, persistent history. (The compact ancestry view is now slice 4.)
+
+## Phase 0D slice 4 — RESULT: DONE (compact ancestry strip)
+
+No change to simulation-core, experiment-harness, persistence or
+world-runner. No change to biology, `simulationVersion`, the snapshot
+format, the store, or observer protocol v1. No new storage (the strip is a
+view over the slice 3 cache), no database, server, REST API,
+authentication, mutation command or dependency. Read-only (0 WebSocket
+data frames sent in the live check).
+
+**Code** (`packages/observatory/src`):
+
+- `world/ancestry.ts` — `ancestryChain(organism, cache, parentAlive,
+  maxDepth = DEFAULT_MAX_ANCESTRY_DEPTH (10))`: walks `parentId` links
+  through the session `MorphologyCache` only; returns `nodes` (oldest shown
+  ancestor first, the selected organism last; each with id, parent,
+  generation, lineage, state `selected | alive | observed`, last-seen tick
+  for dead ancestors, and `changesFromParent` from slice 3's
+  `compareMorphology` — null where the parent is not held), a `boundary`
+  (`founder` / `unobserved {parentId}` / `truncated {parentId}`) and
+  `observedHops`. Terminates at a founder (`parentId === null`), at the
+  first parent the cache does not hold (dead before the session, or
+  evicted), or after `maxDepth` ancestors keeping the closest ones. No id
+  or morphology is ever inferred. Cost: ≤ 11 O(1) lookups and ≤ 10
+  five-gene comparisons per frame for the selected organism.
+- `ui/Ancestry.tsx` — the *Ancestry* section after *Inherited
+  morphology*: a context line (*Lineage #r · generation g · observed
+  ancestry: n hops · complete to founder* — the last part only when true),
+  then a vertical strip. Boundary rows at the top: *Earlier ancestor #id not
+  observed this session* or *Earlier ancestry not shown (n closest hops
+  kept)*. Nodes: lineage-coloured dot (square for founders; dim for the
+  dead; outlined for the selected), `Founder #id` / `#id` (a link when
+  alive → selects it), `gen n`, and a tag: *alive* (green), *observed ·
+  last seen t N* (dim), *selected* (accent, row highlighted). Each hop is a
+  short connector with a **Δn** badge (accent when n ≥ 1; dashed **Δ?**
+  when that parent's morphology is unknown). Dead ancestors are never
+  clickable and never shown as alive; their cached morphology is not
+  opened (no historical inspector in v1). Subtle 360 ms fade-in on
+  mount; no graph library, no canvas.
+- `ui/Inspector.tsx` / `App.tsx` — take and build the chain once per
+  frame next to the inheritance view, from the same cache and `isAlive`.
+
+**Proof** (8 new tests; 77 in observatory):
+
+| Requirement | Test | Result |
+|---|---|---|
+| complete chain | `ancestry.test.tsx` | founder → #2 → #3 → #4: nodes in order with generations, states `observed/observed/alive/selected`, hop Δ `null/1/0/3` equal to `compareMorphology`, founder `parentId` null, last-seen tick of a dead ancestor |
+| missing ancestor | `ancestry.test.tsx` | #2 and the founder never cached → boundary `unobserved #2`, nodes `[3, 4]`, no Δ for #3, nothing invented |
+| founder | `ancestry.test.tsx` | one node, boundary `founder`, 0 hops |
+| depth bound | `ancestry.test.tsx` | a 30-deep chain → 11 nodes, boundary `truncated`, the 10 closest kept; `maxDepth 3` → `[27, 28, 29, 30]` |
+| cache eviction | `ancestry.test.tsx` | bound 3 evicts the founder → boundary `unobserved #1`, chain `[2, 3, 4]`, no crash |
+| reconnect / world change | `ancestry.test.tsx` | through `SessionHistory`: a missed-frame gap keeps the chain complete to the founder (dead ancestors `observed`, living `alive`); a different `rootSeed` clears it → boundary `unobserved`, one node |
+| rendered strip | `ancestry.test.tsx` | `Founder #1`, *complete to founder*, *3 hops*, three Δ badges (`Δ1`, `Δ0`, `Δ3`), alive link, observed node with last-seen tick, selected node, no boundary row; unobserved boundary text and dashed `Δ?`; truncated boundary text; no qualitative labels |
+| alive ancestor click / read-only | `ancestry.test.tsx` (link rendered), live check (click selects), `connection.test.ts` (no `send`) | |
+
+**Live integration** (42 / 42 checks; runner `--observe 8787` on the
+golden seed created to tick 2,500 at 10 ticks/s; a second world, seed
+424242 created to tick 3,200, whose founders died before the session):
+
+1. selecting the deepest-generation birth in the feed (#105, gen 4) shows
+   a 5-node chain, *observed ancestry: 4 hops · complete to founder*,
+   founder at the top, selected node last and highlighted;
+2. hop badges `Δ0 Δ0 Δ1 Δ0`; the last badge equals the inspector's
+   comparison count;
+3. alive ancestors are links — clicking one selects it (inspector →
+   *Organism #53*);
+4. after the founders reach `maxAge` 3,000, a chain climbed from a birth
+   ends at *Parent #15 observed · last seen at tick 2,999* and the strip
+   shows that founder as an observed-dead node (dim, no link);
+5. in the second world the chain of a gen-2 organism stops at *Earlier
+   ancestor #11 not observed this session* — the founder died before the
+   tab opened, nothing was invented;
+6. slice 1–3 features intact (lineage focus, sparklines, feed Δ badges,
+   inheritance table, zoom/fit/pause, reconnect gap marker, identity
+   reset); 0 WebSocket frames sent; no console errors.
+
+Screenshots inspected: the strip fits the 340 px panel, reads top-down,
+and the world stays the hero. No layout fix was needed.
+
+**Performance:** per frame for the selected organism only: ≤ 11 cache
+lookups and ≤ 10 comparisons; nothing per organism, no new allocation
+outside the selected view. Memory unchanged (the cache bound is 4,000).
+
+**Not in v1** (deliberately): descendants, siblings, whole-lineage trees,
+a historical inspector for dead ancestors, persistent genealogy, neural
+fingerprints, mobile polish, database/cloud, deeper analytics.
 
 ## NEXT EXACT STEP
 
-**Phase 0D slice 4 — a compact ancestry strip in the inspector.** From
-the session morphology cache (which already holds id, parent, generation
-and genes per observed organism), walk the selected organism's parent
-chain as far as the cache knows it and show it as a small vertical strip:
-`founder #r · gen 0 → #a · gen 1 → … → #selected`, each hop with its
-morphology-change count (from `compareMorphology`), alive / observed /
-unavailable state, and clickable when alive. Stop at the first ancestor
-not in the cache and say so ("earlier ancestors not observed this
-session"). Bounded by the cache and the generation depth; no new storage,
-no backend change, no protocol bump, no full tree. Tests: chain walking
-with a gap in the cache, hop deltas, founder termination, the rendered
-strip with no qualitative labels.
+**Phase 0D final — v1 polish and freeze.** No new subsystem. In one
+task: (1) small UX fixes found while using the Observatory (inspector
+wrapping at narrow widths, feed/lineage list scroll behaviour, keyboard
+shortcuts listed in one place); (2) an organism quick-jump — type an id to
+select it if it is in the newest frame (no search index, no history);
+(3) the demo-world startup experience — one documented command pair (a
+labelled DEMO seed chosen for a long-lived world, never research
+evidence), a clearer first-run card when no runner is reachable, and
+`npm run observatory` pointing at it; (4) a final live integration pass
+over slices 1–4 recorded here; (5) README/PROJECT_STATUS/AGENTS updated
+to state that Phase 0D is **frozen for v1** and that neural fingerprints,
+full genealogy, mobile polish, database/cloud and deeper analytics are
+v2. Then commit the v1 checkpoint.
 
 Backend work stays limited to what the frontend demonstrably needs.

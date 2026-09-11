@@ -4,6 +4,7 @@ import { MorphologyCache, morphologyOf } from '../src/world/morphologyCache.js';
 import { compareMorphology, formatDelta, inheritanceSummary, inheritanceView, morphologyChangesFromCache, MORPHOLOGY_GENES } from '../src/world/inheritance.js';
 import { SessionHistory, type BirthEvent } from '../src/world/sessionHistory.js';
 import { resolveSelection } from '../src/world/selection.js';
+import { ancestryChain } from '../src/world/ancestry.js';
 import { Inspector } from '../src/ui/Inspector.js';
 import { EventFeed } from '../src/ui/EventFeed.js';
 import { EvolutionPanel } from '../src/ui/EvolutionPanel.js';
@@ -130,7 +131,7 @@ describe('inspector inheritance section', () => {
   const render = (o: typeof childChanged, cache: MorphologyCache, alive: (id: number) => boolean) => {
     const view = resolveSelection(null, o.id, frame({ tick: 900, organisms: [o] }))!;
     return renderToStaticMarkup(
-      <Inspector selection={view} energyScale={100} lineageFocused={false} inheritance={inheritanceView(o, cache, alive)} isAlive={alive} onSelectOrganism={() => {}} onToggleLineageFocus={() => {}} onDeselect={() => {}} />,
+      <Inspector selection={view} energyScale={100} lineageFocused={false} inheritance={inheritanceView(o, cache, alive)} ancestry={ancestryChain(o, cache, alive)} isAlive={alive} onSelectOrganism={() => {}} onToggleLineageFocus={() => {}} onDeselect={() => {}} />,
     );
   };
 

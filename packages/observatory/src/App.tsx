@@ -5,6 +5,7 @@ import { SessionHistory } from './world/sessionHistory.js';
 import { resolveSelection, type SelectionView } from './world/selection.js';
 import { toggleLineageFocus } from './world/lineages.js';
 import { inheritanceView } from './world/inheritance.js';
+import { ancestryChain } from './world/ancestry.js';
 import { observerWsUrl } from './config.js';
 import type { CameraState } from './render/camera.js';
 import { WorldView, type WorldViewHandle } from './ui/WorldView.js';
@@ -118,6 +119,11 @@ export function App() {
     // `historySnapshot` is the per-frame trigger.
     [selection, historySnapshot, history, isAlive],
   );
+  const ancestry = useMemo(
+    () => (selection !== null ? ancestryChain(selection.organism, history.morphology(), isAlive) : null),
+    // `historySnapshot` is the per-frame trigger.
+    [selection, historySnapshot, history, isAlive],
+  );
   const onToggleFocus = useCallback((lineageRootId: number) => setFocusLineage((f) => toggleLineageFocus(f, lineageRootId)), []);
   const onSelectFromFeed = useCallback((id: number) => {
     // Only an organism still present in the newest frame can be selected from the feed.
@@ -151,12 +157,13 @@ export function App() {
         <ConnectionOverlay status={status} onRetry={() => connectionRef.current?.retryNow()} />
       </main>
       <SidePanel tab={tab} hasSelection={hasSelection} onTab={setTab}>
-        {tab === 'organism' && selection !== null && inheritance !== null ? (
+        {tab === 'organism' && selection !== null && inheritance !== null && ancestry !== null ? (
           <Inspector
             selection={selection}
             energyScale={energyScale}
             lineageFocused={focusLineage === selection.organism.lineageRootId}
             inheritance={inheritance}
+            ancestry={ancestry}
             isAlive={isAlive}
             onSelectOrganism={onSelectFromFeed}
             onToggleLineageFocus={() => onToggleFocus(selection.organism.lineageRootId)}

@@ -2,6 +2,8 @@ import { inspectorGroups, type SelectionView } from '../world/selection.js';
 import { lineageColor } from '../world/lineageColor.js';
 import type { InheritanceView } from '../world/inheritance.js';
 import { Inheritance } from './Inheritance.js';
+import type { AncestryChain } from '../world/ancestry.js';
+import { Ancestry } from './Ancestry.js';
 import { formatInt } from './format.js';
 
 export interface InspectorProps {
@@ -10,6 +12,8 @@ export interface InspectorProps {
   lineageFocused: boolean;
   /** Parent → child morphology view (session cache); see `world/inheritance.ts`. */
   inheritance: InheritanceView;
+  /** Observed parent chain from the session cache; see `world/ancestry.ts`. */
+  ancestry: AncestryChain;
   /** Whether an organism id is in the newest frame (used to make the parent selectable). */
   isAlive: (id: number) => boolean;
   onSelectOrganism: (id: number) => void;
@@ -17,7 +21,7 @@ export interface InspectorProps {
   onDeselect: () => void;
 }
 
-export function Inspector({ selection, energyScale, lineageFocused, inheritance, isAlive, onSelectOrganism, onToggleLineageFocus, onDeselect }: InspectorProps) {
+export function Inspector({ selection, energyScale, lineageFocused, inheritance, ancestry, isAlive, onSelectOrganism, onToggleLineageFocus, onDeselect }: InspectorProps) {
   const o = selection.organism;
   const color = lineageColor(o.lineageRootId);
   const groups = inspectorGroups(selection, energyScale);
@@ -58,6 +62,7 @@ export function Inspector({ selection, energyScale, lineageFocused, inheritance,
         </section>
       ))}
       <Inheritance selection={selection} view={inheritance} color={color} onSelectOrganism={onSelectOrganism} />
+      <Ancestry chain={ancestry} onSelectOrganism={onSelectOrganism} />
       <footer className="inspector-foot">
         <button type="button" className={`btn${lineageFocused ? ' btn-active' : ''}`} onClick={onToggleLineageFocus}>
           {lineageFocused ? 'Unfocus lineage' : 'Focus lineage'}
