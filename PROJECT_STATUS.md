@@ -607,6 +607,29 @@ modifying the model.
 
 ---
 
+## Early establishment analysis (`0A.2.0` default) — PRECOMMITMENT (read-only, not yet computed)
+
+Full text: pilot report §19. Committed before any group comparison was computed.
+No simulation.
+
+- Source: `results/multifounder-default-baseline/timeseries-multifounder-default.csv`,
+  which covers all 15 seeds over ticks 0–3000 (16 samples each).
+- Groups: E = the 5 EXTINCTION seeds; S = the 10 established seeds
+  (BOUNDED_VIABLE, HIGH_BOUNDED and RUNAWAY together).
+- Fields per seed:
+  - population, cumulative births and mean energy at ticks 1000, 2000 and 3000
+    (energy is n/a when population is 0);
+  - minimum and maximum sampled population over ticks 0–3000;
+  - first sampled tick with population ≥ 50;
+  - first sampled tick with a birth.
+- Food intake is excluded: it was never recorded for the extinct worlds.
+- Separation is judged on the tick-3000 population, births and energy only,
+  using the best single cut per field:
+  - CLEAR (A): some field has no range overlap;
+  - PARTIAL (B): the best cut misclassifies ≤ 3 of 15;
+  - NONE (C): every field misclassifies ≥ 4.
+- Any threshold found is observational only. No causal food claim may be made.
+
 ## `continuation-multifounder-default-v1` — RESULT: complete 15-seed profile
 
 Implemented in `58d3cd1` and run from that clean commit. All six replicates
@@ -907,15 +930,8 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing run — a read-only analysis of the persisted
-`0A.2.0` default trajectories that answers pilot report §18.8.** It would
-compare the first founder lifespan (ticks 0–3000) of the 5 extinct and the 10
-established worlds: population, births and mean energy, from the existing
-200-tick timeseries. Per-tick food intake is recorded only for the 9
-continuation seeds, not for the 5 extinct baseline runs, and the design must
-say how it handles that gap.
+**Compute the precommitted early-establishment analysis (pilot report §19)
+read-only from the persisted baseline timeseries, apply the §19.5 separation
+rule unchanged, and record the result.**
 
-No simulation, no model or parameter change, no founder ranking or selection.
-Constraints that still hold: v2 thresholds, 200 cap code, food parameters and
-`founderGroupCount` unchanged; no calibration sweep; do not touch
-`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
+No simulation, no model or parameter change, no founder ranking.

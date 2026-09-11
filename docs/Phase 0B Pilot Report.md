@@ -10,8 +10,9 @@ validation seeds are untouched.**
 > diagnostic (precommitted design and result: INCONCLUSIVE). §16 is the design
 > of the trajectory-based outcome classifier v2; §17 its implementation and the
 > read-only reclassification of persisted runs; §18 the continuation that
-> completes the 15-seed `0A.2.0` default profile under v2. Every classification
-> in §§2–15 is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
+> completes the 15-seed `0A.2.0` default profile under v2; §19 a read-only
+> analysis of those worlds' early establishment. Every classification in §§2–15
+> is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -2264,3 +2265,97 @@ ecological dynamics?**
 
 This is a question only. Nothing is implemented, no model or parameter
 changes, and no sweep is proposed.
+
+---
+
+## 19. Early establishment of the `0A.2.0` default worlds (READ-ONLY; PRECOMMITMENT)
+
+**Written and committed before any group comparison was computed. §19.6 is
+empty at this point.** Nothing is simulated. The analysis reads persisted files
+only, and nothing in the model, the ecology or `trajectory-outcome-v2` changes.
+
+### 19.1 Question
+
+By tick 3000 — the end of the first founder lifespan (`maxAge` = 3000) — are
+the worlds that later go extinct already clearly separated from those that
+establish?
+
+### 19.2 Data and coverage
+
+Source: `results/multifounder-default-baseline/timeseries-multifounder-default.csv`
+(commit `d9dfb92`). This one file holds the standard 200-tick samples for
+**all 15 seeds from tick 0 through 3000** — 16 samples each, including ticks
+1000, 2000 and 3000. Every baseline run that the v1 cap stopped was stopped
+after tick 3000; the earliest stop was 3037. The continuation runs are
+bit-identical to the baseline over this range (§15.10, §18.6), so no other
+source is needed.
+
+Available for all 15 seeds, and used:
+
+- `population`
+- `birthsCumulative`
+- `meanEnergy`
+
+Not available for all 15 seeds, and **not used**: per-tick food consumption.
+It was recorded only for the 9 continued seeds, never for the 5 extinct ones.
+Nothing is reconstructed and nothing is rerun.
+
+One property of the tick-3000 sample matters for reading it. Every founder is
+born at tick 0 and dies of age at tick 3000, so population at 3000 counts **only
+the founders' descendants**.
+
+### 19.3 Groups
+
+- **Group E** (n = 5): final `trajectory-outcome-v2` class `EXTINCTION` —
+  100000, 131676, 147514, 187109, 195028.
+- **Group S** (n = 10): established, i.e. `BOUNDED_VIABLE`, `HIGH_BOUNDED` or
+  `RUNAWAY` — 107919, 115838, 123757, 139595, 155433, 163352, 171271, 179190,
+  202947, 210866.
+
+`RUNAWAY` belongs to S here because the question is whether the founding cohort
+established, not whether later growth was bounded. This grouping has nothing to
+do with the baseline gate.
+
+### 19.4 Fields, per seed (fixed)
+
+1. population at ticks 1000, 2000 and 3000;
+2. cumulative births at ticks 1000, 2000 and 3000;
+3. mean organism energy at ticks 1000, 2000 and 3000. A sample with population
+   0 has no organisms, so its energy is recorded as n/a and excluded from group
+   energy statistics; the exclusion is reported;
+4. minimum and maximum sampled population over ticks 0–3000;
+5. the first sampled tick at which population ≥ 50 (twice the founding
+   population), or "not by 3000";
+6. the first sampled tick at which cumulative births > 0 — first reproduction
+   at 200-tick resolution — or "none by 3000".
+
+Group summaries at ticks 1000, 2000 and 3000: median and range of fields 1–3.
+Descriptive statistics only. With n = 5 against n = 10, no significance test is
+run and none is implied. No composite score is formed.
+
+### 19.5 Separation rule (fixed before computing)
+
+The rule is judged on the three tick-3000 fields only: population, cumulative
+births and mean energy. All the other fields are descriptive. For each of the
+three, the **best single cut** is the threshold, in either direction, that
+misclassifies the fewest of the 15 seeds.
+
+- **CLEAR** (conclusion A) — at least one tick-3000 field has group ranges that
+  do not overlap (zero misclassified).
+- **PARTIAL** (conclusion B) — no field separates, but at least one field's
+  best cut misclassifies at most 3 of the 15 seeds.
+- **NONE** (conclusion C) — every tick-3000 field's best cut misclassifies 4 or
+  more seeds.
+
+Any separating threshold found is **observational only**. It is not a
+biological rule, not a fitness score and not a selection criterion. Founders
+are never ranked.
+
+Causal limit, fixed in advance: food intake was not recorded for the extinct
+worlds. The conclusion may speak of low reproduction, low population growth,
+falling energy or failure to establish. It may **not** say the worlds failed
+because they could not find food.
+
+### 19.6 Results
+
+*(empty at precommitment)*
