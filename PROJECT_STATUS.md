@@ -25,8 +25,9 @@ IMPROVEMENT.** 1 of 15 viable (6.7%), identical to the single-founder default;
 extinction 9 → 5, runaway 5 → 9. The single-founder bottleneck is not sufficient
 to explain the calibration failure. Nothing frozen; no calibration cycle for
 `0A.2.0` has begun.
-**Food-limitation diagnostic (`diagnostic-food-limitation-v1`): DESIGNED AND
-PRECOMMITTED, NOT IMPLEMENTED, NOT RUN.** Pilot report §15.
+**Food-limitation diagnostic (`diagnostic-food-limitation-v1`): RUN — integrity
+gate PASS, outcome INCONCLUSIVE** (decision seeds C, A, B; no 2-of-3 majority).
+Pilot report §15. Cap, ecology and model unchanged.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -38,11 +39,13 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the food-limitation diagnostic precommitment (design only).
-`git log -1` is authoritative; recent history:
+Most recent work is the food-limitation diagnostic result. `git log -1` is
+authoritative; recent history:
 
 ```text
-(HEAD)  diagnostic-food-limitation-v1 PRECOMMITMENT — see `git log -1`
+(HEAD)  diagnostic-food-limitation-v1: results — INCONCLUSIVE — see `git log -1`
+60bd999 diagnostic-food-limitation-v1: minimal harness support for the precommitted run
+6b14031 diagnostic-food-limitation-v1 PRECOMMITMENT: design only, nothing run
 ae145aa multifounder-default-baseline: results — outcome C, no meaningful improvement
 d9dfb92 multifounder-default-baseline: minimal CLI support for the precommitted run
 fb1c1b1 multifounder-default-baseline PRECOMMITMENT: protocol, readout, decision rule
@@ -69,8 +72,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests:  83 / 83  passed   (+5: multifounderBaseline.test.ts)
-workspace total:          262 / 262 passed
+experiment-harness tests:  97 / 97  passed   (+14: foodLimitation.test.ts)
+workspace total:          276 / 276 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -78,7 +81,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed after the baseline run: the amended hash via
+Both hashes re-confirmed after the food-limitation run: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
 
@@ -478,7 +481,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic design (precommitted, not run) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -533,8 +536,8 @@ implemented as specified. **The model was not modified.**
 11. **The relation between the runaway cap and the ecology is unmeasured.**
    Standing food was near capacity whenever a population hit the 200 cap, in
    both models. Whether the default ecology becomes food-limited below or above
-   200 is not known (pilot report §14.10). A diagnostic to answer it is
-   precommitted in pilot report §15 and has not been run.
+   200 is not known (pilot report §14.10). The precommitted diagnostic (§15)
+   was run and is INCONCLUSIVE under its own rule; the question remains open.
 
 ## Scientific caution
 
@@ -583,7 +586,36 @@ modifying the model.
 
 ---
 
-## `diagnostic-food-limitation-v1` — PRECOMMITMENT (design only, not run)
+## `diagnostic-food-limitation-v1` — RESULT: INCONCLUSIVE
+
+Implemented in `60bd999` (harness only: diagnostic safety ceiling with its own
+`SAFETY_CEILING` termination reason, read-only per-tick observer, food-flux
+recorder, §15 analysis, CLI `food-limitation`; no simulation-core change) and
+run from that clean commit. Every replicate and the manifest record
+`gitCommit 60bd999…`, `gitDirty false`, `sourceIdentity dcf95f68552c5122`,
+`simulationVersion 0A.2.0`. Results: `results/diagnostic-food-limitation-v1/`.
+
+Integrity gate: **PASS on all four seeds** — the canonical hash at each
+baseline stopping tick (3037, 3094, 9793) equals the baseline `finalStateHash`,
+and 210866 reproduces its full baseline result.
+
+| Seed | Role | Peak pop | Scarcity onset (tick / pop) | First tick ≥ 250 | End | Class |
+|---:|---|---:|---|---:|---|---|
+| 139595 | decision | 215 | 19746 / 190 | never | horizon, 189 | C |
+| 123757 | decision | 351 | 19749 / 316 | 3320 | horizon, 310 | A |
+| 107919 | decision | 478 | none | 10644 | horizon, 473 | B |
+| 210866 | reference | 196 | none | never | horizon, 170 | — |
+
+**Outcome: INCONCLUSIVE** — three different classes, no 2-of-3 majority. Per
+§15.9 no conclusion is drawn and no follow-up diagnostic is added on its basis.
+No run reached the safety ceiling. Descriptive record in pilot report §15.10.
+The two scarcity onsets are marginal: lowest trailing means 29.61 and 29.68
+against the ≤ 30 threshold, both within the last 260 ticks. In those two worlds
+consumption matched the expected uncapped supply (utilisation 1.00, 1.01) for
+~16,000 ticks while the stock averaged 43 and 38. 107919's stock stayed near
+capacity up to population 478.
+
+### Precommitted design (historical record — EXECUTED)
 
 Full design: `docs/Phase 0B Pilot Report.md` §15. Committed before any code for
 it exists and before anything runs. Observational; not calibration; produces no
@@ -689,17 +721,13 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Implement and run `diagnostic-food-limitation-v1` exactly as precommitted in
-pilot report §15 — seeds, horizon, safety ceiling, milestones, scarcity
-criterion, window, integrity gate and interpretation rule unchanged.**
+**Project-owner decision, recorded in `PROJECT_STATUS.md` before anything else
+runs: given that `diagnostic-food-limitation-v1` is INCONCLUSIVE under its own
+precommitted rule (pilot report §15.9–§15.10), decide what Phase 0B does next.**
 
-Implementation stays in `experiment-harness` and is observational: a runner
-option for the safety ceiling with its own `SAFETY_CEILING` termination reason,
-a per-tick food-flux recorder, the milestone/scarcity analysis, a CLI command,
-and tests (including that flux recording leaves the canonical hash unchanged).
-Commit the implementation, then run from the clean commit.
-
-Constraints that still hold: no simulation-core change; do not change the 200
-cap value, `classifyRunOutcome`, food parameters or `founderGroupCount`; no
+This is a written decision, not a run. Per §15.9, no follow-up diagnostic may be
+added on the basis of the inconclusive result without that decision.
+Constraints that still hold: no change to the 200 cap, the ~70% gate,
+`classifyRunOutcome`, food parameters, `founderGroupCount` or the model; no
 calibration sweep; do not touch `packages/experiment-harness/seeds/validation.json`;
 do not begin Phase 0C.

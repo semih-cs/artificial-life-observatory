@@ -6,8 +6,8 @@ validation seeds are untouched.**
 > **Model scope.** Sections 1–11 describe the historical **single-founder**
 > model (`simulationVersion 0A.1.0`). §12 records the adopted amendment to
 > multi-founder initialization (`0A.2.0`). §14 is the first `0A.2.0` result:
-> the multi-founder default baseline. §15 is the precommitted design of the
-> `0A.2.0` food-limitation diagnostic. Results from the two models are separate
+> the multi-founder default baseline. §15 is the `0A.2.0` food-limitation
+> diagnostic (precommitted design and result: INCONCLUSIVE). Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -1155,6 +1155,7 @@ condition, it does not make an organism better at anything.
 | Multi-founder initialization (`0A.2.0`) produces a viable default regime | **No** | §14: 1 of 15 viable (6.7%), unchanged from `0A.1.0`; extinction 9 → 5, runaway 5 → 9 |
 | The single-founder bottleneck explains the calibration failure | **No** | §14.9: removing it moved worlds between the two degeneracies, not into viability |
 | Multi-founder worlds start with functionally distinct founders | Yes, observational | §14.8: per-world mean pairwise founder distance 0.304–0.401, min pair 0.224 |
+| The 200 runaway cap masks food limitation in the default `0A.2.0` ecology | **Undetermined** | §15.10: decision seeds classified C, A, B — INCONCLUSIVE under the precommitted 2-of-3 rule |
 
 ---
 
@@ -1591,4 +1592,86 @@ reported from them. Nothing here is evidence about adaptation or intelligence.
 
 ### 15.10 Results
 
-*(empty at precommitment)*
+Implementation: commit `60bd999` (harness only; no simulation-core change; every
+precommitted value transcribed unchanged and pinned by test). Run from that
+clean commit: every replicate and the manifest record `gitCommit 60bd999…`,
+`gitDirty false`, `sourceIdentity dcf95f68552c5122`, `simulationVersion 0A.2.0`.
+4 replicates, 20,000 ticks, runaway cap not an early stop, safety ceiling 1000.
+Output: `results/diagnostic-food-limitation-v1/` — `replicates.json`, the
+200-tick standard timeseries, `flux-<seed>.csv` (one row per tick, accounting
+identity asserted every tick) and `food-limitation-analysis.json`. No condition
+summary was written, so no viable-completion figure exists for these runs.
+
+Erratum, no substantive effect: §15.3 cites "§15.8" for the trajectory check;
+the check is the integrity gate in §15.9.
+
+#### Integrity gate — PASS on all four seeds
+
+| Seed | Check tick | Expected hash | Observed hash | Also identical at that tick | Result |
+|---:|---:|---|---|---|---|
+| 139595 | 3037 | `7bc732eb4dfa8c7b` | `7bc732eb4dfa8c7b` | population, cumulative births/deaths, food | PASS |
+| 123757 | 3094 | `4c4456bc83b5e842` | `4c4456bc83b5e842` | population, cumulative births/deaths, food | PASS |
+| 107919 | 9793 | `da0a52515e7c9bc6` | `da0a52515e7c9bc6` | population, cumulative births/deaths, food | PASS |
+| 210866 | 20000 | `16b073462ec8b5c4` | `16b073462ec8b5c4` | the full baseline result: termination, end tick, population, births, deaths, food, peak, outcome, generation depth, lineages | PASS |
+
+The diagnostic is valid; each run is the baseline trajectory continued past
+the point where the cap stopped it.
+
+#### Per seed
+
+| Seed | Role | End | Peak pop | Scarcity onset tick | Pop at onset | First tick ≥ 250 | Class |
+|---:|---|---|---:|---:|---:|---:|---|
+| 139595 | decision | horizon, pop 189 | 215 | 19746 | 190 | never | **C** (onset, never reached 250) |
+| 123757 | decision | horizon, pop 310 | 351 | 19749 | 316 | 3320 | **A** (onset after 250) |
+| 107919 | decision | horizon, pop 473 | 478 | none | — | 10644 | **B** (no onset) |
+| 210866 | reference | horizon, pop 170 | 196 | none | — | never | (not classified) |
+
+No run reached the safety ceiling. All four ran the full 20,000 ticks. Under
+the unchanged `classifyRunOutcome` the three decision runs are labelled
+`RUNAWAY_POPULATION` (peak ≥ 200) and 210866 `VIABLE_COMPLETION`, as in the
+baseline; these labels are not a readout of this diagnostic.
+
+Milestones reached (tick → population, trailing-200 mean food stock):
+139595 — 200 at 3037 (53.1); no higher milestone. 123757 — 200 at 3094 (57.4),
+250 at 3320 (56.4), 300 at 3719 (41.8); no higher. 107919 — 200 at 9793
+(59.6), 250 at 10644 (59.4), 300 at 12000 (58.8), 400 at 18624 (58.3); no
+higher. No milestone was scarce by the §15.8 criterion. Full records are in
+`food-limitation-analysis.json`.
+
+#### Determination: INCONCLUSIVE
+
+The three decision seeds fall in three different classes — C, A, B. Per §15.9
+no class reaches 2 of 3, so the outcome is **INCONCLUSIVE**. No conclusion is
+drawn about whether the 200 cap masks food limitation, and no follow-up
+diagnostic is added on the basis of this result. The cap, the ecology and the
+model are unchanged.
+
+#### Descriptive record (not a reclassification)
+
+Recorded so the result is not misread. Nothing below alters the determination
+above.
+
+| Seed | Window | Population | Mean food stock | Trailing-200 range | Consumed per tick | Expected uncapped supply `2 x F̄` | Utilisation |
+|---:|---|---|---:|---|---:|---:|---:|
+| 139595 | ticks 4001–20000 | 165–214 (mean 190) | 42.7 | 29.6–56.1 | 0.986 | 0.990 | 1.00 |
+| 123757 | ticks 4001–20000 | 287–351 (mean 320) | 37.6 | 29.7–50.0 | 1.005 | 1.000 | 1.01 |
+| 107919 | ticks 10001–20000 | 214–478 (mean 341) | 59.1 | 56.9–59.8 | 0.567 | 0.947 | 0.60 |
+| 210866 | ticks 10001–20000 | 117–196 (mean 160) | 59.8 | 59.4–60.0 | 0.297 | 1.096 | 0.27 |
+
+- Once the cap no longer stopped them, none of the three decision worlds came
+  near the 1000 safety ceiling within 20,000 ticks. 139595 and 123757 held roughly level
+  populations for about 16,000 ticks: near 190 and near 320. 107919 was still
+  rising at the horizon (473, peak 478).
+- In 139595 and 123757 food was eaten at the rate the fertility field supplies
+  it (utilisation 1.00 and 1.01) for about 16,000 ticks. Over that time the
+  standing stock averaged 43 and 38. The trailing-200 mean first met the ≤ 30
+  criterion only in the last 260 ticks of each run, and its lowest values in
+  the whole run were 29.61 and 29.68. The onsets are therefore marginal.
+  Food not eaten despite full supply use was still standing in the world.
+- In 107919 the stock stayed near capacity (56.9–59.8) up to a population of 478.
+  Consumption was 0.60 of the expected supply.
+- The reference world 210866 held 117–196 organisms with a full food stock.
+  Consumption was 0.27 of supply.
+
+These are pilot-level descriptions of four worlds. They are not evidence of
+adaptation, intelligence, or any evolutionary advantage.
