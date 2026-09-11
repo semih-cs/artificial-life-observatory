@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ObserverConnection, type ConnectionStatus } from './connection/observerConnection.js';
 import { FrameStore } from './world/frameStore.js';
+import { SessionHistory } from './world/sessionHistory.js';
 import { resolveSelection, type SelectionView } from './world/selection.js';
+import { toggleLineageFocus } from './world/lineages.js';
 import { observerWsUrl } from './config.js';
 import type { CameraState } from './render/camera.js';
 import { WorldView, type WorldViewHandle } from './ui/WorldView.js';
@@ -9,6 +11,8 @@ import { Hud } from './ui/Hud.js';
 import { Inspector } from './ui/Inspector.js';
 import { Controls } from './ui/Controls.js';
 import { ConnectionOverlay } from './ui/ConnectionOverlay.js';
+import { SidePanel, type SideTab } from './ui/SidePanel.js';
+import { EvolutionPanel } from './ui/EvolutionPanel.js';
 
 const initialStatus = (url: string): ConnectionStatus => ({
   state: 'connecting', url, attempt: 0, retryInMs: null, framesReceived: 0, malformedMessages: 0, lastError: null, everLive: false,
@@ -19,6 +23,9 @@ export function App() {
   const storeRef = useRef<FrameStore | null>(null);
   if (storeRef.current === null) storeRef.current = new FrameStore();
   const store = storeRef.current;
+  const historyRef = useRef<SessionHistory | null>(null);
+  if (historyRef.current === null) historyRef.current = new SessionHistory();
+  const history = historyRef.current;
 
   const [status, setStatus] = useState<ConnectionStatus>(() => initialStatus(url));
   const connectionRef = useRef<ObserverConnection | null>(null);
@@ -26,7 +33,11 @@ export function App() {
   useEffect(() => {
     const connection = new ObserverConnection({
       url,
-      onFrame: (frame) => store.push(frame, performance.now()),
+      onFrame: (frame) => {
+        store.push(frame, performance.now());
+        // Session-only history, derived from the same frame; reuses the store's id map.
+        history.push(frame, store.latestOrganisms());
+      },
       onStatus: setStatus,
     });
     connectionRef.current = connection;
@@ -35,12 +46,17 @@ export function App() {
       connection.stop();
       connectionRef.current = null;
     };
-  }, [store, url]);
+  }, [store, history, url]);
 
   const summary = useSyncExternalStore(
     useCallback((cb: () => void) => store.subscribe(cb), [store]),
     () => store.summary(),
     () => null,
+  );
+  const historySnapshot = useSyncExternalStore(
+    useCallback((cb: () => void) => history.subscribe(cb), [history]),
+    () => history.snapshot(),
+    () => history.snapshot(),
   );
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -53,12 +69,24 @@ export function App() {
   }, [selectedId, summary, store]);
 
   const [focusLineage, setFocusLineage] = useState<number | null>(null);
+  const [hoverLineage, setHoverLineage] = useState<number | null>(null);
   const [viewPaused, setViewPaused] = useState(false);
   const [camera, setCamera] = useState<{ cam: CameraState; fitted: boolean } | null>(null);
   const [fitScaleValue, setFitScaleValue] = useState<number | null>(null);
   const worldRef = useRef<WorldViewHandle | null>(null);
 
-  const emphasisLineage = focusLineage ?? (selection !== null ? selection.organism.lineageRootId : null);
+  // Side panel: the organism tab opens on selection; deselecting returns to evolution.
+  const [tab, setTab] = useState<SideTab>('evolution');
+  const hasSelection = selection !== null;
+  const prevHasSelection = useRef(false);
+  useEffect(() => {
+    if (hasSelection && !prevHasSelection.current) setTab('organism');
+    if (!hasSelection) setTab('evolution');
+    prevHasSelection.current = hasSelection;
+  }, [hasSelection, selectedId]);
+
+  const selectedLineage = selection !== null ? selection.organism.lineageRootId : null;
+  const emphasisLineage = hoverLineage ?? focusLineage ?? selectedLineage;
 
   const onCamera = useCallback((cam: CameraState, fitted: boolean) => {
     setCamera({ cam, fitted });
@@ -82,9 +110,14 @@ export function App() {
   }, []);
 
   const energyScale = Math.max(100, summary?.maxEnergy ?? 0);
+  const onToggleFocus = useCallback((lineageRootId: number) => setFocusLineage((f) => toggleLineageFocus(f, lineageRootId)), []);
+  const onSelectFromFeed = useCallback((id: number) => {
+    // Only an organism still present in the newest frame can be selected from the feed.
+    if (store.organism(id) !== undefined) setSelectedId(id);
+  }, [store]);
 
   return (
-    <div className={`app${selection !== null ? ' app-with-inspector' : ''}`}>
+    <div className="app app-with-side">
       <main className="stage">
         <WorldView
           ref={worldRef}
@@ -109,15 +142,26 @@ export function App() {
         <p className="hint-bar">scroll to zoom · drag to pan · click an organism · F fit · Esc deselect</p>
         <ConnectionOverlay status={status} onRetry={() => connectionRef.current?.retryNow()} />
       </main>
-      {selection !== null ? (
-        <Inspector
-          selection={selection}
-          energyScale={energyScale}
-          lineageFocused={focusLineage === selection.organism.lineageRootId}
-          onToggleLineageFocus={() => setFocusLineage((f) => (f === selection.organism.lineageRootId ? null : selection.organism.lineageRootId))}
-          onDeselect={() => setSelectedId(null)}
-        />
-      ) : null}
+      <SidePanel tab={tab} hasSelection={hasSelection} onTab={setTab}>
+        {tab === 'organism' && selection !== null ? (
+          <Inspector
+            selection={selection}
+            energyScale={energyScale}
+            lineageFocused={focusLineage === selection.organism.lineageRootId}
+            onToggleLineageFocus={() => onToggleFocus(selection.organism.lineageRootId)}
+            onDeselect={() => setSelectedId(null)}
+          />
+        ) : (
+          <EvolutionPanel
+            history={historySnapshot}
+            focusLineage={focusLineage}
+            selectedLineage={selectedLineage}
+            onToggleFocus={onToggleFocus}
+            onHoverLineage={setHoverLineage}
+            onSelectOrganism={onSelectFromFeed}
+          />
+        )}
+      </SidePanel>
     </div>
   );
 }

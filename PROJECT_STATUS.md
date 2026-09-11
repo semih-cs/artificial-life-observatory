@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-11 (Phase 0D slice 2)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -18,7 +18,7 @@
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
-| **Phase 0D** — Observatory / visualisation | **ACTIVE — slice 1 DONE** (below): `packages/observatory`, the first usable Observatory frontend (React + TypeScript + Vite + PixiJS). It renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. **Next:** make evolution visible (lineage history, event feed, trends) |
+| **Phase 0D** — Observatory / visualisation | **ACTIVE — slices 1 and 2 DONE** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. **Next:** mutation visibility |
 
 **Frozen v1 biological model:**
 
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0D slice 1, the Observatory frontend:
+Phase 0D slice 2, evolution visibility in the Observatory:
 
 ```text
-(HEAD)  Phase 0D slice 1: Observatory frontend (packages/observatory) — live world view over observer protocol v1 — see `git log -1`
+(HEAD)  Phase 0D slice 2: Observatory evolution visibility — lineage panel, birth/death feed, session-only trends — see `git log -1`
+e809686 Phase 0D slice 1: Observatory frontend — live world view over observer protocol v1
 96732ab Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing
 68865c7 Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop)
 3b040ac Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery
@@ -125,23 +126,24 @@ persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuati
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
 world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
                                              golden observer / paced / paced+observer 3)
-observatory tests:         39 / 39  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
-                                             frame store 4; interpolation 5; lineage colour 5; camera 5) — ≈ 1 s
-workspace total:          467 / 467 passed   (root `npm test` ≈ 2.5–3 min on this VM)
+observatory tests:         59 / 59  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
+                                             frame store 4; interpolation 5; lineage colour 5; camera 5;
+                                             slice 2: lineage aggregation 4; session history 10; evolution panel 6) — ≈ 1.3 s
+workspace total:          487 / 487 passed   (run per package this session; root `npm test` ≈ 2.5–3 min on this VM)
 workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner, then observatory:
                                 tsc --noEmit + vite build, ≈ 8 s total)
-live integration:          22 / 22 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D section)
+live integration:          27 / 27 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D slice 2 section)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Observatory slice 1 checkpoint (the biology packages are
-byte-for-byte unchanged by this slice: `git diff --stat` touches only
-`packages/observatory/`, the root `package.json` / `package-lock.json` /
-`.gitignore`, and the three documentation files), at the observer-bridge
-checkpoint, and at every Phase 0C checkpoint before it:
+Re-confirmed at the Observatory slice 2 checkpoint (the biology, persistence
+and runner packages are byte-for-byte unchanged by this slice: `git diff
+--stat` touches only `packages/observatory/` and the three documentation
+files; no dependency was added), at the slice 1 checkpoint, at the
+observer-bridge checkpoint, and at every Phase 0C checkpoint before it:
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -1820,18 +1822,175 @@ npm run observatory                                                             
 
 **Not in this slice** (later Observatory slices): lineage history, a
 birth/death event feed, mutation visibility, population/generation trends,
-family tree, neural fingerprints, organism search, mobile polish.
+family tree, neural fingerprints, organism search, mobile polish. (Lineage
+history, the event feed and trends are now slice 2, below.)
+
+## Phase 0D slice 2 — RESULT: DONE (evolution visibility)
+
+No change to simulation-core, experiment-harness, persistence or
+world-runner. No change to biology, `simulationVersion`, the snapshot
+format, the store, or observer protocol v1 (no bump was needed: everything
+is derived from protocol-v1 frames). No database, server, REST API,
+authentication, mutation command or new dependency. The Observatory stays
+read-only (the read-only test is unchanged and the live check counted 0
+WebSocket data frames sent).
+
+**Code** (`packages/observatory/src`):
+
+- `world/lineages.ts` — `summarizeLineages(organisms)`: per
+  `lineageRootId` the living count, share of population, max and mean
+  `generationDepth`; sorted by count desc, then id asc (deterministic);
+  frame-wide max/mean generation; `toggleLineageFocus` (click the focused
+  lineage → clear).
+- `world/sessionHistory.ts` — `SessionHistory`, the only history in the
+  UI. Session-only and fixed-bound: event feed ≤ 80 (`DEFAULT_MAX_EVENTS`),
+  trend ≤ 300 samples (`DEFAULT_MAX_TREND_POINTS`) taken every 10 ticks
+  (`DEFAULT_TREND_SAMPLE_TICKS`), recently-extinct lineages ≤ 6. Each trend
+  sample holds `tick, population, foodCount, maxGeneration, lineageCount`
+  and the per-lineage counts of that sample (so per-lineage history exists
+  only inside retained samples). Events are differences between two
+  *consecutive* received frames: `birth` (id absent from the previous
+  frame; tick, id, parent, lineage, generation), `death` (id present before
+  and absent now; lineage, generation, last age, last-seen tick),
+  `extinction` (a lineage whose count went to 0; last count). Continuity
+  means a forward tick step of at most `CONTINUOUS_TICK_GAP = 8` — the
+  renderer's birth-pulse rule now imports the same constant. A larger or
+  backwards step records one `gap` marker (`fromTick → toTick`, frames),
+  coalesced with a preceding gap, and infers nothing. The recently-extinct
+  list is updated on every frame regardless (absence is a frame fact).
+  World identity `(simulationVersion, configHash, rootSeed)` is checked on
+  every frame: a different identity clears everything and counts a reset; a
+  reconnect to the same world continues (with a gap marker). It exposes one
+  immutable snapshot per push for `useSyncExternalStore`; arrays are copied
+  only when they change.
+- `ui/SidePanel.tsx` — the right-hand column (340 px; bottom sheet under
+  820 px) with two tabs, *Evolution* (default) and *Organism* (opens on
+  selection; `Esc`/deselect returns to Evolution). The inspector is
+  unchanged inside it.
+- `ui/EvolutionPanel.tsx` — max generation (large), mean generation,
+  lineage count; `TrendPanel`; `LineagePanel`; `EventFeed`; a footer stating
+  that everything is session-only observation (and the reset count).
+- `ui/TrendPanel.tsx`, `ui/Sparkline.tsx` — four SVG sparklines
+  (population and max generation large; lineages and food small), thin
+  line, soft fill, dot on the newest value, no axes, scale floored at zero;
+  no charting library.
+- `ui/LineagePanel.tsx` — rows: swatch, `#id`, share bar, `N alive`, share
+  %, `gen` (max depth alive). Click = frontend focus toggle (the existing
+  `emphasisLineage` path into the Pixi renderer; nothing is sent); hover =
+  temporary emphasis (cleared on leave and on unmount); the focused row
+  shows the lineage's living-count sparkline over the session; the selected
+  organism's lineage is marked *selected*; *No longer living · this
+  session* lists recently extinct lineages with last-seen tick, last count
+  and last max gen.
+- `ui/EventFeed.tsx` — newest first, 40 rendered of 80 kept; `●` born
+  (`#id ← #parent · lineage #L · gen g · t`), `○` died (`… gen g · age a`),
+  `◌` lineage no longer living, `···` observation gap (`ticks A → B · n
+  frames · births/deaths not inferred`). Marks use the lineage colour;
+  rows fade in over 420 ms; with a lineage focused its events are
+  highlighted and others dimmed; a born id is a button that selects the
+  organism if it is still in the newest frame.
+- `ui/Hud.tsx` — *Generation* (max living) joins tick and population as a
+  large stat. `render/camera.ts` — fit insets grown (top 124, bottom 36) so
+  the fitted world clears the HUD. `App.tsx` — feeds the same frame to the
+  store and the history (`history.push(frame, store.latestOrganisms())`, one
+  Map per frame, no second pass); emphasis = hover ?? focus ?? selected
+  lineage.
+
+**Bounds and cost:** per frame one O(N) pass for the lineage aggregate,
+one O(N) Map diff for events, one sample every 10 ticks. Measured in Node:
+store + history ≈ 0.09 ms per frame at ~500 organisms with churn. React
+re-renders the panel once per frame (as the HUD already did), never per
+organism. No unbounded structure exists: 80 events, 300 samples, 6 extinct
+lineages, plus the two frames the store already kept.
+
+**Proof** (20 new tests; 59 in observatory):
+
+| Requirement | Test | Result |
+|---|---|---|
+| lineage aggregation | `lineages.test.ts` | counts, share, max/mean generation per lineage and frame-wide; sort by count desc then id asc, identical for reversed input; empty frame; focus toggle |
+| birth/death derivation | `sessionHistory.test.ts` | consecutive frames → death (with last age / last-seen tick) then birth (with parent, lineage, generation); unchanged frame → nothing |
+| extinction | `sessionHistory.test.ts` | last organism of a lineage disappears → `extinction` event and a recently-extinct entry with last-seen tick, count and max gen |
+| frame-gap safety | `sessionHistory.test.ts` | a 500-tick jump with 200 organisms replaced → exactly one `gap` marker, zero births/deaths; consecutive gapped frames coalesce; a backwards tick is a gap; step = 8 is continuous, 8 + 1 is not; trend keeps sampling across gaps |
+| bounded feed | `sessionHistory.test.ts` | 300 ticks of 2 births + 1 death per tick with cap 50 → never above 50, newest kept |
+| population / generation trend | `sessionHistory.test.ts` | sampled every 10 ticks: ticks `[0,10,20,30,40]`, population `[2,2,2,3,3]`, food, max generation `[2,2,6,9,9]`, lineage count; per-lineage series via `lineageTrend` |
+| bounded trend | `sessionHistory.test.ts` | cap 40 over 500 one-tick samples → 40 kept (ticks 461–500); a lineage outside the window reads 0; each sample holds only its living lineages |
+| world identity change | `sessionHistory.test.ts` | a different seed, then hash, then version each clear events, trend, extinct list and frame count; `resets` = 3; the new world's next frame diffs only against its own |
+| reconnect same world | `sessionHistory.test.ts` | frames 1, 2, then 40, 41 (same identity) → `['birth','gap','death']`, trend ticks `[1,2,40,41]`, `resets` 0, earlier event objects retained |
+| lineage focus is frontend-only | `lineages.test.ts` + `connection.test.ts` | the toggle is a pure function on UI state; the socket type has no `send` and the read-only lifecycle test still records zero transmissions |
+| rendered panel | `evolutionPanel.test.tsx` | lineages most numerous first with `N alive`, share and gen; extinct lineages listed; born (parent), died (age) and extinction rows; no qualitative labels (regex over fit/superior/intelligent/adapted/successful/species/…); focused + selected row classes, `aria-pressed`, focused-lineage sparkline; gap marker and no inferred rows; trend cards, sample count, sparkline path bounds; HUD generation stat |
+
+**Live integration** (27 / 27 checks; `world-runner --observe 8787` on the
+golden seed created to tick 2,500 and paced at 10 ticks/s, the production
+build served statically, headless Chromium 1440×900 with software GL,
+driven by Playwright):
+
+1. lineage panel populates (16 living lineages at tick ≈ 2,600);
+2. counts change live (`34/18/17 → 41/21/19 alive` over 12 s);
+3. clicking a row focuses it — one `.lineage-focused` row, the *Lineage #12
+   focused* chip, the world dims other lineages — its living-count
+   sparkline appears; clicking it again clears focus and chip;
+4. births appear in the feed (25) — 5. and deaths (13) — with 0 gap markers
+   on a continuous stream and no qualitative labels;
+6. the population sparkline path grows (22 → 50 samples);
+7. HUD *Generation* shows the max living generation (4 → 6 over the runs);
+8. clicking a born id selects the organism (inspector *alive*, Organism
+   tab); the Evolution tab marks its lineage *selected*; `Esc` returns to
+   Evolution;
+9. wheel zoom (170 %), *Fit* (100 %) and *Pause view* (HUD tick keeps
+   advancing) still work;
+10. SIGTERM on the runner → disconnected/reconnecting with the panel intact;
+    restart → live, samples continue (60 → 66), footer shows no reset,
+    exactly one observation-gap marker; then a *different* world (new seed
+    on the same port) → *Cleared 1×*, feed and trend restart (3 samples),
+    HUD seed changes;
+11. the browser sent 0 WebSocket data frames while receiving 713; no
+    application console errors.
+
+Screenshots were inspected and two layout issues fixed before sign-off:
+feed rows wrapped at 320 px (now 340 px, 11 px text, parent as `← #id`), and
+a stale hover emphasis survived the tab switch (hover now clears on
+unmount). The lineage and feed lists are capped in height (318 / 340 px)
+with their own scroll so the feed stays reachable when many lineages live.
+
+**Performance note:** in the software-GL headless browser the page falls
+behind at population ≈ 370 (rasteriser-bound, as in slice 1); the runner
+then skips frames for the slow client and the feed correctly shows gap
+markers rather than inventing events. The JS work per frame is small
+(above); a GPU-backed laptop is the target.
+
+**Design decisions recorded:**
+
+- History is session-only by design: closing or reloading the tab forgets
+  it. Persistent lineage history, an event store or a genealogy tree are
+  explicitly not this slice.
+- Events are differences between consecutive received frames — an
+  organism born and dead between two frames is never seen. This is
+  documented in the README as a limitation, not hidden.
+- `CONTINUOUS_TICK_GAP = 8` is shared by the feed and the renderer's birth
+  pulse so both agree on what "observed" means.
+- Language: born / died / no longer living / lineage grew or shrank /
+  generation. Never fit, adapted, successful, superior, intelligent,
+  species.
+
+**Not in this slice** (later Observatory slices): mutation visibility
+(morphology/neural change between parent and child), a genealogy tree,
+neural fingerprints (needs an on-demand message and a protocol bump),
+organism search, mobile polish, persistent history.
 
 ## NEXT EXACT STEP
 
-**Phase 0D slice 2 — make evolution visible: a live lineage panel.** A
-small panel (toggle from the HUD) listing the lineages alive in the current
-frame — colour swatch, `lineageRootId`, living count, max generation depth
-in that lineage — sorted by count, each row clickable to focus that lineage
-(display emphasis only, reusing the existing focus mechanism), with a
-compact population sparkline built from frames received in this browser
-session (bounded ring buffer, display only). Derived from the live frame
-only; no backend change, no history storage, no protocol bump. Add tests
-for the per-frame lineage aggregation and the bounded buffer.
+**Phase 0D slice 3 — mutation visibility: parent → child morphology
+change.** In the inspector, when the selected organism's parent is still in
+the newest frame (or was seen in this session's bounded history), show the
+five morphology genes side by side with the parent's — size, max speed,
+vision range, vision angle, metabolism — with the numeric delta and a small
+mark on each field that changed. Nothing is interpreted: no "better",
+"worse" or "adapted"; a difference is a difference. Add a bounded
+session-only cache of last-seen morphology per organism id (the same bound
+discipline as `sessionHistory.ts`, e.g. ≤ 2,000 ids, LRU) so a parent that
+died recently can still be compared. Derived from protocol-v1 frames only;
+no backend change, no protocol bump. Tests: delta computation, the cache
+bound, and the rendered comparison (rendered with `react-dom/server`, no
+qualitative labels).
 
 Backend work stays limited to what the frontend demonstrably needs.

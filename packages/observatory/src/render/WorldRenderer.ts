@@ -13,6 +13,7 @@ import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import type { FrameStore } from '../world/frameStore.js';
 import type { ObserverFood, ObserverFrame, ObserverOrganism } from '../protocol/observerV1.js';
 import { lineageColor, lighten, darken, type LineageColor } from '../world/lineageColor.js';
+import { CONTINUOUS_TICK_GAP } from '../world/sessionHistory.js';
 import { displayProgress, lerp, lerpAngle } from '../world/interpolation.js';
 import {
   clampCamera, fitCamera, fitScale, panBy, screenToWorld, worldToScreen, wheelZoomFactor, zoomAt,
@@ -30,7 +31,7 @@ const DEATH_MS = 450;
 const FOOD_FADE_MS = 260;
 const RING_STEPS = 24;
 const DIM_ALPHA = 0.26;
-const BIRTH_TICK_GAP = 8;
+const BIRTH_TICK_GAP = CONTINUOUS_TICK_GAP;
 const FOOD_SIZE = 9;
 const EMPTY_MAP: ReadonlyMap<number, ObserverOrganism> = new Map();
 

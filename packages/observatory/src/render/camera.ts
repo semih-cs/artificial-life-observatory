@@ -35,7 +35,7 @@ export interface Insets {
 export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /** Screen space reserved for the HUD row (top) and the hint bar (bottom) when fitting. */
-export const DEFAULT_FIT_INSETS: Insets = { top: 72, right: 16, bottom: 28, left: 16 };
+export const DEFAULT_FIT_INSETS: Insets = { top: 124, right: 16, bottom: 36, left: 16 };
 
 /** A camera that shows the whole world centred in the viewport (minus `insets`). */
 export function fitCamera(world: Size, viewport: Size, padding = FIT_PADDING, insets: Insets = NO_INSETS): CameraState {

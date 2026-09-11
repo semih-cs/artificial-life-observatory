@@ -229,7 +229,7 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-**ACTIVE — slice 1 done.** `packages/observatory` (React + TypeScript +
+**ACTIVE — slices 1 and 2 done.** `packages/observatory` (React + TypeScript +
 Vite + PixiJS) consumes the read-only observer stream from
 `packages/world-runner`: `--observe <port>`, observer protocol v1, see
 README. It never sends commands that change the world (§14.50). Scope:
@@ -241,9 +241,11 @@ README. It never sends commands that change the world (§14.50). Scope:
 
 Slice 1 is the live world view: organisms (lineage colour, heading, size,
 energy), food, births/deaths, interpolated motion, camera, selection with
-lineage emphasis, an organism inspector, HUD and connection states. Later
-slices make evolution visible (lineage history, event feed, mutation
-visibility, trends) — see `PROJECT_STATUS.md`.
+lineage emphasis, an organism inspector, HUD and connection states. Slice 2
+is evolution visibility: a living-lineage panel, a birth/death event feed
+and session-only population/generation trends, all derived in the browser
+from received frames. Later slices: mutation visibility, genealogy — see
+`PROJECT_STATUS.md`.
 
 Frontend rules that hold from now on:
 
@@ -255,16 +257,28 @@ Frontend rules that hold from now on:
   emphasis, the view pause and the camera are presentation only. Nothing is
   written back, nothing is extrapolated past the newest frame, and a paused
   view never pauses the simulation.
-- **No history in the UI.** The frame store keeps the newest frame and the
-  previous one. A later slice that needs history must bound it and say so;
-  it must not become a hidden event database.
+- **No unbounded history in the UI.** The frame store keeps the newest
+  frame and the previous one. The only history is `world/sessionHistory.ts`
+  (slice 2): session-only, fixed bounds (80 feed events, 300 trend samples
+  every 10 ticks, 6 recently-extinct lineages), never persisted, never sent,
+  and cleared when a frame from a different world identity
+  `(simulationVersion, configHash, rootSeed)` arrives. It is not an event
+  database and not scientific evidence. Any new history must be bounded the
+  same way and documented.
+- **Events are frame differences, never inferences.** A birth is an id
+  absent from the previous *consecutive* received frame; a death is an id
+  that disappeared. If the tick step between received frames exceeds
+  `CONTINUOUS_TICK_GAP` (8), one coalesced observation-gap marker is
+  recorded and no birth/death is invented. The frame-gap test in
+  `packages/observatory/tests/sessionHistory.test.ts` is a live regression.
 - **The frontend owns its protocol types.** `protocol/observerV1.ts` mirrors
   the runner's frame shape and validates every message. A frame-shape
   change bumps `OBSERVER_PROTOCOL_VERSION` in the runner *and* the
   frontend's supported version; unknown versions are refused, never guessed.
 - **Only real data.** Colours mean nothing but identity, energy is a
-  number, and no qualitative labels (healthy, weak, fit, intelligent, …)
-  are invented.
+  number, generation is a depth, and no qualitative labels (healthy, weak,
+  fit, intelligent, adapted, successful, species, …) are invented. Lineages
+  are lineages.
 - **Organisms live in Pixi, not React.** React owns the shell (HUD,
   inspector, controls, connection); entities are Pixi display objects reused
   across frames. React state updates at most once per frame.
@@ -465,8 +479,10 @@ Observatory regression, part of `npm test`: `npm test -w packages/observatory`
 (vitest, about 1 s, no browser). It covers protocol parsing, the connection
 lifecycle and the read-only guarantee, frame replacement without history,
 selection and the inspector, interpolation bounds and angular wrap, lineage
-colour determinism and the camera. `npm run build` type-checks and bundles
-it. The live check — a world runner with `--observe` plus the built
+colour determinism and the camera; and (slice 2) lineage aggregation,
+birth/death derivation, frame-gap safety, bounded feed and trend,
+world-identity reset, reconnect preservation and the rendered evolution
+panel. `npm run build` type-checks and bundles it. The live check — a world runner with `--observe` plus the built
 Observatory in a browser — is manual (or scripted with a headless browser
 where one is available) and is recorded in `PROJECT_STATUS.md`.
 

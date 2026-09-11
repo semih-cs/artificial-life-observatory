@@ -33,13 +33,16 @@ export function Hud({ status, summary, viewPaused }: HudProps) {
           <span className="stat-label">Population</span>
           <span className="stat-value" data-testid="hud-population">{summary ? formatInt(summary.population) : '—'}</span>
         </span>
+        <span className="stat stat-big" title="Largest generationDepth among living organisms in the newest frame">
+          <span className="stat-label">Generation</span>
+          <span className="stat-value" data-testid="hud-generation">{summary ? formatInt(summary.maxGeneration) : '—'}</span>
+        </span>
         {viewPaused ? <span className="pill pill-paused">View paused · simulation continues</span> : null}
       </div>
       <div className="hud-row hud-secondary">
         <span className="stat"><span className="stat-label">Food</span><span className="stat-value">{summary ? formatInt(summary.foodCount) : '—'}</span></span>
         <span className="stat"><span className="stat-label">Snapshot</span><span className="stat-value">{summary ? formatInt(summary.snapshotTick) : '—'}</span></span>
         <span className="stat"><span className="stat-label">Lineages</span><span className="stat-value">{summary ? formatInt(summary.lineageCount) : '—'}</span></span>
-        <span className="stat"><span className="stat-label">Max gen</span><span className="stat-value">{summary ? formatInt(summary.maxGeneration) : '—'}</span></span>
       </div>
       <div className="hud-row hud-meta mono">
         <span title="simulationVersion">{summary ? summary.simulationVersion : 'sim —'}</span>

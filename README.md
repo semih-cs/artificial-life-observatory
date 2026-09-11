@@ -17,7 +17,7 @@ Five workspace packages:
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
 | `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly; a snapshot store with retention and fallback recovery |
 | `packages/world-runner` | 0C → 0D bridge | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly; optional tick pacing and a read-only WebSocket observer stream |
-| `packages/observatory` | 0D | the Observatory frontend (React + TypeScript + Vite + PixiJS): watch the live world in a browser — organisms, lineages, food, births and deaths, with an organism inspector. Read-only |
+| `packages/observatory` | 0D | the Observatory frontend (React + TypeScript + Vite + PixiJS): watch the live world in a browser — organisms, lineages, food, births and deaths, an organism inspector, and an evolution panel (living lineages, session-only trends, birth/death feed). Read-only |
 
 **Quick start — watch a live world:**
 
@@ -40,7 +40,7 @@ Full details: *Observatory (Phase 0D)* below.
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
 | Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing) |
-| **Phase 0D — Observatory UI** | **active — slice 1 done.** `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector. Later slices: lineage history, event feed, mutation visibility, trends |
+| **Phase 0D — Observatory UI** | **active — slices 1 and 2 done.** `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2). Later slices: mutation visibility, genealogy |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
 inherit and mutate genomes, form lineages and evolve across generations. All of
@@ -56,8 +56,9 @@ are in `docs/Phase 0B Pilot Report.md`; its closure is §23.
 
 - Phase 0C (done) makes a world save, load and resume exactly.
 - Phase 0D lets you watch it live and inspect organisms, lineages and
-  mutations. The first slice — the live world view with selection and an
-  inspector — is done; see *Observatory (Phase 0D)*.
+  mutations. Slice 1 — the live world view with selection and an
+  inspector — and slice 2 — evolution visibility: lineages, births/deaths,
+  trends — are done; see *Observatory (Phase 0D)*.
 
 The biology is frozen for v1: do not change it unless a genuine bug is found.
 The held-out validation seeds are reserved for future research and must not be
@@ -646,8 +647,9 @@ Production build and preview: `npm run build -w packages/observatory`, then
 
 - **The world is the hero.** A dark navy floor with a faint 50-unit grid and a
   soft boundary fills the viewport; the world's aspect ratio is preserved with
-  letterboxing. The HUD sits top-left, view controls top-right, the inspector
-  on the right when an organism is selected.
+  letterboxing. The HUD sits top-left, view controls top-right, and the
+  right-hand panel holds the evolution view or, when an organism is
+  selected, the inspector.
 - **Organisms** are abstract procedural cells: a lineage-coloured body with a
   darker rim, a lighter triangular nose and a forward-offset core (so heading
   is readable at any size), an outer energy ring and a faint glow. Body scale
@@ -687,8 +689,8 @@ shown. If the selected organism leaves the live frame, the inspector keeps
 its last known values and says *no longer alive · last seen at tick N*.
 
 The HUD shows connection state (connecting / live / disconnected /
-reconnecting / error), tick and population (large), food, snapshot tick,
-lineage count and maximum generation depth (both derived from the current
+reconnecting / error), tick, population and maximum living generation
+(large), food, snapshot tick and lineage count (all derived from the current
 frame), `simulationVersion`, seed, `configHash` and world size.
 
 ### Connection behaviour
@@ -730,12 +732,73 @@ parsing (valid, malformed, unsupported version), deterministic lineage
 colour, selection and the inspector (including a selected organism that
 disappears), the HUD, connection lifecycle and backoff, the read-only
 guarantee, frame replacement without history, interpolation bounds and
-angular wrap, and camera maths.
+angular wrap, camera maths; and for the evolution panel: per-frame lineage
+aggregation and sorting, birth/death/extinction derivation, frame-gap safety,
+the bounded feed and trend, world-identity reset, reconnect preservation,
+and the rendered panel (rows, focus and selection marks, gap marker, no
+qualitative labels).
+
+### Evolution panel (slice 2)
+
+The right-hand panel has two tabs: **Evolution** (default) and **Organism**
+(the inspector; it opens when an organism is selected and `Esc` returns to
+Evolution). The world stays the hero: the panel is a fixed 340 px column on
+the right (a bottom sheet at narrow widths) and nothing is drawn over the
+canvas. Everything in it is derived in the browser from the frames this tab
+has received. It is **session-only, display-only and not scientific**:
+nothing is stored, nothing is sent, and nothing is interpreted.
+
+- **Max generation** (also large in the HUD): the largest `generationDepth`
+  among living organisms in the newest frame; mean generation and lineage
+  count next to it. Generation is a depth, not a fitness.
+- **Trends** — thin sparklines with the newest value: population and max
+  generation (large), lineages and food (small). A sample is taken every 10
+  ticks of received frames and at most 300 samples are kept (a ring: about
+  the last 3,000 ticks; 5 minutes at 10 ticks/s). No axes; the line reads
+  against zero.
+- **Lineages** — every lineage alive in the newest frame, sorted by living
+  count (ties by id): colour swatch, `#lineageRootId`, a share bar, `N
+  alive`, share of the population, and `gen` = the largest generation depth
+  alive in that lineage. Clicking a row focuses that lineage in the world
+  (the same display-only emphasis as *Focus lineage* in the inspector);
+  clicking it again clears the focus; hovering emphasises it temporarily.
+  The focused row shows a sparkline of that lineage's living count over the
+  session. The selected organism's lineage is marked *selected*. Lineages
+  that left the living set during this session are listed briefly under *No
+  longer living* (newest first, at most 6), with the tick they were last seen.
+  They are lineages — never species, factions, winners or losers.
+- **Events** — a bounded feed (80 kept, 40 shown, newest first) of what
+  changed between two *consecutive* received frames: **born** (an id absent
+  from the previous frame — with parent, lineage and generation), **died**
+  (an id present in the previous frame and absent now — with lineage,
+  generation and its last observed age), and **lineage no longer living**.
+  Clicking a born id selects that organism if it is still alive. When a
+  lineage is focused, its events are highlighted and the rest dimmed. Rows
+  fade in quietly; there are no alerts.
+- **Observation gaps.** The observer stream sends only the newest frame and
+  never replays. If the tick step between two received frames is larger
+  than 8 (a reconnect, a skipped frame, a world running much faster than
+  the frame rate), the feed records one *observation gap · ticks A → B*
+  marker instead of inferring births and deaths; consecutive gapped frames
+  extend the same marker. Trends and lineage counts continue from the
+  received frames regardless — they are per-frame facts, not inferred
+  events. The same 8-tick rule decides whether the world shows a birth
+  pulse.
+- **Reconnect and world identity.** On a reconnect to the same world
+  (`simulationVersion`, `configHash`, `rootSeed` unchanged) the history is
+  kept and continues after a gap marker. If a frame from a different world
+  identity arrives — another runner on the same port — the history is
+  cleared and starts again; the panel footer counts these resets. Two worlds
+  are never mixed in one trend or feed.
 
 ### Current limitations
 
-- Slice 1 only: no lineage history, event feed, mutation visibility,
-  population/generation trends, family tree or neural fingerprints.
+- Slices 1–2 only: no mutation visibility, no genealogy tree, no neural
+  fingerprints, no persistent history. The evolution panel forgets
+  everything when the tab is closed or reloaded.
+- Births and deaths in the feed are frame differences, not simulation
+  events: an organism born and dead between two received frames is never
+  seen, and across an observation gap nothing is inferred.
 - Desktop first. The layout survives narrow widths (the inspector becomes a
   bottom sheet) but there is no pinch-zoom and no mobile polish.
 - No organism labels except the selected one; no search by id.
@@ -1022,6 +1085,9 @@ npm run test:watch --workspace=packages/simulation-core
 | `interpolation.test.ts` | position interpolation bounded by the received states, progress saturating at 1, heading interpolation across the 0/2π wrap and in both directions, bounded interval estimate |
 | `lineageColor.test.ts` | same id → same colour; pure in call order; representative founder ids distinguishable; never too dark for the background |
 | `camera.test.ts` | fit (centred, aspect-preserving), zoom around the cursor, zoom limits, pan clamping, wheel mapping |
+| `lineages.test.ts` | per-frame lineage aggregation: counts, share, max and mean generation; deterministic sort (count desc, id asc) independent of input order; empty frame; focus toggle semantics |
+| `sessionHistory.test.ts` | births and deaths from consecutive frames; lineage extinction and the recently-extinct list; frame-gap safety (a 500-tick jump with 200 replaced organisms yields one gap marker and no events; coalescing; backwards ticks; the 8-tick limit); bounded feed (50 cap over 300 ticks of churn); trend sampling every N ticks with correct population, food, max generation, lineage count and per-lineage counts; bounded trend (40 cap over 500 samples, evicted lineages gone); world-identity reset on seed, hash or version change; reconnect to the same world keeps and continues history; snapshots and subscriptions |
+| `evolutionPanel.test.tsx` | rendered with `react-dom/server`: lineages most numerous first with count, share and gen; extinct lineages listed; births (with parent), deaths (with age) and extinctions in the feed; no qualitative labels; focused and selected rows; the focused lineage sparkline; the gap marker instead of inferred events; trend cards and sparkline path bounds; the HUD generation stat |
 
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
@@ -1060,7 +1126,7 @@ are never pooled with these.
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
 | **0C**  | **complete for v1** — persistence, snapshots, recovery, the canonical continuous world: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
-| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Next slices: lineage history, event feed, mutation visibility, trends |
+| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Slice 2 done: evolution visibility (living lineage panel, birth/death feed, session-only trends). Next slices: mutation visibility, genealogy |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 
