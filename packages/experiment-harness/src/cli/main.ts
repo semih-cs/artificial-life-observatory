@@ -22,6 +22,8 @@
  *   early-establishment     Read-only §19 analysis of ticks 0–3000 of the 15 0A.2.0 default worlds.
  *   stalled-cohort          Read-only §20 comparison of stalled worlds that recover vs die (ticks 4000–9000).
  *   reproduction-participation  Read-only §21: lifetime participation vs births per reproducer, stalled cohort.
+ *   reproducer-lifecycle    diagnostic-reproducer-lifecycle-v1 (pilot report §22): observational per-organism
+ *                           life-history rerun of the seven stalled-cohort worlds.
  *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
  *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
@@ -75,6 +77,13 @@ import {
 import {
   PARTICIPATION_CHECKPOINTS, deriveReproduction, metricDiffers, mechanismCall,
 } from '../analysis/reproductionParticipation.js';
+import {
+  createLifecycleRecorder, summarizeWorld, lifecycleDecision, strengthOf, LifecycleRecorder, LIFECYCLE_BIRTH_WINDOW,
+} from '../analysis/lifecycle.js';
+import {
+  reproducerLifecycleDiagnostic, REPRODUCER_LIFECYCLE_ID, LIFECYCLE_EXTINCT_SEEDS, LIFECYCLE_LATE_SEEDS,
+  LIFECYCLE_ROW_CHECK_TICKS, LIFECYCLE_HASH_CHECKPOINTS,
+} from '../experiments/reproducerLifecycle.js';
 import {
   TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
   TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
@@ -367,6 +376,11 @@ async function main(): Promise<void> {
   }
 
   printProvenance();
+
+  if (experiment === 'reproducer-lifecycle') {
+    runReproducerLifecycle(outputDir ?? `results/${REPRODUCER_LIFECYCLE_ID}`);
+    return;
+  }
 
   if (experiment === 'baseline-continuation') {
     runBaselineContinuation(outputDir ?? `results/${BASELINE_CONTINUATION_ID}`);
@@ -739,6 +753,119 @@ function runFoodLimitation(outDir: string): void {
     );
   }
   console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
+  console.log(`Results written to: ${outDir}/`);
+}
+
+/**
+ * diagnostic-reproducer-lifecycle-v1 (pilot report §22). Observational rerun of
+ * the seven stalled-cohort worlds; the §22.5 validity check is enforced before
+ * any interpretation.
+ */
+function runReproducerLifecycle(outDir: string): void {
+  const spec = reproducerLifecycleDiagnostic();
+  const pilot = new Set(loadPilotSeeds());
+  for (const seed of spec.seeds) if (!pilot.has(seed)) throw new Error(`seed ${seed} is not a pilot seed`);
+  const maxAge = DEFAULT_SIMULATION_CONFIG.lifecycle.maxAge;
+
+  console.log(`\nRunning: ${spec.experimentId} — observational; seeds ${spec.seeds.join(', ')}; 20,000 ticks; cap not an early stop; ceiling 1000\n`);
+  const recorders = new Map<number, LifecycleRecorder>();
+  const observedHash = new Map<string, string>();
+  const result = runExperiment(spec, {
+    gitCommit,
+    onReplicateComplete: printProgress,
+    tickObserverFor: (_c, seed) => {
+      const ticks = new Set((LIFECYCLE_HASH_CHECKPOINTS[seed] ?? []).map(c => c.tick));
+      const rec = createLifecycleRecorder(maxAge, (_b, after) => {
+        if (ticks.has(after.tick)) observedHash.set(`${seed}|${after.tick}`, canonicalStateHash(after));
+      });
+      recorders.set(seed, rec);
+      return rec.observer;
+    },
+  });
+  writeExperimentResults(result, outDir, { conditionSummary: false });
+
+  // ---- §22.5 validity ------------------------------------------------------
+  const baselineCsv = fs.readFileSync('results/multifounder-default-baseline/timeseries-multifounder-default.csv', 'utf-8').trim().split('\n');
+  const header = baselineCsv[0]!.split(',');
+  const baselineRow = new Map<string, string[]>();
+  for (const line of baselineCsv.slice(1)) { const c = line.split(','); baselineRow.set(`${c[1]}|${c[2]}`, c); }
+  const validity = spec.seeds.map((seed) => {
+    const failures: string[] = [];
+    const hashes = (LIFECYCLE_HASH_CHECKPOINTS[seed] ?? []).map((cp) => {
+      const observed = observedHash.get(`${seed}|${cp.tick}`) ?? null;
+      if (observed !== cp.hash) failures.push(`hash @${cp.tick}: ${observed} != ${cp.hash}`);
+      return { ...cp, observed, pass: observed === cp.hash };
+    });
+    const replicate = result.replicates.find(r => r.provenance.seed === seed)!;
+    const rows = LIFECYCLE_ROW_CHECK_TICKS.map((tick) => {
+      const base = baselineRow.get(`${seed}|${tick}`);
+      const mine = replicate.timeseries.find(r => r.tick === tick);
+      if (!base || !mine) { failures.push(`row @${tick}: missing`); return { tick, pass: false }; }
+      const mismatched = header.slice(2).filter((h, i) => String((mine as unknown as Record<string, unknown>)[h]) !== base[i + 2]);
+      if (mismatched.length) failures.push(`row @${tick}: fields differ: ${mismatched.join(',')}`);
+      return { tick, pass: mismatched.length === 0, fieldsCompared: header.length - 2 };
+    });
+    return { seed, hashes, rows, pass: failures.length === 0, failures };
+  });
+  const valid = validity.every(v => v.pass);
+  console.log('\n§22.5 validity:');
+  for (const v of validity) {
+    console.log(`  seed ${v.seed}: ${v.pass ? 'PASS' : 'INVALID'} — hashes ${v.hashes.map(h => `@${h.tick} ${h.observed}`).join(', ')}; rows @${LIFECYCLE_ROW_CHECK_TICKS.join('/')} ${v.rows.every(r => r.pass) ? 'identical' : 'DIFFER'}${v.failures.length ? ' — ' + v.failures.join('; ') : ''}`);
+  }
+
+  // Per-organism records, persisted for every seed regardless of validity.
+  for (const [seed, rec] of recorders) {
+    const lines = ['id,parentId,generationDepth,birthTick,reproductionEvents,reproductionTicks,energyAfterFirstReproduction,deathTick,ageAtDeath,deathCause'];
+    for (const o of rec.organisms.values()) {
+      lines.push([o.id, o.parentId ?? '', o.generationDepth, o.birthTick, o.reproductionTicks.length, o.reproductionTicks.join(' '),
+        o.energyAfterFirstReproduction ?? '', o.deathTick ?? '', o.ageAtDeath ?? '', o.deathCause ?? ''].join(','));
+    }
+    fs.writeFileSync(`${outDir}/lifecycle-${seed}.csv`, lines.join('\n') + '\n');
+  }
+
+  const base = {
+    id: REPRODUCER_LIFECYCLE_ID, precommitmentCommit: 'ff7e2b1', birthWindow: LIFECYCLE_BIRTH_WINDOW,
+    tickConvention: 'events stamped with the post-step tick in which their result first appears; core deathTick is one lower',
+    deathCauseNote: 'ENERGY_DEPLETION exact below maxAge; AT_MAX_AGE cannot be split from simultaneous starvation',
+    validity,
+  };
+  if (!valid) {
+    fs.writeFileSync(`${outDir}/lifecycle-analysis.json`, JSON.stringify({ ...base, status: 'INVALID' }, null, 2));
+    console.log('\nDIAGNOSTIC INVALID — nothing is interpreted.');
+    process.exitCode = 2;
+    return;
+  }
+
+  // ---- §22.6–§22.8 ---------------------------------------------------------
+  const worlds = spec.seeds.map((seed) => {
+    const { summary, reproducers } = summarizeWorld(recorders.get(seed)!.organisms.values());
+    return { seed, group: (LIFECYCLE_LATE_SEEDS as readonly number[]).includes(seed) ? 'L' : 'E*', summary, reproducers };
+  });
+  const E = worlds.filter(w => w.group === 'E*').map(w => w.summary);
+  const L = worlds.filter(w => w.group === 'L').map(w => w.summary);
+  const decision = lifecycleDecision(E, L);
+  const descriptiveCuts = {
+    medianAgeAtFirstReproduction: bestSingleCut(E.map(w => w.medianAgeAtFirstReproduction), L.map(w => w.medianAgeAtFirstReproduction)),
+    medianLifetimeEvents: bestSingleCut(E.map(w => w.medianLifetimeEvents), L.map(w => w.medianLifetimeEvents)),
+    fractionDyingBeforeSecond: bestSingleCut(E.map(w => w.fractionDyingBeforeSecond), L.map(w => w.fractionDyingBeforeSecond)),
+  };
+  fs.writeFileSync(`${outDir}/lifecycle-analysis.json`, JSON.stringify({
+    ...base, status: 'VALID', analysedWith: runProvenance(),
+    worlds: worlds.map(w => ({ seed: w.seed, group: w.group, summary: w.summary, reproducers: w.reproducers })),
+    decision: { ...decision, ivStrength: decision.iv ? strengthOf(decision.iv) : null, svStrength: decision.sv ? strengthOf(decision.sv) : null },
+    descriptiveCuts,
+  }, null, 2));
+
+  const f = (v: number | null, d = 1) => (v === null ? '—' : Number.isInteger(v) ? String(v) : v.toFixed(d));
+  console.log('\nseed    grp | incl cens repr ≥2 | 1st-rep age | interval | post-1st surv | events | died<2nd | deaths energy/maxAge');
+  for (const w of worlds) {
+    const s = w.summary;
+    console.log(`${String(w.seed).padEnd(7)} ${w.group.padEnd(3)} | ${String(s.included).padStart(4)} ${String(s.censored).padStart(4)} ${String(s.eligibleReproducers).padStart(4)} ${String(s.reproducersWithTwoOrMore).padStart(2)} | ` +
+      `${f(s.medianAgeAtFirstReproduction).padStart(11)} | ${f(s.medianInterval).padStart(8)} | ${f(s.medianPostFirstReproductionSurvival).padStart(13)} | ${f(s.medianLifetimeEvents).padStart(6)} | ${f(s.fractionDyingBeforeSecond, 3).padStart(8)} | ${s.deathCauses.ENERGY_DEPLETION}/${s.deathCauses.AT_MAX_AGE}`);
+  }
+  console.log(`\nIV (median interval): misclassified ${decision.iv?.misclassified} (${decision.iv?.direction}); SV (median post-first survival): misclassified ${decision.sv?.misclassified} (${decision.sv?.direction})`);
+  console.log(`descriptive cuts: ${JSON.stringify(Object.fromEntries(Object.entries(descriptiveCuts).map(([k, c]) => [k, `${c.misclassified} ${c.direction}`])))}`);
+  console.log(`§22.8 mechanism: ${decision.mechanism} (${decision.reason})`);
   console.log(`Results written to: ${outDir}/`);
 }
 

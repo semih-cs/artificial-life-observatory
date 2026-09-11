@@ -222,6 +222,7 @@ npm run experiment -- reproduction-participation  # read-only lifetime participa
 npm run experiment -- multifounder-default-baseline  # 0A.2.0 at unchanged defaults, 15 pilot seeds, 20,000 ticks (pilot report §14)
 npm run experiment -- food-limitation     # diagnostic-food-limitation-v1: fixed 4 pilot seeds, cap not an early stop, safety ceiling 1000 (pilot report §15)
 npm run experiment -- baseline-continuation  # continuation-multifounder-default-v1: the six cap-stopped 0A.2.0 default seeds, uncapped (pilot report §18)
+npm run experiment -- reproducer-lifecycle   # diagnostic-reproducer-lifecycle-v1: observational per-organism life histories, 7 stalled-cohort seeds (pilot report §22)
 ```
 
 Results are written under `packages/experiment-harness/results/<experiment-id>/`

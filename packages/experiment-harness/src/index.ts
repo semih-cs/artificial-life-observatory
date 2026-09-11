@@ -24,6 +24,11 @@ export {
 } from './analysis/stalledCohort.js';
 export type { StalledStrength } from './analysis/stalledCohort.js';
 export * from './analysis/reproductionParticipation.js';
+export {
+  createLifecycleRecorder, reproducerMeasures, summarizeWorld, lifecycleDecision, strengthOf, LIFECYCLE_BIRTH_WINDOW,
+} from './analysis/lifecycle.js';
+export type { OrganismLifecycle, ReproducerMeasures, WorldLifecycleSummary, LifecycleMechanism } from './analysis/lifecycle.js';
+export * from './experiments/reproducerLifecycle.js';
 export * from './probes/probeSet.js';
 export * from './probes/evaluate.js';
 export * from './probes/fingerprint.js';
