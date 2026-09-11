@@ -45,6 +45,7 @@ npm run experiment -- movement-policy        # Diagnostic A2 (§16.9 fixed movem
 npm run experiment -- mutation-2x2           # primary 2x2 mutation factorial
 npm run experiment -- calibration-sweep      # coarse ecological parameter sweep
 npm run experiment -- calibration-report     # re-read persisted sweep results; runs nothing
+npm run experiment -- reclassify-trajectory  # trajectory-outcome-v2 over persisted 20,000-tick runs; runs nothing (pilot report §16–§17)
 npm run experiment -- multifounder-default-baseline  # 0A.2.0 at unchanged defaults, 15 pilot seeds, 20,000 ticks (pilot report §14)
 npm run experiment -- food-limitation     # diagnostic-food-limitation-v1: fixed 4 pilot seeds, cap not an early stop, safety ceiling 1000 (pilot report §15)
 ```

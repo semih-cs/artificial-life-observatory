@@ -15,6 +15,8 @@ export * from './analysis/persistedResults.js';
 export * from './analysis/energyModel.js';
 export * from './analysis/founderDiversity.js';
 export * from './analysis/foodLimitation.js';
+export * from './analysis/trajectoryOutcome.js';
+export * from './analysis/reclassify.js';
 export * from './probes/probeSet.js';
 export * from './probes/evaluate.js';
 export * from './probes/fingerprint.js';

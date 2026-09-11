@@ -17,6 +17,8 @@
  *   calibration-report      Re-read persisted sweep results from disk (runs nothing)
  *   food-limitation         diagnostic-food-limitation-v1 (pilot report §15): does the 200 cap
  *                           mask food limitation? Fixed seeds, observational only.
+ *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
+ *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
  *                           One default-baseline pilot of model 0A.2.0 at the unchanged
  *                           Phase 0A defaults (pilot report §14). Not a sweep.
@@ -52,6 +54,15 @@ import {
   createFoodFluxRecorder, FoodFluxRecorder, scarcityOnsetTick, firstTickAtLeast,
   milestoneRecords, classifyDecisionSeed, majorityOutcome, SeedClass,
 } from '../analysis/foodLimitation.js';
+import {
+  listPersistedExperimentDirectories, readPersistedRuns, reclassifyRun, summarizeCohort, countClasses,
+  ReclassifiedRun, CohortSummary,
+} from '../analysis/reclassify.js';
+import {
+  TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
+  TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
+  TRAJECTORY_HIGH_BOUNDED_LEVEL, TRAJECTORY_SAFETY_CEILING, PEAK_CAP_CLASSIFIER_VERSION,
+} from '../analysis/trajectoryOutcome.js';
 import { MOVEMENT_POLICY_LEVELS, MovementPolicyId } from '../experiments/movementPolicies.js';
 import {
   predictDrain, impliedForwardFraction, measuredDrainPerTick, largestCleanWindow,
@@ -68,6 +79,7 @@ import { runProvenance } from '../runner/provenance.js';
 import { BASELINE_MIN_VIABLE_COMPLETION_RATE } from '../analysis/outcome.js';
 import type { ExperimentSpec, ExperimentResult, ReplicateResult } from '../types.js';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const gitCommit = runProvenance().gitCommit;
 
@@ -314,6 +326,11 @@ async function main(): Promise<void> {
   // Reading persisted results consumes no seeds and runs nothing.
   if (experiment === 'calibration-report') {
     printCalibrationReport(outputDir ?? 'results/calibration-v1');
+    return;
+  }
+  if (experiment === 'reclassify-trajectory') {
+    printProvenance();
+    runTrajectoryReclassification('results', outputDir ?? `results/reclassification-${TRAJECTORY_CLASSIFIER_VERSION}`);
     return;
   }
 
@@ -686,6 +703,132 @@ function runFoodLimitation(outDir: string): void {
   }
   console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
   console.log(`Results written to: ${outDir}/`);
+}
+
+/**
+ * Persisted 20,000-tick experiments excluded from reclassification, with the
+ * reason. Everything else on a 20,000-tick horizon is in scope.
+ */
+const RECLASSIFICATION_EXCLUSIONS: Record<string, string> = {
+  'diagnostic-movement-policy':
+    'energy diagnostic (§7): food and reproduction disabled by design, so extinction is built in; not an ecological trajectory',
+};
+
+/**
+ * trajectory-outcome-v2 reclassification of persisted results (pilot report
+ * §16). Read-only on every source directory; writes only to `outDir`.
+ */
+function runTrajectoryReclassification(resultsRoot: string, outDir: string): void {
+  const pilotSeeds = loadPilotSeeds();
+  const scan: Array<{ directory: string; horizons: number[]; versions: string[]; replicates: number; inScope: boolean; note: string }> = [];
+  const inScope: ReclassifiedRun[] = [];
+
+  for (const dir of listPersistedExperimentDirectories(resultsRoot)) {
+    if (path.resolve(dir).startsWith(path.resolve(outDir))) continue;
+    const runs = readPersistedRuns(dir);
+    const horizons = [...new Set(runs.map(r => r.maxTicks))];
+    const versions = [...new Set(runs.map(r => r.simulationVersion))];
+    const top = path.relative(resultsRoot, dir).split(path.sep)[0]!;
+    const excluded = RECLASSIFICATION_EXCLUSIONS[top];
+    const onHorizon = horizons.length === 1 && horizons[0] === TRAJECTORY_HORIZON;
+    const scoped = onHorizon && !excluded;
+    scan.push({
+      directory: dir, horizons, versions, replicates: runs.length, inScope: scoped,
+      note: excluded ?? (onHorizon ? 'in scope' : `horizon ${horizons.join('/')} below ${TRAJECTORY_HORIZON}`),
+    });
+    if (scoped) for (const r of runs) inScope.push(reclassifyRun(r));
+  }
+
+  // Cohorts: one configuration run on the full pilot seed set.
+  const groups = new Map<string, ReclassifiedRun[]>();
+  for (const r of inScope) {
+    const key = `${r.source.directory}::${r.conditionId}`;
+    const g = groups.get(key); if (g) g.push(r); else groups.set(key, [r]);
+  }
+  const cohorts: CohortSummary[] = [];
+  const nonCohorts: string[] = [];
+  for (const [key, runs] of groups) {
+    const seeds = new Set(runs.map(r => r.seed));
+    if (runs.length === pilotSeeds.length && pilotSeeds.every(s => seeds.has(s))) cohorts.push(summarizeCohort(key, runs));
+    else nonCohorts.push(`${key} (${runs.length} selected seeds — not a configuration cohort)`);
+  }
+
+  // 0A.2.0 default, per seed: the baseline record, or — where the baseline run was
+  // stopped by the v1 cap — its verified uncapped continuation from
+  // diagnostic-food-limitation-v1 (same configHash, §15.9 integrity gate passed).
+  const baseline = inScope.filter(r => r.experimentId === 'multifounder-default-baseline');
+  const foodLimitation = inScope.filter(r => r.experimentId === FOOD_LIMITATION_DIAGNOSTIC_ID);
+  const flAnalysisPath = path.join(resultsRoot, FOOD_LIMITATION_DIAGNOSTIC_ID, 'food-limitation-analysis.json');
+  const flIntegrity: Array<{ seed: number; pass: boolean }> = fs.existsSync(flAnalysisPath)
+    ? (JSON.parse(fs.readFileSync(flAnalysisPath, 'utf-8')).integrity ?? []) : [];
+  const assembled = baseline.map((b) => {
+    if (b.eligible) return { ...b, assembledFrom: 'multifounder-default-baseline' };
+    const cont = foodLimitation.find(f => f.seed === b.seed && f.eligible
+      && f.source.configHash === b.source.configHash && flIntegrity.some(i => i.seed === b.seed && i.pass));
+    return cont ? { ...cont, assembledFrom: `${FOOD_LIMITATION_DIAGNOSTIC_ID} (verified continuation)` }
+      : { ...b, assembledFrom: 'multifounder-default-baseline (stopped by v1 cap; no continuation)' };
+  });
+  const assembly = baseline.length === pilotSeeds.length
+    ? summarizeCohort('0A.2.0 default: baseline + verified uncapped continuations', assembled) : null;
+
+  // Census of eligible records per model (records, not a cohort statistic).
+  const census = [...new Set(inScope.map(r => r.simulationVersion))].sort().map((v) => {
+    const recs = inScope.filter(r => r.simulationVersion === v);
+    const eligible = recs.filter(r => r.eligible);
+    const distinct = new Set(eligible.map(r => `${r.source.configHash}|${r.seed}`));
+    const ineligible: Record<string, number> = {};
+    for (const r of recs) if (!r.eligible) ineligible[r.ineligibleReason!] = (ineligible[r.ineligibleReason!] ?? 0) + 1;
+    return { simulationVersion: v, inScopeRecords: recs.length, eligibleRecords: eligible.length,
+      distinctEligibleTrajectories: distinct.size, ineligible, counts: countClasses(eligible) };
+  });
+
+  fs.mkdirSync(outDir, { recursive: true });
+  const report = {
+    classifierVersion: TRAJECTORY_CLASSIFIER_VERSION,
+    historicalClassifierVersion: PEAK_CAP_CLASSIFIER_VERSION,
+    specification: 'docs/Phase 0B Pilot Report.md §16 (precommitted in 7c60f3d)',
+    parameters: {
+      horizon: TRAJECTORY_HORIZON, windowStartExclusive: TRAJECTORY_WINDOW_START, halfBoundary: TRAJECTORY_HALF_BOUNDARY,
+      minSamplesPerHalf: TRAJECTORY_MIN_SAMPLES_PER_HALF, growthThreshold: TRAJECTORY_GROWTH_THRESHOLD,
+      shrinkThreshold: TRAJECTORY_SHRINK_THRESHOLD, highBoundedLevel: TRAJECTORY_HIGH_BOUNDED_LEVEL,
+      safetyCeiling: TRAJECTORY_SAFETY_CEILING,
+    },
+    reclassifiedWith: runProvenance(),
+    generatedAt: new Date().toISOString(),
+    scan, census, cohorts, nonCohorts, assembly, assembledRuns: assembled, runs: inScope,
+  };
+  fs.writeFileSync(path.join(outDir, 'reclassification.json'), JSON.stringify(report, null, 2));
+
+  const header = 'experimentId,conditionId,seed,simulationVersion,classifierVersion,eligible,ineligibleReason,finalTick,' +
+    'peakPopulation,finalPopulation,earlyMean,lateMean,windowMean,growthRatio,class,reason,safetyCeilingReached,' +
+    'windowMeanFood,windowBirths,windowDeaths,v1Outcome,sourceDirectory,gitCommit,gitDirty,sourceIdentity,configHash';
+  const num = (x: number | null | undefined, d = 4) => (x === null || x === undefined ? '' : Number.isInteger(x) ? String(x) : x.toFixed(d));
+  const lines = inScope.map((r) => {
+    const c = r.classification;
+    return [r.experimentId, r.conditionId, r.seed, r.simulationVersion, TRAJECTORY_CLASSIFIER_VERSION, r.eligible,
+      r.ineligibleReason ?? '', c ? c.finalTick : '', c ? c.peakPopulation : '', c ? c.finalPopulation : '',
+      num(c?.earlyMean), num(c?.lateMean), num(c?.windowMean), num(c?.growthRatio, 5), c?.outcome ?? '', c?.reason ?? '',
+      c ? c.safetyCeilingReached : '', num(c?.windowMeanFood), num(c?.windowBirths), num(c?.windowDeaths), r.v1Outcome,
+      r.source.directory, r.source.gitCommit ?? '', r.source.gitDirty ?? '', r.source.sourceIdentity ?? '', r.source.configHash,
+    ].join(',');
+  });
+  fs.writeFileSync(path.join(outDir, 'reclassification.csv'), [header, ...lines].join('\n') + '\n');
+
+  console.log(`\n${TRAJECTORY_CLASSIFIER_VERSION} reclassification of persisted results (read-only)\n`);
+  for (const s of scan) console.log(`  ${s.inScope ? 'IN ' : 'out'} ${s.directory} [${s.versions.join(',')}; ${s.replicates} runs] — ${s.note}`);
+  console.log('\nCensus of eligible records (per model; records, not a cohort statistic):');
+  for (const c of census) console.log(`  ${c.simulationVersion}: in scope ${c.inScopeRecords}, eligible ${c.eligibleRecords} (${c.distinctEligibleTrajectories} distinct), ineligible ${JSON.stringify(c.ineligible)}, classes ${JSON.stringify(c.counts)}`);
+  console.log('\nCohorts (configuration x 15 pilot seeds):');
+  for (const c of [...cohorts, ...(assembly ? [assembly] : [])]) {
+    console.log(`  ${c.cohortId} [${c.simulationVersion}] eligible ${c.eligible}/${c.size} ${JSON.stringify(c.counts)} ` +
+      (c.complete ? `boundedCompletionRate ${c.boundedCompletionRate!.toFixed(3)}` : `INCOMPLETE (missing ${c.missing}); rate not computable; possible range ${c.boundedCompletionRange.min.toFixed(3)}–${c.boundedCompletionRange.max.toFixed(3)}; gate reachable: ${c.gateReachable}`));
+  }
+  console.log('\nEligible trajectory classifications:');
+  for (const r of inScope.filter(x => x.eligible && x.classification!.outcome !== 'EXTINCTION')) {
+    const c = r.classification!;
+    console.log(`  ${r.simulationVersion} ${r.experimentId}/${r.conditionId} seed ${r.seed}: ${c.outcome} (${c.reason}) early ${c.earlyMean?.toFixed(1)} late ${c.lateMean?.toFixed(1)} window ${c.windowMean?.toFixed(1)} r ${c.growthRatio?.toFixed(4)} peak ${c.peakPopulation} final ${c.finalPopulation} [v1 ${r.v1Outcome}]`);
+  }
+  console.log(`\nWritten to ${outDir}/`);
 }
 
 main().catch((err) => {
