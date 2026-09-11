@@ -31,9 +31,12 @@ Pilot report §15. Cap, ecology and model unchanged.
 **Outcome classifier v2 (`trajectory-outcome-v2`): IMPLEMENTED; persisted runs
 reclassified read-only.** Pilot report §16 (design) and §17 (implementation and
 reclassification). Every recorded classification remains a v1 (peak ≥ 200)
-result. The complete 15-seed `0A.2.0` default baseline **cannot** be
-reclassified: 6 seeds were stopped by the v1 cap. It cannot reach the 0.70 gate
-under v2 regardless, because of its 5 extinctions.
+result.
+**Complete 15-seed `0A.2.0` default profile (v2): DONE** via
+`continuation-multifounder-default-v1` (pilot report §18). The profile is
+5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY and 0 INCONCLUSIVE.
+boundedCompletionRate is 0.533: **BASELINE GATE FAILED**, as already fixed.
+Dominant failure mode: extinction (establishment failure).
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -45,11 +48,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the v2 classifier implementation and read-only
-reclassification. `git log -1` is authoritative; recent history:
+Most recent work is the complete 15-seed `0A.2.0` default profile. `git log -1`
+is authoritative; recent history:
 
 ```text
-(HEAD)  trajectory-outcome-v2: reclassification of persisted results — see `git log -1`
+(HEAD)  continuation-multifounder-default-v1: results — see `git log -1`
+58d3cd1 continuation-multifounder-default-v1: minimal harness support for the precommitted run
+a8faf6a continuation-multifounder-default-v1 PRECOMMITMENT: complete the 15-seed 0A.2.0 profile
+3ad28cb trajectory-outcome-v2: reclassification of persisted results (read-only)
 daab8b6 trajectory-outcome-v2: implement the §16 long-horizon outcome classifier
 7c60f3d outcome classifier v2 (trajectory-outcome-v2): design only
 d3edab2 diagnostic-food-limitation-v1: results — integrity PASS, outcome INCONCLUSIVE
@@ -81,8 +87,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 116 / 116 passed   (+19: trajectoryOutcome.test.ts)
-workspace total:          295 / 295 passed
+experiment-harness tests: 120 / 120 passed   (+4: baselineContinuation.test.ts)
+workspace total:          299 / 299 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -90,7 +96,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed after the v2 reclassification: the amended hash via
+Both hashes re-confirmed after the continuation run: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
 built core, and both as live tests in the suite.
 
@@ -490,7 +496,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -550,8 +556,9 @@ implemented as specified. **The model was not modified.**
 12. **The v1 outcome classifier is too coarse.** Peak ≥ 200 does not separate
    unbounded growth from bounded high plateaus (§15.10, §16.1). v2 is now
    implemented (§17). But 72 of 169 in-scope persisted runs were stopped by the
-   v1 cap and cannot be reclassified. In particular, 6 of the 15 `0A.2.0`
-   default-baseline seeds have no trajectory past 200.
+   v1 cap and cannot be reclassified. The 6 `0A.2.0` default-baseline seeds
+   among them have since been continued and verified (§18), so the default
+   profile is complete. The `0A.1.0` cap-stopped runs remain unclassifiable.
 
 ## Scientific caution
 
@@ -600,7 +607,52 @@ modifying the model.
 
 ---
 
-## `continuation-multifounder-default-v1` — PRECOMMITMENT (not yet run)
+## `continuation-multifounder-default-v1` — RESULT: complete 15-seed profile
+
+Implemented in `58d3cd1` and run from that clean commit. All six replicates
+record `gitCommit 58d3cd1…`, `gitDirty false`,
+`sourceIdentity 0d5741e27a0d291a`, `simulationVersion 0A.2.0`. Results:
+`results/continuation-multifounder-default-v1/`. The 15-seed profile was
+written read-only into `results/reclassification-trajectory-outcome-v2/`.
+
+Validity (§18.2): **PASS for all six**. Canonical hash, population, births,
+deaths and food matched the baseline exactly at every stop tick.
+
+| Seed | Old stop | Peak | Final | Growth ratio | v2 class |
+|---:|---:|---:|---:|---:|---|
+| 115838 | 3389 | 309 | 261 | 0.9687 | HIGH_BOUNDED |
+| 155433 | 3597 | 340 | 288 | 0.9922 | HIGH_BOUNDED |
+| 163352 | 3782 | 213 | 147 | 0.9400 | BOUNDED_VIABLE |
+| 171271 | 6444 | 331 | 316 | 1.0139 | HIGH_BOUNDED |
+| 179190 | 3587 | 298 | 224 | 0.9683 | HIGH_BOUNDED |
+| 202947 | 18876 | 221 | 213 | 1.5151 | RUNAWAY (growing at horizon) |
+
+Complete 15-seed `0A.2.0` default profile:
+
+| Class | Count | Rate |
+|---|---:|---:|
+| EXTINCTION | 5 | 33.3% |
+| BOUNDED_VIABLE | 3 | 20.0% |
+| HIGH_BOUNDED | 5 | 33.3% |
+| RUNAWAY | 2 | 13.3% |
+| INCONCLUSIVE | 0 | 0.0% |
+
+- boundedCompletionRate: **0.533**. **BASELINE GATE FAILED**, as fixed before
+  the run.
+- Mean final population 172.7; median 189.
+- Mean births 2056; maximum generation depth 29.
+
+**Dominant failure mode: extinction-dominated establishment failure.** The 5
+extinct worlds never exceeded 37 organisms (10–119 births). All 10 others
+reached at least 196, and 8 of those plateaued. Both RUNAWAY worlds were slow
+risers, nowhere near the ceiling.
+
+**Next scientific question (§18.8):** is extinction in the default `0A.2.0`
+model an establishment failure of the founding cohort — decided within the
+first founder lifespan (3,000 ticks) by how much food the founding controllers
+acquire — rather than by later ecological dynamics?
+
+### Precommitment (historical record — EXECUTED)
 
 Full text: pilot report §18. Committed before any code for it exists and before
 anything runs.
@@ -855,12 +907,15 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Execute `continuation-multifounder-default-v1` exactly as precommitted in pilot
-report §18: add the minimal harness support, commit it, run the six seeds from
-the clean commit, enforce the per-seed validity check, classify with
-`trajectory-outcome-v2`, and report the complete 15-seed profile.**
+**Precommit — design only, nothing run — a read-only analysis of the persisted
+`0A.2.0` default trajectories that answers pilot report §18.8.** It would
+compare the first founder lifespan (ticks 0–3000) of the 5 extinct and the 10
+established worlds: population, births and mean energy, from the existing
+200-tick timeseries. Per-tick food intake is recorded only for the 9
+continuation seeds, not for the 5 extinct baseline runs, and the design must
+say how it handles that gap.
 
-Constraints that still hold: no simulation-core change; v2 thresholds, 200 cap
-code, food parameters and `founderGroupCount` unchanged; no calibration sweep;
-do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
-Phase 0C.
+No simulation, no model or parameter change, no founder ranking or selection.
+Constraints that still hold: v2 thresholds, 200 cap code, food parameters and
+`founderGroupCount` unchanged; no calibration sweep; do not touch
+`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.

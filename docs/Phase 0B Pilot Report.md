@@ -1162,6 +1162,8 @@ condition, it does not make an organism better at anything.
 | The 200 runaway cap masks food limitation in the default `0A.2.0` ecology | **Undetermined** | §15.10: decision seeds classified C, A, B — INCONCLUSIVE under the precommitted 2-of-3 rule |
 | Peak population ≥ 200 identifies unbounded growth | **No** | §16.1: uncapped, two v1-"runaway" worlds held level near 190 and 310 for ~16,000 ticks |
 | The `0A.2.0` default configuration can reach the ~70% gate under v2 | **No** | §17.5: the baseline cohort already has 5 extinctions; at most 4 non-bounded runs of 15 are compatible with the gate. The full v2 classification is not computable (6 seeds stopped by the v1 cap) |
+| Complete 15-seed `0A.2.0` default profile under v2 | Measured | §18.6: 5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY, 0 INCONCLUSIVE; boundedCompletionRate 0.533; gate FAILED |
+| The default `0A.2.0` failure is extinction-dominated | Yes, at pilot level | §18.7: the 5 extinct worlds never exceeded 37 organisms; all 10 others reached at least 196, and 8 of those 10 plateaued |
 
 ---
 
@@ -2165,4 +2167,100 @@ and `0A.2.0` results stay separate.
 
 ### 18.6 Results
 
-*(empty at precommitment)*
+Implementation: commit `58d3cd1`. It is harness-only: the precommitted constants
+are pinned by test, and a test shows an uncapped run reproduces the capped
+baseline's exact stop state for seed 179190. The run used that clean commit.
+All six replicates record `gitCommit 58d3cd1…`, `gitDirty false`,
+`sourceIdentity 0d5741e27a0d291a`, `simulationVersion 0A.2.0`. The
+classification records `classifierVersion trajectory-outcome-v2`.
+
+Output: `results/continuation-multifounder-default-v1/`. It contains
+`replicates.json`, the 200-tick standard timeseries, `flux-<seed>.csv` and
+`continuation-analysis.json`. The 15-seed profile was then produced read-only
+by `reclassify-trajectory` into `results/reclassification-trajectory-outcome-v2/`.
+All 299 source JSON/CSV files were byte-identical before and after that step.
+
+#### Validity check — PASS on all six seeds
+
+At each baseline stop tick, the canonical hash, population, cumulative births,
+cumulative deaths and food count all matched the persisted baseline exactly.
+No seed is INVALID.
+
+#### The six continued seeds
+
+| Seed | Old stop tick | Validity | Peak | Final | Early / late mean | Growth ratio | Window mean food | Class |
+|---:|---:|---|---:|---:|---|---:|---:|---|
+| 115838 | 3389 | PASS | 309 | 261 | 285.5 / 276.5 | 0.9687 | 56.1 | HIGH_BOUNDED |
+| 155433 | 3597 | PASS | 340 | 288 | 308.0 / 305.6 | 0.9922 | 41.5 | HIGH_BOUNDED |
+| 163352 | 3782 | PASS | 213 | 147 | 151.1 / 142.0 | 0.9400 | 43.3 | BOUNDED_VIABLE |
+| 171271 | 6444 | PASS | 331 | 316 | 302.8 / 307.0 | 1.0139 | 48.6 | HIGH_BOUNDED |
+| 179190 | 3587 | PASS | 298 | 224 | 223.2 / 216.1 | 0.9683 | 41.7 | HIGH_BOUNDED |
+| 202947 | 18876 | PASS | 221 | 213 | 128.1 / 194.1 | 1.5151 | 59.2 | RUNAWAY (growing at horizon) |
+
+All six ran the full 20,000 ticks. None came near the safety ceiling; the
+highest peak was 340.
+
+#### The complete 15-seed `0A.2.0` default profile
+
+Each seed contributes one record:
+
+- the baseline record for the 5 extinct seeds and for 210866;
+- the verified continuation from `diagnostic-food-limitation-v1` for 139595,
+  123757 and 107919;
+- this run for the six above.
+
+| Class | Count | Rate | Seeds |
+|---|---:|---:|---|
+| EXTINCTION | 5 | 33.3% | 100000, 131676, 147514, 187109, 195028 |
+| BOUNDED_VIABLE | 3 | 20.0% | 139595, 163352, 210866 |
+| HIGH_BOUNDED | 5 | 33.3% | 115838, 123757, 155433, 171271, 179190 |
+| RUNAWAY | 2 | 13.3% | 107919, 202947 |
+| INCONCLUSIVE | 0 | 0.0% | — |
+
+| Figure (15 seeds) | Value |
+|---|---:|
+| boundedCompletionRate | **0.533** (8 of 15) |
+| mean final population | 172.7 |
+| median final population | 189 |
+| mean births | 2056 |
+| maximum generation depth | 29 |
+
+Maximum generation depth uses the existing replicate field: the deepest
+generation alive at the end of the run.
+
+**BASELINE GATE FAILED.** 0.533 < 0.70. The verdict was fixed before this run
+(§17.5), and these six outcomes do not reopen it.
+
+### 18.7 Dominant failure mode
+
+**Extinction-dominated. The failure is one of establishment, not of runaway
+growth.**
+
+- **The worlds split cleanly in two.**
+  - The 5 extinct worlds never grew. Their peak populations were 28–37 against
+    a founding population of 25. They produced only 10–119 births in total
+    and died out at ticks 3000–18374.
+  - Every one of the other 10 worlds reached at least 196 organisms.
+  - No world sits in between.
+- **Of the 10 worlds that established, 8 settled into bounded plateaus.**
+  Window means ranged from 146.5 to 312.2.
+- **The 2 `RUNAWAY` worlds were only slow risers.** Both were still climbing at
+  the horizon: 107919 reached 473, and 202947 reached 213 after first touching
+  200 at tick 18876. Neither approached the safety ceiling.
+- **Extinction alone decides the gate.** At 5 of 15 it rules out 0.70 however
+  the rest behave. Without it, the established worlds would give 8 bounded out
+  of 10.
+
+This is pilot evidence from 15 seeds under one configuration. It is a
+description of the default regime. It is not a claim about adaptation,
+intelligence or selection.
+
+### 18.8 Next scientific question
+
+**Is extinction in the default `0A.2.0` model an establishment failure of the
+founding cohort — decided within the first founder lifespan (3,000 ticks) by
+how much food the founding controllers acquire — rather than by later
+ecological dynamics?**
+
+This is a question only. Nothing is implemented, no model or parameter
+changes, and no sweep is proposed.
