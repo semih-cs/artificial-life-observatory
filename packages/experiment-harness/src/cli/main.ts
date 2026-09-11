@@ -19,6 +19,7 @@
  *                           mask food limitation? Fixed seeds, observational only.
  *   baseline-continuation   continuation-multifounder-default-v1 (pilot report §18): continue the six
  *                           cap-stopped 0A.2.0 default-baseline seeds. Descriptive; gate already FAIL.
+ *   early-establishment     Read-only §19 analysis of ticks 0–3000 of the 15 0A.2.0 default worlds.
  *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
  *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
@@ -63,6 +64,9 @@ import {
 import {
   baselineContinuation, BASELINE_CONTINUATION_ID, BASELINE_CONTINUATION_CHECKPOINTS,
 } from '../experiments/baselineContinuation.js';
+import {
+  earlyRecord, groupStat, bestSingleCut, separation, EARLY_TICKS, EARLY_DOUBLING_LEVEL, EarlySample,
+} from '../analysis/earlyEstablishment.js';
 import {
   TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
   TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
@@ -331,6 +335,11 @@ async function main(): Promise<void> {
   // Reading persisted results consumes no seeds and runs nothing.
   if (experiment === 'calibration-report') {
     printCalibrationReport(outputDir ?? 'results/calibration-v1');
+    return;
+  }
+  if (experiment === 'early-establishment') {
+    printProvenance();
+    runEarlyEstablishment('results', outputDir ?? 'results/analysis-early-establishment-v1');
     return;
   }
   if (experiment === 'reclassify-trajectory') {
@@ -713,6 +722,96 @@ function runFoodLimitation(outDir: string): void {
   }
   console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
   console.log(`Results written to: ${outDir}/`);
+}
+
+/** §19.3 groups, fixed in the precommitment (e5f368c). */
+const EARLY_GROUP_E = [100000, 131676, 147514, 187109, 195028];
+const EARLY_GROUP_S = [107919, 115838, 123757, 139595, 155433, 163352, 171271, 179190, 202947, 210866];
+
+/**
+ * Early-establishment analysis (pilot report §19). Read-only: reads the persisted
+ * baseline timeseries, runs nothing, writes only to `outDir`.
+ */
+function runEarlyEstablishment(resultsRoot: string, outDir: string): void {
+  const source = path.join(resultsRoot, 'multifounder-default-baseline', 'timeseries-multifounder-default.csv');
+  const lines = fs.readFileSync(source, 'utf-8').trim().split('\n');
+  const header = lines[0]!.split(',');
+  const col = (k: string) => { const i = header.indexOf(k); if (i < 0) throw new Error(`missing column ${k}`); return i; };
+  const [cSeed, cTick, cPop, cBirths, cEnergy] = ['seed', 'tick', 'population', 'birthsCumulative', 'meanEnergy'].map(col);
+  const bySeed = new Map<number, EarlySample[]>();
+  for (const line of lines.slice(1)) {
+    const c = line.split(',');
+    const seed = Number(c[cSeed!]);
+    const sample = { tick: Number(c[cTick!]), population: Number(c[cPop!]), birthsCumulative: Number(c[cBirths!]), meanEnergy: Number(c[cEnergy!]) };
+    const b = bySeed.get(seed); if (b) b.push(sample); else bySeed.set(seed, [sample]);
+  }
+
+  // Cross-check the fixed groups against the persisted v2 profile, when present.
+  const reclassPath = path.join(resultsRoot, `reclassification-${TRAJECTORY_CLASSIFIER_VERSION}`, 'reclassification.json');
+  if (fs.existsSync(reclassPath)) {
+    const assembled = JSON.parse(fs.readFileSync(reclassPath, 'utf-8')).assembledRuns as Array<{ seed: number; classification: { outcome: string } | null }>;
+    for (const a of assembled) {
+      const inE = EARLY_GROUP_E.includes(a.seed);
+      const extinct = a.classification?.outcome === 'EXTINCTION';
+      if (!a.classification || inE !== extinct) throw new Error(`group assignment disagrees with the v2 profile for seed ${a.seed}`);
+    }
+  }
+
+  const records = [...EARLY_GROUP_E, ...EARLY_GROUP_S].map(seed => ({
+    group: EARLY_GROUP_E.includes(seed) ? 'E' : 'S', ...earlyRecord(seed, bySeed.get(seed) ?? []),
+  }));
+  const E = records.filter(r => r.group === 'E');
+  const S = records.filter(r => r.group === 'S');
+
+  const fields = [
+    { name: 'population', get: (r: typeof records[number], t: number) => r.population[t]! as number | null },
+    { name: 'cumulativeBirths', get: (r: typeof records[number], t: number) => r.births[t]! as number | null },
+    { name: 'meanEnergy', get: (r: typeof records[number], t: number) => r.meanEnergy[t] ?? null },
+  ];
+  const comparison = fields.flatMap(f => EARLY_TICKS.map(t => ({
+    metric: f.name, tick: t,
+    extinct: groupStat(E.map(r => f.get(r, t))),
+    established: groupStat(S.map(r => f.get(r, t))),
+    bestCut: bestSingleCut(E.map(r => f.get(r, t)), S.map(r => f.get(r, t))),
+  })));
+  const descriptive = [
+    { metric: 'minPopulation0to3000', e: E.map(r => r.minPopulation), s: S.map(r => r.minPopulation) },
+    { metric: 'maxPopulation0to3000', e: E.map(r => r.maxPopulation), s: S.map(r => r.maxPopulation) },
+    { metric: 'firstTickAtDoubling', e: E.map(r => r.firstTickAtDoubling), s: S.map(r => r.firstTickAtDoubling) },
+    { metric: 'firstTickWithBirth', e: E.map(r => r.firstTickWithBirth), s: S.map(r => r.firstTickWithBirth) },
+  ].map(d => ({ metric: d.metric, extinct: groupStat(d.e), established: groupStat(d.s),
+    extinctNotReached: d.e.filter(x => x === null).length, establishedNotReached: d.s.filter(x => x === null).length,
+    bestCut: bestSingleCut(d.e, d.s) }));
+  const decisionCuts = comparison.filter(c => c.tick === 3000);
+  const verdict = separation(decisionCuts.map(c => c.bestCut));
+
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'early-establishment.json'), JSON.stringify({
+    analysis: 'early-establishment-v1', specification: 'docs/Phase 0B Pilot Report.md §19 (precommitted in e5f368c)',
+    source, analysedWith: runProvenance(), generatedAt: new Date().toISOString(),
+    doublingLevel: EARLY_DOUBLING_LEVEL, groups: { E: EARLY_GROUP_E, S: EARLY_GROUP_S },
+    records, comparison, descriptive, decisionFields: decisionCuts.map(c => ({ metric: c.metric, bestCut: c.bestCut })), separation: verdict,
+    note: 'Observational only. Thresholds are not biological rules, fitness scores or selection criteria. Food intake is not available for group E.',
+  }, null, 2));
+
+  console.log('\nseed   grp | pop@1000 2000 3000 | births@1000 2000 3000 | energy@1000 2000 3000 | min max | t>=50 | first birth');
+  for (const r of records) {
+    const e = (t: number) => (r.meanEnergy[t] === null ? 'n/a' : r.meanEnergy[t]!.toFixed(1)).padStart(5);
+    console.log(`${String(r.seed).padEnd(6)} ${r.group}   | ${String(r.population[1000]).padStart(4)} ${String(r.population[2000]).padStart(4)} ${String(r.population[3000]).padStart(4)} | ` +
+      `${String(r.births[1000]).padStart(4)} ${String(r.births[2000]).padStart(4)} ${String(r.births[3000]).padStart(4)} | ${e(1000)} ${e(2000)} ${e(3000)} | ` +
+      `${String(r.minPopulation).padStart(3)} ${String(r.maxPopulation).padStart(3)} | ${String(r.firstTickAtDoubling ?? '-').padStart(5)} | ${r.firstTickWithBirth ?? '-'}`);
+  }
+  const fmt = (g: { n: number; median: number | null; min: number | null; max: number | null }) =>
+    g.median === null ? 'n/a' : `${Number(g.median.toFixed(1))} [${Number(g.min!.toFixed(1))}–${Number(g.max!.toFixed(1))}] (n=${g.n})`;
+  console.log('\nmetric           tick | extinct median [range]      | established median [range]   | best cut misclassified');
+  for (const c of [...comparison]) {
+    console.log(`${c.metric.padEnd(16)} ${String(c.tick).padStart(4)} | ${fmt(c.extinct).padEnd(27)} | ${fmt(c.established).padEnd(28)} | ${c.bestCut.misclassified}/${c.bestCut.n} (t=${c.bestCut.threshold}, ${c.bestCut.direction}, overlap=${c.bestCut.rangesOverlap})`);
+  }
+  for (const d of descriptive) {
+    console.log(`${d.metric.padEnd(22)} | E ${fmt(d.extinct)} not-reached ${d.extinctNotReached} | S ${fmt(d.established)} not-reached ${d.establishedNotReached} | cut ${d.bestCut.misclassified}/${d.bestCut.n}`);
+  }
+  console.log(`\n§19.5 separation by tick 3000: ${verdict}`);
+  console.log(`Written to ${outDir}/`);
 }
 
 /**

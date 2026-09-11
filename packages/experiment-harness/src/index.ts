@@ -18,6 +18,7 @@ export * from './analysis/founderDiversity.js';
 export * from './analysis/foodLimitation.js';
 export * from './analysis/trajectoryOutcome.js';
 export * from './analysis/reclassify.js';
+export * from './analysis/earlyEstablishment.js';
 export * from './probes/probeSet.js';
 export * from './probes/evaluate.js';
 export * from './probes/fingerprint.js';
