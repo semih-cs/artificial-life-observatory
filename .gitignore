@@ -7,3 +7,6 @@ results/
 
 # vitest writes a transient config artifact next to vitest.config.ts
 *.timestamp-*.mjs
+
+# world runner data directories (npm run world -- --dir worlds/<name>)
+worlds/

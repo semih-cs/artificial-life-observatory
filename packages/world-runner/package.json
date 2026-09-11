@@ -1,0 +1,24 @@
+{
+  "name": "@alo/world-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:deps": "tsc -p ../simulation-core/tsconfig.json && tsc -p ../persistence/tsconfig.json",
+    "test": "npm run build:deps && tsc -p tsconfig.json && vitest run",
+    "test:watch": "vitest",
+    "world": "npm run build:deps && tsc -p tsconfig.json && node dist/cli.js"
+  },
+  "dependencies": {
+    "@alo/persistence": "0.1.0",
+    "@alo/simulation-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

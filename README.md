@@ -1,19 +1,21 @@
 # Artificial Life Observatory
 
 A headless, deterministic artificial-life simulation core, the experiment
-harness that studied it, and — from Phase 0C — exact world persistence.
+harness that studied it, and — from Phase 0C — exact world persistence and a
+long-running world process.
 Organisms with a five-gene morphology and a fixed-topology neural controller
 live, move, eat, reproduce, mutate and die in a bounded 2D world with a static
 seeded fertility field. No UI, no server and no database yet; those are later
 phases.
 
-Three workspace packages:
+Four workspace packages:
 
 | Package | Phase | Purpose |
 |---|---|---|
 | `packages/simulation-core` | 0A | the deterministic headless biological simulation |
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
 | `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly; a snapshot store with retention and fallback recovery |
+| `packages/world-runner` | 0C | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly |
 
 ## Status
 
@@ -22,7 +24,7 @@ Three workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| **Phase 0C — persistent canonical world** | **active — the current phase.** Done: slice 1 (exact save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots). Next: the persistent world process |
+| **Phase 0C — persistent canonical world** | **active — the current phase.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine) and the persistent world runner. Next: a read-only bridge to the Observatory |
 | Phase 0D — Observatory UI | next, after 0C |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -102,6 +104,9 @@ Consequences that follow from this, and that you should not "fix":
     ├── persistence/                 Phase 0C — snapshot format v1, atomic save/load, snapshot store
     │   ├── src/                     snapshot.ts, file.ts, store.ts, errors.ts, stableStringify.ts
     │   └── tests/                   continuation, corruption, file, snapshot, store, storeRecovery (+ fixtures/)
+    ├── world-runner/                Phase 0C — the persistent world process and its CLI
+    │   ├── src/                     runner.ts (WorldRunner), cli.ts
+    │   └── tests/                   runner (in process), process (separate OS processes, signals)
     └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
@@ -208,8 +213,8 @@ Requires Node.js 20+ (developed against Node 22).
 
 ```bash
 npm install     # installs the workspace (reproducible from package-lock.json)
-npm test        # runs the vitest suite in all three packages
-npm run build   # builds simulation-core first, then the harness and persistence
+npm test        # runs the vitest suite in all four packages
+npm run build   # builds simulation-core, then the harness and persistence, then the world runner
 ```
 
 Headless run:
@@ -393,10 +398,94 @@ with 9,000 corrupt, recover 8,000, quarantine 9,000, resume, save 9,000 and
 
 **Current limitations.**
 
-- One writer per folder. Saves are explicit calls: there is no world process
-  or save schedule yet.
+- One writer per folder. The world runner (below) is that writer.
 - No database, events or API.
 - The checksums detect corruption, not deliberate tampering.
+
+## Running a persistent world (Phase 0C world runner)
+
+`packages/world-runner` runs one canonical world as a long-lived process. It
+stores the world in a snapshot-store folder (above). It uses the unchanged
+simulation core: every tick is exactly `stepWorld(world, config)`.
+
+**Create a world** — only with the explicit `--new` flag and a seed:
+
+```bash
+npm run world -- --dir worlds/demo --new --seed 20260910
+```
+
+This bootstraps the world from the default canonical config (`0A.2.0`) and
+saves tick 0. That save records the world identity. It then runs until
+stopped. `--new` is refused if the folder already holds a world — healthy or
+broken (`WORLD_EXISTS`).
+
+**Run it again later** — recovery needs only the folder:
+
+```bash
+npm run world -- --dir worlds/demo
+```
+
+Recovery loads the newest valid snapshot and quarantines any corrupt newer
+ones, then continues. The seed and config come from the stored world, so
+`--seed` is refused here. If no valid snapshot exists, startup fails with a
+clear error (`NO_VALID_SNAPSHOT`). **A new world is never created
+silently.**
+
+Options:
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--dir <path>` | world folder (relative to where you run npm) | required |
+| `--new --seed <uint32>` | create a fresh world | — |
+| `--save-every <ticks>` | snapshot cadence in simulation ticks | 1000 |
+| `--keep <n>` | snapshots retained | 5 |
+| `--until-tick <tick>` | stop, save and exit at this tick | run until stopped |
+| `--status-every <ticks>` | status line cadence | `--save-every` |
+| `--json` | status as JSON lines (`started`, `status`, `stopping`, `stopped`) | off |
+
+- **Snapshot cadence.** A snapshot is saved whenever the tick is a multiple
+  of `--save-every`. The cadence depends only on simulation ticks, so it is
+  identical after a restart. Saving never changes the trajectory: saving
+  every tick, every 37 ticks, or never gives the same world.
+- **Graceful shutdown.** Ctrl-C (SIGINT) or SIGTERM stops after the current
+  tick and saves that tick if it is not already saved. The process exits 0
+  only after the save completes. A second signal exits immediately; the last
+  saved snapshot is still intact.
+- **Crash recovery.** A hard kill loses only the ticks since the last save.
+  The next start recovers the newest valid snapshot and continues from it.
+  Unsaved ticks are not reconstructed; the future from the recovered tick is
+  the canonical one.
+- **Status.** Each line shows tick, population, food, the last snapshot tick,
+  `simulationVersion`, `configHash`, seed, and whether the world was created
+  fresh or recovered. The CLI adds observational ticks/second; wall-clock
+  time never reaches the simulation.
+- **From code.** `WorldRunner.create(dir, config)`, `WorldRunner.open(dir)`,
+  then `runner.run({ untilTick })` or `runUntil` / `close`, plus `stop()` and
+  `status()`.
+
+**Proven by test.**
+
+- 0 → 3,000, restart, → 7,000, restart, → 10,000 equals the uninterrupted
+  run, `b95a0b4ef7dd8449`.
+- Separate OS processes: A creates the world and runs to 4,321; B recovers
+  and runs to 10,000, again `b95a0b4ef7dd8449`.
+- SIGINT and SIGTERM stops save the stop tick and continue exactly.
+- After a SIGKILL between saves, the world recovers from the last scheduled
+  save and still reaches `b95a0b4ef7dd8449`.
+- A corrupt newest snapshot is quarantined at startup.
+- An all-corrupt world refuses to start.
+
+**Throughput** (observational, seed 20260910, 0 → 10,000 ticks, one core):
+
+| Run | Time | Overhead vs direct |
+|---|---:|---:|
+| direct simulation | 8.7 s (≈ 1,150 ticks/s) | — |
+| runner, saving every 1,000 ticks | 9.2 s | ≈ 5 % |
+| runner, saving every 100 ticks | 11.8 s | ≈ 36 % |
+
+A snapshot at tick 10,000 (population 407) is about 0.9 MB.
+
+## Running Phase 0B experiments
 
 Phase 0B experiments (see `docs/Phase 0B Experiment Guide.md` for what each one
 means and how to read its output):
@@ -655,6 +744,13 @@ npm run test:watch --workspace=packages/simulation-core
 | `store.test.ts`          | file naming, retention, fallback past corrupt snapshots, all-corrupt and empty stores, world identity, duplicate and out-of-order ticks, temp-file leftovers, deterministic read-only recovery, quarantine (re-validation, missing files, collisions, refused reports, reruns, interrupted moves) |
 | `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449`; fallback → quarantine → resume → save → recover selects 10,000 at `b95a0b4ef7dd8449` |
 
+`packages/world-runner/tests`:
+
+| File               | Covers                                                                    |
+|--------------------|---------------------------------------------------------------------------|
+| `runner.test.ts`   | fresh launch, controlled run vs direct simulation, restart off the save cadence, golden multi-restart 0 → 3,000 → 7,000 → 10,000, corrupt newest snapshot (recover, quarantine, continue), all-corrupt / missing / empty refusal, create-over-existing refusal, save purity, graceful stop through `run()`, option validation |
+| `process.test.ts`  | separate OS processes through the built CLI: create → exit → recover → 10,000 at `b95a0b4ef7dd8449`; SIGINT and SIGTERM graceful stop; SIGKILL between saves; CLI refusals (`--new` over a world, no valid snapshot, bad arguments); corrupt snapshot quarantined at startup |
+
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
 actually is.
@@ -691,7 +787,7 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots. Next: the persistent world process |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`). Next: a read-only observer bridge |
 | 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**

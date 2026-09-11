@@ -17,7 +17,7 @@
 | **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
-| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots). The snapshot store is complete. **Next: the persistent world process** |
+| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`). **Next: a read-only observer bridge to Phase 0D** |
 | **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
 
 **Frozen v1 biological model:**
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0C slice 3:
+the Phase 0C world runner:
 
 ```text
-(HEAD)  Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery — see `git log -1`
+(HEAD)  Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop) — see `git log -1`
+3b040ac Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery
 c7dcd11 Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery
 bdcc156 Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume
 5633ffd Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked
@@ -120,15 +121,16 @@ experiment-harness tests: 138 / 138 passed
 persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuation, golden resume, separate process;
                                              slice 2: 28 — snapshot store 25, fallback-recovery regression 3;
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
-workspace total:          387 / 387 passed
-workspace build:          PASS (simulation-core, then experiment-harness and persistence)
+world-runner tests:        21 / 21  passed   (in process 13; separate OS processes and signals 8)
+workspace total:          408 / 408 passed
+workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Phase 0C slice 3 checkpoint (and at slices 1 and 2 before it):
+Re-confirmed at the Phase 0C world-runner checkpoint (and at slices 1–3 before it):
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -531,8 +533,8 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
-| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; four packages, the world-runner section (create, run/recover, cadence, graceful shutdown, crash recovery, no silent new world, throughput), the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete; world-runner invariants (runner never changes the simulation, no silent new world, restart equivalence), package list and runner regression |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 
 ---
@@ -1504,36 +1506,128 @@ A mutation check was done during implementation. Removing re-validation
 fails 2 tests. Replacing the no-overwrite link with a copy that overwrites
 fails 2.
 
-**Phase 0C remaining** (Spec §17.60, §14.35):
+The snapshot store is complete. What came next — the world process — is the
+section below.
 
-- **the persistent world process — next** (§14.36, §19.19–§19.20,
-  §19.33–§19.34);
-- operational and biological event records (§19.35–§19.37);
-- PostgreSQL historical storage;
-- soak tests.
+## Phase 0C world runner — RESULT: DONE (persistent world process)
 
-The snapshot store is complete. Do not open another persistence sub-project
-before the world process exists.
+No change to simulation-core, biology, `simulationVersion`, snapshot format
+v1 or the store. No database, server, API or UI.
+
+**Package:** `packages/world-runner` (`@alo/world-runner`). It depends on
+`simulation-core` and `persistence`.
+
+**`WorldRunner` (`src/runner.ts`):**
+
+- `WorldRunner.create(dir, config, { saveEvery, keep })` — the explicit
+  fresh launch. It refuses a folder that already holds a world — identity,
+  snapshots or `quarantine/`, healthy or broken — with `WORLD_EXISTS`. It
+  bootstraps from the config and saves tick 0, which records the world
+  identity. The config lives in every snapshot, so recovery never needs the
+  seed again.
+- `WorldRunner.open(dir, …)` — `recoverLatestValid`, then
+  `quarantineSkippedSnapshots` when anything was skipped, then continue. Any
+  recovery failure propagates. It never creates a world.
+- `step()` = `stepWorld` plus a save when `tick % saveEvery === 0` (default
+  1000). `runUntil(t)`, `saveNow()`, and `close()` (saves the current tick
+  if unsaved).
+- `async run({ untilTick, statusEvery, onStatus, batchTicks })` yields to
+  the event loop every 100 ticks. It stops after the current tick on
+  `stop()` and always saves before resolving.
+- `status()` → `{ dir, origin, tick, population, food, snapshotTick,
+  simulationVersion, configHash, rootSeed, saveEvery, recoveredFromTick,
+  stopRequested }`. It is plain data with no timestamps.
+
+**CLI (`src/cli.ts`, root `npm run world --`):**
+
+- Options: `--dir`, `--new --seed`, `--save-every`, `--keep`, `--until-tick`,
+  `--status-every`, `--json`.
+- `--new` requires `--seed`, and `--seed` without `--new` is refused. The
+  folder resolves from npm's `INIT_CWD`.
+- SIGINT/SIGTERM trigger a graceful stop: the current tick is saved and the
+  process exits 0. A second signal exits 130.
+- Exit codes: 1 for a refused start (with "no world was created or
+  modified"), 2 for bad arguments.
+- Ticks/second appear in status lines only; wall-clock time never reaches the
+  simulation.
+
+Also: root `build` builds world-runner last, the lockfile gains the
+workspace, `worlds/` is gitignored, and the `node_modules/@alo` links for
+persistence and world-runner were added locally.
+
+**Proof** (21 tests):
+
+| Required | Test | Result |
+|---|---|---|
+| 1 fresh launch | `runner.test.ts` | config, `0A.2.0`, identity file, tick-0 snapshot, cadence 0/100/200, final save at 250, status fields |
+| 2 controlled run | `runner.test.ts` | seed 11 to 2,000, saving every 250: hash = direct simulation; newest 5 kept |
+| 3 restart/resume | `runner.test.ts` | stop at 1,234 (off cadence, saved on close) → reopen → 2,000 = direct |
+| 4 multi-restart | `runner.test.ts` | 0 → 3,000 → 7,000 → 10,000 across three runners = **`b95a0b4ef7dd8449`** |
+| 5 corrupt newest | `runner.test.ts`, `process.test.ts` | recover 900, quarantine 1,000 (byte-identical), continue, saves resume through 1,000 to 1,500 = direct; the next open skips nothing |
+| 6 all corrupt | `runner.test.ts`, `process.test.ts` | `NO_VALID_SNAPSHOT`; directory byte-identical; a missing directory is not created |
+| 7 existing dir + new | `runner.test.ts`, `process.test.ts` | `WORLD_EXISTS` for healthy, broken, identity-only and quarantine-only folders; unchanged |
+| 8 save purity | `runner.test.ts` | save every tick, every 37, or never → same hash = direct; config not modified |
+| 9 separate process | `process.test.ts` | CLI process A creates and runs to 4,321 and exits; process B recovers and runs to 10,000 = **`b95a0b4ef7dd8449`** |
+| graceful stop | `runner.test.ts`, `process.test.ts` | `run()` + `stop()` saves the stop tick; SIGINT (golden, continues to `b95a0b4ef7dd8449`) and SIGTERM exit 0 with the stop tick saved |
+| hard kill | `process.test.ts` | SIGKILL between saves: the newest snapshot is a scheduled save; restart recovers it and reaches `b95a0b4ef7dd8449` |
+
+A mutation check was done during implementation. Dropping the final save
+and the `WORLD_EXISTS` check fails 6 tests.
+
+**Throughput** (observational, seed 20260910, 0 → 10,000 ticks, on this
+session's VM):
+
+| Run | Time |
+|---|---:|
+| direct | 8.7 s (≈ 1,150 ticks/s) |
+| runner, saving every 1,000 ticks | 9.2 s (≈ 5 % overhead) |
+| runner, saving every 100 ticks | 11.8 s |
+
+A tick-10,000 snapshot is ≈ 0.9 MB. No optimisation was needed.
+
+## Phase 0C remaining — only what Phase 0D genuinely needs
+
+Spec §14.45–§14.50 define Phase 0D as a read-only live observatory:
+
+- React, PixiJS and WebSocket;
+- a server that periodically publishes observer state, with simulation
+  ≈ 10 Hz and network 5–10 Hz (§14.47);
+- organism inspection (§14.49);
+- no mutation commands (§14.50 [LOCKED]).
+
+What that needs from the backend:
+
+1. **A read-only observer interface on the running world.** This is the next
+   step.
+2. **Optional tick pacing** for a watchable world (≈ 10 Hz, §14.47). The
+   runner currently runs as fast as possible. Pacing only schedules when
+   ticks run and never reaches world state.
+
+Not required before Phase 0D:
+
+- PostgreSQL historical storage, event records and soak tests (§14.35). The
+  spec does not require a database to execute or observe the world (§14.37:
+  continuity is snapshots). Births and deaths for a recent-event feed can
+  come from `stepWorld` telemetry, which is optional in §14.46.
+- Cloud deployment.
 
 ## NEXT EXACT STEP
 
-**Phase 0C — the persistent world process.** Implement a headless world
-process in `packages/persistence` (or a thin package on top of it). It uses
-only the existing store API.
+**Phase 0D bridge — a read-only local observer stream from the world
+runner.**
 
-- **Launch or recover.**
-  - A new world starts from an explicit immutable launch config written with
-    the store identity.
-  - An existing store is recovered with `recoverLatestValid`, then
-    `quarantineSkippedSnapshots`.
-  - It never silently starts fresh when a store exists.
-- **Run.** The tick loop runs continuously and saves through `saveToStore`
-  every N ticks.
-- **Stop cleanly.** A final save on stop.
-- **Restart and continue exactly.** Proof: run, stop (and also kill
-  mid-run), restart in a new process, recover and continue. The canonical
-  hash must equal the uninterrupted run — `b95a0b4ef7dd8449` at 10,000 on
-  seed 20260910.
+1. Add a pure projection `toObserverFrame(world, status)` to
+   `packages/world-runner`. It returns tick, population, the world size, the
+   food positions, and per organism: id, x, y, heading, size, energy, age,
+   generation depth, `parentId` and `lineageRootId`.
+2. Add an opt-in `--observe <port>` to the runner. It serves the latest frame
+   read-only over a minimal local WebSocket (or HTTP) at ≤ 10 Hz, independent
+   of the tick rate. There are no mutation endpoints.
+3. Add an optional `--ticks-per-second` pace (§14.47), which schedules ticks
+   only.
 
-No change to simulation-core or biology. No database, server or UI in this
-step.
+Prove it with a test: the canonical hash with observers connected and
+pacing on equals the hash without them (`b95a0b4ef7dd8449` at 10,000).
+
+No React or PixiJS in this step. No database or cloud. No change to
+simulation-core or biology.

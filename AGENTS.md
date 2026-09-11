@@ -160,8 +160,10 @@ workspace package that consumes `simulation-core`, never inside it.
 **Slices 1–3 are done:** `packages/persistence` — snapshot format v1
 (slice 1), the folder-based snapshot store (slice 2) and quarantine of corrupt
 snapshots (slice 3). The snapshot store is complete; do not open another
-persistence sub-project. The next step is the persistent world process. The
-following persistence invariants are proven by test and must hold from now on:
+persistence sub-project. The persistent world process is also done:
+`packages/world-runner`. The next step is a read-only bridge to the
+Observatory. The following persistence and runner invariants are proven by
+test and must hold from now on:
 
 - **Exact continuation.** A snapshot restores to a world that continues bit for
   bit: continuous run == save → load → resume. The continuation and golden-resume
@@ -192,6 +194,16 @@ following persistence invariants are proven by test and must hold from now on:
   through `quarantineSkippedSnapshots`. It re-validates every file first,
   never moves a valid file, never overwrites anything in `quarantine/`, and
   never deletes evidence.
+- **The runner never changes the simulation.** Each tick is exactly
+  `stepWorld(world, config)`. Saves only read the world, and the save cadence
+  is a multiple of simulation ticks, not wall-clock time. Wall-clock time
+  may pace or report the loop, but it never reaches world state.
+- **No silent new world.** A world is created only by an explicit
+  `WorldRunner.create` / `--new`, never over a folder that already holds a
+  world (even a broken one). `WorldRunner.open` / recovery never creates one.
+- **Restart equivalence.** Stop/restart at any tick continues exactly. The
+  golden multi-restart and separate-process tests in
+  `packages/world-runner/tests` are live regressions.
 
 ### Demo seeds (product only)
 
@@ -333,6 +345,8 @@ Current npm workspace:
 - `packages/simulation-core`
 - `packages/experiment-harness`
 - `packages/persistence` (Phase 0C) — depends only on `simulation-core`
+- `packages/world-runner` (Phase 0C) — depends on `simulation-core` and `persistence`;
+  the long-running world process and its CLI (`npm run world`)
 
 Keep experiment-specific code out of `simulation-core`.
 
@@ -385,6 +399,11 @@ It covers the §18.60 continuation, the golden resume to `b95a0b4ef7dd8449`, a
 separate-process restore, corrupt-snapshot rejection, and the snapshot store,
 including fallback recovery that resumes to `b95a0b4ef7dd8449`. It takes about
 75–100 s.
+
+World-runner regression, part of `npm test`: `npm test -w packages/world-runner`.
+It covers the golden multi-restart and a separate-process restart, both to
+`b95a0b4ef7dd8449`, plus SIGINT/SIGTERM/SIGKILL and the no-silent-new-world
+refusals. It takes about 40 s.
 
 Phase 0B CLI:
 
