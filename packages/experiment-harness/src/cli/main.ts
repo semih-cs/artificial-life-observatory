@@ -21,6 +21,7 @@
  *                           cap-stopped 0A.2.0 default-baseline seeds. Descriptive; gate already FAIL.
  *   early-establishment     Read-only §19 analysis of ticks 0–3000 of the 15 0A.2.0 default worlds.
  *   stalled-cohort          Read-only §20 comparison of stalled worlds that recover vs die (ticks 4000–9000).
+ *   reproduction-participation  Read-only §21: lifetime participation vs births per reproducer, stalled cohort.
  *   reclassify-trajectory   Reclassify PERSISTED 20,000-tick runs under trajectory-outcome-v2
  *                           (pilot report §16). Read-only: runs nothing, consumes no seeds.
  *   multifounder-default-baseline
@@ -71,6 +72,9 @@ import {
 import {
   STALLED_CHECKPOINTS, STALLED_GROUP_E, STALLED_GROUP_E_EXCLUDED, STALLED_GROUP_L, stalledStrength, persistsFrom,
 } from '../analysis/stalledCohort.js';
+import {
+  PARTICIPATION_CHECKPOINTS, deriveReproduction, metricDiffers, mechanismCall,
+} from '../analysis/reproductionParticipation.js';
 import {
   TRAJECTORY_CLASSIFIER_VERSION, TRAJECTORY_HORIZON, TRAJECTORY_WINDOW_START, TRAJECTORY_HALF_BOUNDARY,
   TRAJECTORY_MIN_SAMPLES_PER_HALF, TRAJECTORY_GROWTH_THRESHOLD, TRAJECTORY_SHRINK_THRESHOLD,
@@ -339,6 +343,11 @@ async function main(): Promise<void> {
   // Reading persisted results consumes no seeds and runs nothing.
   if (experiment === 'calibration-report') {
     printCalibrationReport(outputDir ?? 'results/calibration-v1');
+    return;
+  }
+  if (experiment === 'reproduction-participation') {
+    printProvenance();
+    runReproductionParticipation('results', outputDir ?? 'results/analysis-reproduction-participation-v1');
     return;
   }
   if (experiment === 'stalled-cohort') {
@@ -731,6 +740,78 @@ function runFoodLimitation(outDir: string): void {
   }
   console.log(`\nOutcome (>= 2 of 3 decision seeds): ${majority.outcome} (${majority.support}/3)`);
   console.log(`Results written to: ${outDir}/`);
+}
+
+/**
+ * Reproduction participation analysis (pilot report §21). Read-only: reads the
+ * persisted baseline timeseries, runs nothing, writes only to `outDir`.
+ */
+function runReproductionParticipation(resultsRoot: string, outDir: string): void {
+  const source = path.join(resultsRoot, 'multifounder-default-baseline', 'timeseries-multifounder-default.csv');
+  const lines = fs.readFileSync(source, 'utf-8').trim().split('\n');
+  const header = lines[0]!.split(',');
+  const col = (k: string) => { const i = header.indexOf(k); if (i < 0) throw new Error(`missing column ${k}`); return i; };
+  const [cSeed, cTick, cPop, cBirths, cFrac] = ['seed', 'tick', 'population', 'birthsCumulative', 'fractionEverReproduced'].map(col);
+  const rows = new Map<string, { population: number; births: number; fraction: number }>();
+  for (const line of lines.slice(1)) {
+    const c = line.split(',');
+    rows.set(`${c[cSeed!]}|${c[cTick!]}`, { population: Number(c[cPop!]), births: Number(c[cBirths!]), fraction: Number(c[cFrac!]) });
+  }
+  const derived = (seed: number, tick: number) => {
+    const r = rows.get(`${seed}|${tick}`);
+    if (!r) throw new Error(`seed ${seed}: no persisted sample at tick ${tick}`);
+    if (r.population <= 0) throw new Error(`seed ${seed}: population 0 at tick ${tick} inside the §21 window`);
+    return deriveReproduction(r.fraction, r.births);
+  };
+
+  const metrics = [
+    { name: 'M1 fractionEverReproduced', get: (s: number, t: number) => derived(s, t).fraction },
+    { name: 'M2 cumulativeBirths', get: (s: number, t: number) => derived(s, t).births },
+    { name: 'M3 birthsPerReproducer', get: (s: number, t: number) => derived(s, t).birthsPerReproducer },
+  ];
+  const comparison = metrics.map((m) => {
+    const byCheckpoint = PARTICIPATION_CHECKPOINTS.map((tick) => {
+      const e = STALLED_GROUP_E.map(s => m.get(s, tick));
+      const l = STALLED_GROUP_L.map(s => m.get(s, tick));
+      return { tick, extinct: groupStat(e), lateEstablishers: groupStat(l), bestCut: bestSingleCut(e, l) };
+    });
+    return { metric: m.name, byCheckpoint, differs: metricDiffers(byCheckpoint.map(b => b.bestCut)) };
+  });
+  const call = mechanismCall(comparison[0]!.differs, comparison[2]!.differs);
+  const earliestClear = PARTICIPATION_CHECKPOINTS
+    .map((tick, k) => ({ tick, metrics: comparison.filter(c => c.byCheckpoint[k]!.bestCut.misclassified === 0).map(c => c.metric) }))
+    .find(x => x.metrics.length > 0) ?? null;
+  const perSeed = [...STALLED_GROUP_E, ...STALLED_GROUP_L].map(seed => ({
+    seed, group: (STALLED_GROUP_L as readonly number[]).includes(seed) ? 'L' : 'E*',
+    at: PARTICIPATION_CHECKPOINTS.map(t => ({ tick: t, ...derived(seed, t) })),
+  }));
+
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'reproduction-participation.json'), JSON.stringify({
+    analysis: 'reproduction-participation-v1', specification: 'docs/Phase 0B Pilot Report.md §21 (precommitted in 18fe6e3)',
+    source, analysedWith: runProvenance(), generatedAt: new Date().toISOString(),
+    groups: { Estar: STALLED_GROUP_E, L: STALLED_GROUP_L, excluded: STALLED_GROUP_E_EXCLUDED },
+    checkpoints: PARTICIPATION_CHECKPOINTS, comparison, earliestClear, mechanismCall: call, perSeed,
+    limitations: [
+      'fractionEverReproduced and births-per-reproducer are lifetime, founder-inclusive and include the dead',
+      'descendant-only participation after tick 3000 is not derivable from persisted aggregates',
+      'f x I = B / (25 + B): the two metrics are coupled; growth biases both against L',
+      'n = 4 vs n = 3, pilot seeds only',
+    ],
+  }, null, 2));
+
+  const f = (v: number | null, d = 3) => (v === null ? '—' : Number.isInteger(v) ? String(v) : v.toFixed(d));
+  console.log('\nPer seed: f / births / reproducers R / births per reproducer I');
+  for (const p of perSeed) console.log(`  ${p.seed} ${p.group}: ` + p.at.map(a => `${a.tick}: ${f(a.fraction)}/${a.births}/${a.reproducers}/${f(a.birthsPerReproducer, 2)}`).join('  '));
+  const g = (s: { median: number | null; min: number | null; max: number | null }) => `${f(s.median)} [${f(s.min)}–${f(s.max)}]`;
+  console.log('\nmetric                     tick | E* (n=4) median [range]  | L (n=3) median [range]   | misclassified /7');
+  for (const c of comparison) for (const b of c.byCheckpoint) {
+    console.log(`${c.metric.padEnd(26)} ${String(b.tick).padStart(4)} | ${g(b.extinct).padEnd(24)} | ${g(b.lateEstablishers).padEnd(24)} | ${b.bestCut.misclassified} (${b.bestCut.direction})`);
+  }
+  for (const c of comparison) console.log(`${c.metric}: differs=${c.differs.differs} from=${c.differs.from} direction=${c.differs.direction}`);
+  console.log(`earliest CLEAR: ${earliestClear ? earliestClear.tick + ' ' + earliestClear.metrics.join(', ') : 'none'}`);
+  console.log(`mechanism call (§21.5): ${call}`);
+  console.log(`Written to ${outDir}/`);
 }
 
 /**

@@ -48,6 +48,7 @@ npm run experiment -- calibration-report     # re-read persisted sweep results; 
 npm run experiment -- reclassify-trajectory  # trajectory-outcome-v2 over persisted 20,000-tick runs; runs nothing (pilot report §16–§17)
 npm run experiment -- early-establishment    # read-only ticks 0–3000 comparison of the 15 0A.2.0 default worlds; runs nothing (pilot report §19)
 npm run experiment -- stalled-cohort         # read-only ticks 4000–9000 comparison of stalled worlds that recover vs die; runs nothing (pilot report §20)
+npm run experiment -- reproduction-participation  # read-only lifetime participation vs births per reproducer, stalled cohort; runs nothing (pilot report §21)
 npm run experiment -- multifounder-default-baseline  # 0A.2.0 at unchanged defaults, 15 pilot seeds, 20,000 ticks (pilot report §14)
 npm run experiment -- food-limitation     # diagnostic-food-limitation-v1: fixed 4 pilot seeds, cap not an early stop, safety ceiling 1000 (pilot report §15)
 npm run experiment -- baseline-continuation  # continuation-multifounder-default-v1: the six cap-stopped 0A.2.0 default seeds, uncapped (pilot report §18)
