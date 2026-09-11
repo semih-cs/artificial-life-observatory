@@ -41,6 +41,10 @@ Dominant failure mode: extinction (establishment failure).
 3000.** All 7 worlds that doubled by tick 3000 established. The 8 still at
 founder scale include all 5 extinct worlds and 3 later establishers, which
 cannot be told apart at tick 3000.
+**Stalled-cohort analysis (read-only, §20): conclusion A.** By tick 4000,
+population cleanly separates the 3 late establishers from the 4 extinct worlds
+still alive at 3000, and stays separated through 9000. Births separate from
+5000. Mean energy never does.
 **Phase 0C:** NOT STARTED
 **Phase 0D:** NOT STARTED
 
@@ -52,11 +56,14 @@ Do not begin Phase 0C.
 
 Branch: `master`
 
-Most recent work is the read-only early-establishment analysis. `git log -1`
-is authoritative; recent history:
+Most recent work is the read-only stalled-cohort analysis. `git log -1` is
+authoritative; recent history:
 
 ```text
-(HEAD)  early-establishment: results — PARTIAL — see `git log -1`
+(HEAD)  stalled-cohort: results — conclusion A — see `git log -1`
+a79401e stalled-cohort: read-only analysis code for the precommitted §20 comparison
+d08ce41 stalled-cohort analysis PRECOMMITMENT (read-only, 0A.2.0 default, after tick 3000)
+bfa81a9 early-establishment: results — PARTIAL separation by tick 3000 (read-only)
 8ca5532 early-establishment: read-only analysis code for the precommitted §19 comparison
 e5f368c early-establishment analysis PRECOMMITMENT (read-only, 0A.2.0 default)
 8b7a6bd continuation-multifounder-default-v1: results — complete 15-seed 0A.2.0 profile
@@ -94,8 +101,8 @@ which are gitignored (`node_modules/`, `dist/`, `coverage/`, `results/`,
 
 ```text
 simulation-core tests:   179 / 179 passed
-experiment-harness tests: 124 / 124 passed   (+4: earlyEstablishment.test.ts)
-workspace total:          303 / 303 passed
+experiment-harness tests: 127 / 127 passed   (+3: stalledCohort.test.ts)
+workspace total:          306 / 306 passed
 workspace build:          PASS (tsc -p tsconfig.json in both packages)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -103,7 +110,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:        6a6576bd49e86b27  CONFIRMED
 ```
 
-Both hashes re-confirmed as live tests in the suite after the early-establishment
+Both hashes re-confirmed as live tests in the suite after the stalled-cohort
 analysis (no separate simulation was run for it); earlier also via
 `npm run simulate` / `singleFounderModelConfig()` after the continuation run: the amended hash via
 `npm run simulate`, the historical hash via `singleFounderModelConfig()` on the
@@ -505,7 +512,7 @@ implemented as specified. **The model was not modified.**
 | `README.md` | UPDATED — both packages, Phase 0B commands, seed discipline, probe section, test tables |
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
-| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL) |
+| `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A) |
 | `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
@@ -616,7 +623,38 @@ modifying the model.
 
 ---
 
-## Stalled-cohort analysis (`0A.2.0` default, after tick 3000) — PRECOMMITMENT (read-only, not yet computed)
+## Stalled-cohort analysis (`0A.2.0` default, after tick 3000) — RESULT: conclusion A
+
+Code in `a79401e` (`src/analysis/stalledCohort.ts`, CLI `stalled-cohort`,
+3 tests). Run read-only from that clean commit; simulated nothing. All 302
+source files byte-identical. Output:
+`results/analysis-stalled-cohort-v1/stalled-cohort.json`.
+
+| Metric | 4000 | 5000 | 6000 | 7000 | 8000 | 9000 |
+|---|---|---|---|---|---|---|
+| population E\* / L (misclassified) | 8–22 / 34–58 (0) | 10–20 / 55–68 (0) | 7–22 / 61–80 (0) | 7–17 / 74–82 (0) | 1–11 / 83–114 (0) | 1–20 / 108–169 (0) |
+| cumulative births E\* / L | 45–53 / 50–100 (1) | 52–60 / 86–147 (0) | 54–73 / 126–188 (0) | 57–80 / 167–237 (0) | 57–85 / 228–301 (0) | 57–99 / 289–378 (0) |
+| mean energy (misclassified) | 1 | 2 | 2 | 2 | 2 | 1 |
+
+What the numbers show:
+
+- **Earliest separation:** tick 4000, on population. Best observable:
+  population, with 0 misclassified at all six checkpoints.
+- **The divergence is in reproduction and population, not energy.**
+- **Recovery is gradual.** Late establishers grew from the first checkpoint on,
+  +10 to +23 by 4000, and climbed steadily. Extinct worlds shrank from the same
+  point.
+- **No single seed drives the result.** 131676, the closest extinct world,
+  stays below every late establisher at every checkpoint. 100000 was extinct at
+  3000 and is not counted.
+- **The evidence is still thin:** n = 4 against n = 3.
+- **Causal limit:** no claim about food, sensing or neural quality.
+
+**Next mechanistic question (§20.7):** once the founders have died, is the
+extinct worlds' reproduction deficit a smaller fraction of organisms that ever
+reproduce, or the same fraction reproducing less often?
+
+### Precommitment (historical record — EXECUTED)
 
 Full text: pilot report §20. Committed before any post-3000 group metric was
 computed. No simulation.
@@ -1001,8 +1039,17 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Compute the precommitted stalled-cohort comparison (pilot report §20)
-read-only from the persisted baseline timeseries, apply the §20.5 rule
-unchanged, and record the result.**
+**Precommit — design only, nothing computed — a read-only analysis answering
+pilot report §20.7 from the persisted 200-tick timeseries.** It would compare
+the persisted standard field `fractionEverReproduced` for the same 7 worlds
+(E\* against L) over ticks 3000–9000.
 
-No simulation, no model or parameter change.
+First document exactly what that field counts. It is cumulative from tick 0,
+founders included, so the design must state how the post-founder fraction is
+isolated from it — or whether it cannot be. Fix the checkpoints and the rule
+before computing, and state the n = 4 against n = 3 limit.
+
+Constraints that still hold: no simulation; no model, ecology,
+`founderGroupCount` or `trajectory-outcome-v2` change; no calibration sweep;
+do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
+Phase 0C.

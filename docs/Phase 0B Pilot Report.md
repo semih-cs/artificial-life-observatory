@@ -1167,6 +1167,7 @@ condition, it does not make an organism better at anything.
 | Complete 15-seed `0A.2.0` default profile under v2 | Measured | §18.6: 5 EXTINCTION, 3 BOUNDED_VIABLE, 5 HIGH_BOUNDED, 2 RUNAWAY, 0 INCONCLUSIVE; boundedCompletionRate 0.533; gate FAILED |
 | The default `0A.2.0` failure is extinction-dominated | Yes, at pilot level | §18.7: the 5 extinct worlds never exceeded 37 organisms; all 10 others reached at least 196, and 8 of those 10 plateaued |
 | `0A.2.0` extinction is already determined by the end of the first founder lifespan | **Partly** | §19.6: all 7 worlds that doubled by tick 3000 established; the 8 that did not include all 5 extinct worlds and 3 later establishers, indistinguishable at tick 3000 on population, births and energy |
+| Stalled worlds that recover diverge from those that die soon after tick 3000 | Yes, at pilot level | §20.6: population separates the 3 late establishers from the 4 extinct worlds alive at 3000 with 0 misclassified at every checkpoint 4000–9000; births from 5000; mean energy never |
 
 ---
 
@@ -2589,4 +2590,110 @@ reproduction, population, energy, and recovery or failure to recover.
 
 ### 20.6 Results
 
-*(empty at precommitment)*
+The analysis code is in commit `a79401e`. It ran read-only from that clean
+commit (`sourceIdentity b0a549bcf2c3347f`) and simulated nothing. All 302
+source JSON/CSV files were byte-identical before and after. Output:
+`results/analysis-stalled-cohort-v1/stalled-cohort.json`.
+
+#### Per seed: population / cumulative births / mean energy
+
+| Seed | Group | 3000 | 4000 | 5000 | 6000 | 7000 | 8000 | 9000 |
+|---:|---|---|---|---|---|---|---|---|
+| 100000 | E (extinct at 3000; not counted) | 0 / 10 / — | — | — | — | — | — | — |
+| 131676 | E\* | 27 / 45 / 23.6 | 22 / 53 / 26.3 | 19 / 60 / 32.1 | 22 / 73 / 27.7 | 17 / 80 / 25.3 | 11 / 85 / 33.0 | 20 / 99 / 29.1 |
+| 147514 | E\* | 15 / 42 / 34.3 | 8 / 46 / 37.1 | 10 / 52 / 34.7 | 7 / 54 / 29.4 | 8 / 57 / 15.5 | 1 / 57 / 65.0 | 1 / 57 / 41.2 |
+| 187109 | E\* | 16 / 35 / 38.9 | 17 / 45 / 34.0 | 17 / 53 / 33.9 | 13 / 60 / 32.2 | 7 / 65 / 32.6 | 8 / 69 / 31.7 | 6 / 73 / 23.5 |
+| 195028 | E\* | 24 / 43 / 32.5 | 20 / 49 / 33.4 | 20 / 58 / 26.6 | 8 / 62 / 27.5 | 10 / 67 / 38.2 | 10 / 70 / 23.2 | 2 / 70 / 6.7 |
+| 107919 | L | 24 / 30 / 32.6 | 34 / 50 / 38.7 | 59 / 86 / 33.1 | 80 / 126 / 28.3 | 82 / 167 / 32.2 | 114 / 236 / 35.9 | 169 / 325 / 30.3 |
+| 202947 | L | 35 / 57 / 37.7 | 58 / 100 / 43.9 | 68 / 147 / 29.1 | 61 / 188 / 37.0 | 74 / 237 / 29.0 | 83 / 301 / 41.1 | 108 / 378 / 29.3 |
+| 210866 | L | 26 / 48 / 29.2 | 40 / 71 / 34.5 | 55 / 101 / 30.4 | 75 / 146 / 28.2 | 80 / 185 / 29.3 | 93 / 228 / 29.9 | 110 / 289 / 30.6 |
+
+#### Group comparison — E\* (n = 4) against L (n = 3)
+
+Median [range]; misclassified is the best single cut, out of 7.
+
+| Metric | Tick | Extinct E\* | Late establishers L | Misclassified |
+|---|---:|---|---|---:|
+| population | 4000 | 18.5 [8–22] | 40 [34–58] | **0** |
+| population | 5000 | 18 [10–20] | 59 [55–68] | 0 |
+| population | 6000 | 10.5 [7–22] | 75 [61–80] | 0 |
+| population | 7000 | 9 [7–17] | 80 [74–82] | 0 |
+| population | 8000 | 9 [1–11] | 93 [83–114] | 0 |
+| population | 9000 | 4 [1–20] | 110 [108–169] | 0 |
+| cumulative births | 4000 | 47.5 [45–53] | 71 [50–100] | 1 |
+| cumulative births | 5000 | 55.5 [52–60] | 101 [86–147] | 0 |
+| cumulative births | 6000 | 61 [54–73] | 146 [126–188] | 0 |
+| cumulative births | 7000 | 66 [57–80] | 185 [167–237] | 0 |
+| cumulative births | 8000 | 69.5 [57–85] | 236 [228–301] | 0 |
+| cumulative births | 9000 | 71.5 [57–99] | 325 [289–378] | 0 |
+| mean energy | 4000 | 33.7 [26.3–37.1] | 38.7 [34.5–43.9] | 1 |
+| mean energy | 5000 | 33.0 [26.6–34.7] | 30.4 [29.1–33.1] | 2 |
+| mean energy | 6000 | 28.5 [27.5–32.2] | 28.3 [28.2–37.0] | 2 |
+| mean energy | 7000 | 29.0 [15.5–38.2] | 29.3 [29.0–32.2] | 2 |
+| mean energy | 8000 | 32.4 [23.2–65.0] | 35.9 [29.9–41.1] | 2 |
+| mean energy | 9000 | 26.3 [6.7–41.2] | 30.3 [29.3–30.6] | 1 |
+
+Strength by checkpoint: **CLEAR at every checkpoint from 4000 to 9000.**
+
+Persistence:
+
+- population is at 0 misclassified from 4000 and stays there at every later
+  checkpoint;
+- cumulative births is at 1 at 4000, then 0 from 5000 and stays there;
+- mean energy never reaches 0 and does not persist even at ≤ 1
+  (1, 2, 2, 2, 2, 1).
+
+#### Determination: conclusion A — the recovery signal clearly emerges after tick 3000
+
+1. **Earliest separation: tick 4000,** the first precommitted checkpoint, on
+   **population**. E\* held 8–22 organisms, L held 34–58.
+2. **Best observable: population** (0 misclassified at all six checkpoints).
+   Cumulative births separates cleanly from 5000.
+3. **The difference appears in reproduction and population, not energy.** Mean
+   energy overlaps at every checkpoint, and its group medians even reverse at
+   5000–6000.
+4. **Gradual recovery, not a late jump.**
+   - **L grew from the first checkpoint on.** The three late establishers were
+     already rising at 4000: +10, +23 and +14 organisms since tick 3000. They
+     then climbed steadily to 108–169 by 9000; no single interval accounts for
+     their recovery.
+   - **E\* went the other way.** The same interval took the four extinct worlds
+     from 15–27 down to 8–22, and they kept shrinking toward extinction.
+   - **The split is in direction of change, and it begins immediately after the
+     founder cohort dies at tick 3000.**
+
+**Weight of the evidence.** Suppose group labels were unrelated to the data. A
+zero-misclassification cut would then occur for 5.7% of labellings at any
+single look. Here it holds for population at all six checkpoints, and for
+births at five. That persistence is far stronger than one isolated CLEAR, but
+it is still n = 4 against n = 3, from one configuration and pilot seeds.
+
+**No single seed drives it.**
+
+- **The closest extinct world is 131676.** It stays at 11–22 organisms
+  throughout, always below the smallest late establisher at each checkpoint
+  (34, 55, 61, 74, 83, 108).
+- **The closest late establisher is 107919.** It starts lowest (24 at 3000)
+  but is at 34 by 4000, above every extinct world.
+- **100000 is not counted.** It was already extinct at 3000, so it cannot
+  inform the timing.
+
+**Descriptive only, not precommitted:** births in the interval 3000–4000
+were +4 to +10 in the four extinct worlds and +20 to +43 in the three late
+establishers. It is read straight off the table above and plays no part in the
+determination.
+
+**Causal limit.** None of this shows that food acquisition, sensing or neural
+properties caused recovery or extinction. What is observed is that, once the
+founders had died, the descendants in the recovering worlds reproduced more and
+their populations grew. In the extinct worlds they reproduced less and the
+population shrank, while mean energy did not distinguish the two.
+
+### 20.7 Next mechanistic question
+
+**Once the founders have died (tick 3000 on), is the reproduction deficit of
+the stalled worlds that go extinct a smaller fraction of organisms that ever
+reproduce, or the same fraction reproducing less often?**
+
+This is a question only. Nothing is implemented, no model or parameter
+changes, and no sweep is proposed.
