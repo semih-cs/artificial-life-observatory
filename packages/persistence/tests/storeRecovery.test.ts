@@ -5,6 +5,8 @@
  *   uninterrupted run to 10,000, saving to a store every 1,000 ticks (retention 5)
  *   → corrupt the newest snapshot(s) → recoverLatestValid → resume to 10,000
  *   == the uninterrupted run, hash-equal every 1,000 ticks, ending at b95a0b4ef7dd8449.
+ *
+ * And the full cleanup flow: fallback → quarantine → resume → save → recover.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'node:fs';
@@ -12,7 +14,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { bootstrapWorld, stepWorld, canonicalStateHash, MULTI_FOUNDER_MODEL_VERSION } from '@alo/simulation-core';
 import type { WorldState } from '@alo/simulation-core';
-import { createSnapshot, saveToStore, listSnapshots, recoverLatestValid, snapshotFileName } from '../src/index.js';
+import {
+  createSnapshot, saveToStore, listSnapshots, recoverLatestValid, quarantineSkippedSnapshots, snapshotFileName, QUARANTINE_DIR,
+} from '../src/index.js';
 import { defaultConfig } from './helpers.js';
 
 const GOLDEN_SEED = 20260910;
@@ -79,5 +83,44 @@ describe('fallback recovery preserves exact continuation', () => {
     expect(report.skipped.map((s) => s.tick)).toEqual([9000, 8000, 7000]);
     for (let t = 7000; t <= 10000; t += EVERY) expect(hashes.get(t), `tick ${t}`).toBe(reference.get(t));
     expect(hashes.get(10000)).toBe(GOLDEN_HASH_10000);
+  }, 300_000);
+});
+
+describe('golden fallback → quarantine → resume → save → recover', () => {
+  it('corrupt 9,000 is quarantined as evidence; the resumed world saves 9,000 and 10,000; recovery selects 10,000 at b95a0b4ef7dd8449', () => {
+    // 1–3: canonical seed saved every 1,000 ticks (store holds 5,000–9,000); corrupt 9,000.
+    const d = storeWithCorrupt([9000]);
+    const f9000 = snapshotFileName(9000);
+    const corruptBytes = fs.readFileSync(path.join(d, f9000));
+    // 4: recovery falls back to 8,000.
+    const r = recoverLatestValid(d);
+    expect(r.report.selected?.tick).toBe(8000);
+    expect(r.report.skipped.map((s) => s.fileName)).toEqual([f9000]);
+    // 5: quarantine moves exactly the corrupt 9,000.
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.moved).toEqual([expect.objectContaining({ fileName: f9000, quarantinedAs: f9000 })]);
+    expect(q.kept).toEqual([]);
+    expect(listSnapshots(d).map((e) => e.tick)).toEqual([5000, 6000, 7000, 8000]);
+    // 6–8: resume from 8,000, saving 9,000 and 10,000 through the store.
+    let world = r.world;
+    const saved: Array<{ tick: number; written: boolean }> = [];
+    while (world.tick < 10000) {
+      world = stepWorld(world, r.config).world;
+      if (world.tick % EVERY !== 0) continue;
+      expect(canonicalStateHash(world), `tick ${world.tick}`).toBe(reference.get(world.tick));
+      const res = saveToStore(d, createSnapshot(world, r.config));
+      saved.push({ tick: res.tick, written: res.written });
+    }
+    expect(saved).toEqual([{ tick: 9000, written: true }, { tick: 10000, written: true }]);
+    expect(listSnapshots(d).map((e) => e.tick)).toEqual([6000, 7000, 8000, 9000, 10000]);
+    // 9–11: recovery now selects 10,000 with no skipped snapshots, at the golden hash.
+    const after = recoverLatestValid(d);
+    expect(after.report.selected).toEqual({ fileName: snapshotFileName(10000), tick: 10000, stateHash: GOLDEN_HASH_10000 });
+    expect(after.report.skipped).toEqual([]);
+    expect(canonicalStateHash(after.world)).toBe(GOLDEN_HASH_10000);
+    expect(canonicalStateHash(world)).toBe(GOLDEN_HASH_10000);
+    // 12: the corrupted 9,000 survives in quarantine, byte-identical.
+    expect(fs.readdirSync(path.join(d, QUARANTINE_DIR))).toEqual([f9000]);
+    expect(fs.readFileSync(path.join(d, QUARANTINE_DIR, f9000)).equals(corruptBytes)).toBe(true);
   }, 300_000);
 });

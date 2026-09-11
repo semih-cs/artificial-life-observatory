@@ -7,6 +7,7 @@
  *   <dir>/world-identity.json            the one world this directory belongs to
  *   <dir>/snapshot-000000010000.json     a snapshot (format v1) of the world after tick 10,000
  *   <dir>/.snapshot-….json.<pid>.<n>.tmp a transient atomic-write file — never a snapshot
+ *   <dir>/quarantine/                    invalid snapshots moved aside after a fallback — never candidates
  *
  * Rules:
  *
@@ -28,6 +29,9 @@
  *     reports each invalid one, and returns the newest valid one. If none is
  *     valid it throws. It never creates a fresh world, and it never modifies
  *     the directory.
+ *   - Quarantine: quarantineSkippedSnapshots moves the files a recovery report
+ *     skipped, after re-validating each, into <dir>/quarantine/. Nothing is
+ *     deleted or overwritten.
  *
  * Single writer: one process owns a store directory at a time.
  */
@@ -328,13 +332,18 @@ function intactForeignIdentity(text: string, identity: WorldIdentity): WorldIden
 }
 
 function inspectCandidate(e: StoredSnapshotEntry, identity: WorldIdentity): Inspection {
-  const skip = (code: SkippedSnapshot['code'], reason: string): Inspection => ({ ok: false, skip: { fileName: e.fileName, tick: e.tick, code, reason } });
   let text: string;
   try {
     text = fs.readFileSync(e.path, 'utf-8');
   } catch (err) {
-    return skip('FILE_ERROR', `could not read file (${errnoCode(err)})`);
+    return { ok: false, skip: { fileName: e.fileName, tick: e.tick, code: 'FILE_ERROR', reason: `could not read file (${errnoCode(err)})` } };
   }
+  return inspectText(e, text, identity);
+}
+
+/** Full validation of one candidate's content. Throws only for an intact snapshot of another world. */
+function inspectText(e: StoredSnapshotEntry, text: string, identity: WorldIdentity): Inspection {
+  const skip = (code: SkippedSnapshot['code'], reason: string): Inspection => ({ ok: false, skip: { fileName: e.fileName, tick: e.tick, code, reason } });
   const foreign = intactForeignIdentity(text, identity);
   if (foreign !== null) {
     throw new SnapshotStoreError('WORLD_IDENTITY_MISMATCH',
@@ -392,4 +401,147 @@ export function recoverLatestValid(dir: string): RecoveredWorld {
       ? `${dir} contains no snapshots; recovery never creates a world`
       : `none of the ${entries.length} snapshots in ${dir} is valid (${detail}); recovery never creates a world`,
     report);
+}
+
+// ---- quarantine ------------------------------------------------------------
+
+export const QUARANTINE_DIR = 'quarantine';
+
+export interface QuarantinedSnapshot {
+  fileName: string;
+  tick: number;
+  /** Name inside `<dir>/quarantine/`: the original name, or `<name>.<n>` if that was taken. */
+  quarantinedAs: string;
+  /** Why the file is invalid now, from re-validation (not copied from the report). */
+  code: SkippedSnapshot['code'];
+}
+
+export interface KeptSnapshot {
+  fileName: string;
+  tick: number;
+  /** NOW_VALID: re-validation passed, so the file stays active. MISSING: no such file in the store any more. */
+  reason: 'NOW_VALID' | 'MISSING';
+}
+
+export interface QuarantineResult {
+  moved: QuarantinedSnapshot[];
+  kept: KeptSnapshot[];
+}
+
+const QUARANTINE_MAX_SUFFIX = 1000;
+
+/**
+ * Move the snapshots a recovery report skipped out of the active store into
+ * `<dir>/quarantine/`, so a world resumed after a fallback can save again.
+ * Evidence is preserved, never deleted.
+ *
+ * The report is not trusted blindly:
+ *   - it must belong to this store's world, name only well-formed snapshot
+ *     files (never world-identity.json), and never list its own selected
+ *     snapshot — otherwise INVALID_RECOVERY_REPORT, and nothing moves;
+ *   - every listed file is re-validated first. A file that is now valid stays
+ *     (NOW_VALID); a file that is gone is reported (MISSING); an intact
+ *     snapshot of another world refuses the whole call. Only files that are
+ *     still invalid move. Files not in the report are never touched.
+ * All checks run before the first move. Moves are then made file by file; an
+ * I/O error stops at that file, and the moves before it stand.
+ *
+ * Each move is hard-link into quarantine (which fails rather than overwrite)
+ * → fsync → read back byte-identical → unlink from the store. If interrupted,
+ * the file exists in both places or only in the store — never in neither.
+ * A taken quarantine name gets the first free `<name>.1`, `<name>.2`, …
+ * Running it again with the same report moves nothing (every file is MISSING).
+ */
+export function quarantineSkippedSnapshots(dir: string, report: RecoveryReport): QuarantineResult {
+  const identity = readStoreIdentity(dir);
+  if (identity === null) throw new SnapshotStoreError('STORE_IDENTITY_MISSING', `${dir} has no ${STORE_IDENTITY_FILE}; refusing to quarantine`);
+  const badReport = (why: string) => new SnapshotStoreError('INVALID_RECOVERY_REPORT', `${why}; nothing was quarantined`);
+  if (!isObject(report) || !isObject(report.identity) || !Array.isArray(report.skipped)) throw badReport('not a recovery report');
+  if (!sameWorldIdentity(report.identity, identity)) {
+    throw new SnapshotStoreError('WORLD_IDENTITY_MISMATCH',
+      `the report is for world ${describeIdentity(report.identity)} but ${dir} belongs to ${describeIdentity(identity)}; nothing was quarantined`);
+  }
+  const seen = new Set<string>();
+  for (const s of report.skipped) {
+    const m = isObject(s) && typeof s.fileName === 'string' ? SNAPSHOT_FILE_RE.exec(s.fileName) : null;
+    if (m === null || Number(m[1]) !== s.tick) {
+      throw badReport(`skipped entry ${JSON.stringify(s)} does not name a snapshot file`);
+    }
+    if (report.selected !== null && s.fileName === report.selected.fileName) throw badReport(`${s.fileName} is the report's selected snapshot`);
+    if (seen.has(s.fileName)) throw badReport(`${s.fileName} is listed twice`);
+    seen.add(s.fileName);
+  }
+
+  // Plan: re-validate every listed file before anything moves.
+  const planned: Array<{ entry: StoredSnapshotEntry; bytes: Buffer; code: SkippedSnapshot['code'] }> = [];
+  const kept: KeptSnapshot[] = [];
+  for (const s of report.skipped) {
+    const entry: StoredSnapshotEntry = { tick: s.tick, fileName: s.fileName, path: path.join(dir, s.fileName) };
+    let bytes: Buffer;
+    try {
+      if (!fs.lstatSync(entry.path).isFile()) { kept.push({ fileName: s.fileName, tick: s.tick, reason: 'MISSING' }); continue; }
+      bytes = fs.readFileSync(entry.path);
+    } catch (err) {
+      if (errnoCode(err) === 'ENOENT') { kept.push({ fileName: s.fileName, tick: s.tick, reason: 'MISSING' }); continue; }
+      throw new SnapshotStoreError('STORE_IO_ERROR', `could not read ${entry.path}; nothing was quarantined: ${errText(err)}`);
+    }
+    const inspection = inspectText(entry, bytes.toString('utf-8'), identity); // throws on an intact foreign snapshot
+    if (inspection.ok) { kept.push({ fileName: s.fileName, tick: s.tick, reason: 'NOW_VALID' }); continue; }
+    planned.push({ entry, bytes, code: inspection.skip.code });
+  }
+
+  const moved: QuarantinedSnapshot[] = [];
+  if (planned.length === 0) return { moved, kept };
+  const qdir = path.join(dir, QUARANTINE_DIR);
+  try {
+    fs.mkdirSync(qdir, { recursive: true });
+  } catch (err) {
+    throw new SnapshotStoreError('STORE_IO_ERROR', `could not create ${qdir}: ${errText(err)}`);
+  }
+  for (const { entry, bytes, code } of planned) {
+    let current: Buffer;
+    try {
+      current = fs.readFileSync(entry.path);
+    } catch (err) {
+      throw new SnapshotStoreError('STORE_IO_ERROR', `could not re-read ${entry.path}; left in place: ${errText(err)}`);
+    }
+    if (!current.equals(bytes)) throw new SnapshotStoreError('STORE_IO_ERROR', `${entry.fileName} changed during quarantine; left in place`);
+    const quarantinedAs = linkIntoQuarantine(entry.path, qdir, entry.fileName);
+    const copy = fs.readFileSync(path.join(qdir, quarantinedAs));
+    if (!copy.equals(bytes)) {
+      throw new SnapshotStoreError('STORE_IO_ERROR', `quarantine/${quarantinedAs} did not read back byte-identical; ${entry.fileName} left in place`);
+    }
+    try {
+      fs.unlinkSync(entry.path);
+    } catch (err) {
+      throw new SnapshotStoreError('STORE_IO_ERROR', `${entry.fileName} is preserved as quarantine/${quarantinedAs} but could not be removed from the store: ${errText(err)}`);
+    }
+    moved.push({ fileName: entry.fileName, tick: entry.tick, quarantinedAs, code });
+  }
+  fsyncDir(qdir);
+  fsyncDir(dir);
+  return { moved, kept };
+}
+
+/** Hard-link `src` into `qdir` under the first free name; link(2) never overwrites. */
+function linkIntoQuarantine(src: string, qdir: string, fileName: string): string {
+  for (let n = 0; n <= QUARANTINE_MAX_SUFFIX; n++) {
+    const name = n === 0 ? fileName : `${fileName}.${n}`;
+    try {
+      fs.linkSync(src, path.join(qdir, name));
+    } catch (err) {
+      if (errnoCode(err) === 'EEXIST') continue;
+      throw new SnapshotStoreError('STORE_IO_ERROR', `could not link ${src} into ${qdir}; left in place: ${errText(err)}`);
+    }
+    fsyncDir(qdir);
+    return name;
+  }
+  throw new SnapshotStoreError('STORE_IO_ERROR', `no free quarantine name for ${fileName} after ${QUARANTINE_MAX_SUFFIX} attempts; left in place`);
+}
+
+function fsyncDir(dir: string): void {
+  try {
+    const fd = fs.openSync(dir, 'r');
+    try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  } catch { /* directory fsync is unsupported on some platforms */ }
 }

@@ -22,7 +22,7 @@ Three workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| **Phase 0C — persistent canonical world** | **active — the current phase.** Slice 1 (exact save/load/resume) and slice 2 (snapshot store: retention, world identity, fallback recovery) are done |
+| **Phase 0C — persistent canonical world** | **active — the current phase.** Done: slice 1 (exact save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots). Next: the persistent world process |
 | Phase 0D — Observatory UI | next, after 0C |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -253,7 +253,7 @@ w = stepWorld(w, restored.config).world;    // continues as if never stopped
 Keep the newest snapshots of one world in a folder and recover after a crash:
 
 ```ts
-import { saveToStore, recoverLatestValid } from '@alo/persistence';
+import { saveToStore, recoverLatestValid, quarantineSkippedSnapshots } from '@alo/persistence';
 
 saveToStore('worlds/demo', createSnapshot(world, config));   // atomic; keeps the newest 5
 
@@ -261,6 +261,7 @@ saveToStore('worlds/demo', createSnapshot(world, config));   // atomic; keeps th
 const { world: w2, config: c2, report } = recoverLatestValid('worlds/demo');
 // report.selected = the snapshot used; report.skipped = corrupt ones and why.
 // Throws if there is no valid snapshot. It never starts a fresh world.
+quarantineSkippedSnapshots('worlds/demo', report);  // move corrupt ones aside (never deleted) so saving can continue
 ```
 
 ## World persistence (Phase 0C)
@@ -319,7 +320,7 @@ then renames it over the target. A reader therefore sees the old snapshot or
 the new one, never a partial file. It refuses to write a snapshot that would
 not load.
 
-### Snapshot store (slice 2)
+### Snapshot store (slices 2–3)
 
 `packages/persistence/src/store.ts` keeps the recent snapshots of **one** world
 in one folder:
@@ -330,12 +331,14 @@ worlds/demo/
 ├── snapshot-000000006000.json     the world after tick 6,000
 ├── snapshot-000000007000.json
 ├── …                              at most the newest 5
-└── .snapshot-….json.<pid>.<n>.tmp a transient atomic-write file — never a snapshot
+├── .snapshot-….json.<pid>.<n>.tmp a transient atomic-write file — never a snapshot
+└── quarantine/                    corrupt snapshots moved aside after a fallback — never snapshots
 ```
 
 API: `saveToStore(dir, snapshot, { keep })`, `listSnapshots(dir)`,
-`recoverLatestValid(dir)`, `pruneSnapshots(dir, keep = 5)`. Refusals throw a
-`SnapshotStoreError` with a `code`.
+`recoverLatestValid(dir)`, `quarantineSkippedSnapshots(dir, report)`,
+`pruneSnapshots(dir, keep = 5)`. Refusals throw a `SnapshotStoreError` with a
+`code`.
 
 - **File names.** `snapshot-<tick, 12 digits zero-padded>.json`, so lexical
   order is tick order. Only exact matches are snapshots; temporary files and
@@ -367,16 +370,29 @@ API: `saveToStore(dir, snapshot, { keep })`, `listSnapshots(dir)`,
   invalid, recovery throws `NO_VALID_SNAPSHOT` (with the report). It never
   creates or re-seeds a world.
 
+- **Quarantine.** `quarantineSkippedSnapshots(dir, report)` moves the
+  snapshots a recovery report skipped into `quarantine/`, keeping each
+  original name. Each file is re-validated first, and only files that are
+  still invalid move: a file that became valid stays (`NOW_VALID`), a file
+  that is gone is reported (`MISSING`), and files not in the report are never
+  touched. The report is checked before anything moves. It must be for this
+  world, name only snapshot files — never `world-identity.json` — and never
+  list its own selected snapshot (`INVALID_RECOVERY_REPORT`). Each move is a
+  hard link into `quarantine/` (which never overwrites), a byte-identical read
+  back, then removal from the store, so an interrupted move leaves the file in
+  both places, never in neither. A taken name gets `<name>.1`, `<name>.2`, …
+  Nothing is ever deleted. Running it twice moves nothing the second time.
+
 **Proven by test.** Golden seed, saving every 1,000 ticks. Corrupt the newest
 snapshot, or the newest three: recovery falls back to 8,000 or 6,000, and
 resuming reaches exactly `b95a0b4ef7dd8449` at 10,000, hash-equal to the
-uninterrupted run at every 1,000 ticks.
+uninterrupted run at every 1,000 ticks. The full cleanup flow also passes:
+with 9,000 corrupt, recover 8,000, quarantine 9,000, resume, save 9,000 and
+10,000. Recovery then selects 10,000 with nothing skipped, at
+`b95a0b4ef7dd8449`, and the corrupt file sits in `quarantine/` byte-identical.
 
 **Current limitations.**
 
-- After a fallback, the corrupt newer files stay in place as evidence. They
-  also block saves at or below their ticks, because they are never
-  overwritten. Moving them aside explicitly is the next step.
 - One writer per folder. Saves are explicit calls: there is no world process
   or save schedule yet.
 - No database, events or API.
@@ -636,8 +652,8 @@ npm run test:watch --workspace=packages/simulation-core
 | `snapshot.test.ts`       | round trip, deterministic serialization, purity, tick-0 and `0A.1.0` resume |
 | `corruption.test.ts`     | every snapshot refusal code, including 300 flipped bytes                  |
 | `file.test.ts`           | atomic single-file save/load                                              |
-| `store.test.ts`          | file naming, retention, fallback past corrupt snapshots, all-corrupt and empty stores, world identity, duplicate and out-of-order ticks, temp-file leftovers, deterministic read-only recovery |
-| `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449` |
+| `store.test.ts`          | file naming, retention, fallback past corrupt snapshots, all-corrupt and empty stores, world identity, duplicate and out-of-order ticks, temp-file leftovers, deterministic read-only recovery, quarantine (re-validation, missing files, collisions, refused reports, reruns, interrupted moves) |
+| `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449`; fallback → quarantine → resume → save → recover selects 10,000 at `b95a0b4ef7dd8449` |
 
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
@@ -675,7 +691,7 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery) |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots. Next: the persistent world process |
 | 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**

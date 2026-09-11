@@ -13,7 +13,7 @@ import {
   createSnapshot, serializeSnapshot, restoreSnapshot, loadSnapshot, computeSnapshotChecksum, configHash,
   saveToStore, listSnapshots, recoverLatestValid, pruneSnapshots, snapshotFileName, readStoreIdentity, worldIdentityOf,
   SnapshotError, SnapshotStoreError, SnapshotStoreErrorCode, STORE_IDENTITY_FILE, DEFAULT_SNAPSHOT_RETENTION, MAX_SNAPSHOT_TICK,
-  WorldSnapshotV1,
+  quarantineSkippedSnapshots, QUARANTINE_DIR, RecoveryReport, WorldSnapshotV1,
 } from '../src/index.js';
 import { defaultConfig, runTo, worldAt } from './helpers.js';
 
@@ -364,5 +364,164 @@ describe('9. recovery is deterministic and read-only', () => {
     const copy = path.join(newDir(), 'copy');
     fs.cpSync(d, copy, { recursive: true });
     expect(JSON.stringify(recoverLatestValid(copy).report)).toBe(JSON.stringify(a.report));
+  });
+});
+
+describe('10. quarantine: skipped snapshots move aside, re-validated, never deleted', () => {
+  const qOf = (d: string) => path.join(d, QUARANTINE_DIR);
+  const qFile = (d: string, name: string) => path.join(qOf(d), name);
+  const bytesOf = (f: string) => fs.readFileSync(f);
+
+  it('one corrupt skipped file moves into quarantine byte-identical; the store saves and recovers cleanly again', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    const corrupt = bytesOf(fileOf(d, 800));
+    const r = recoverLatestValid(d);
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.kept).toEqual([]);
+    expect(q.moved).toEqual([{ fileName: snapshotFileName(800), tick: 800, quarantinedAs: snapshotFileName(800), code: r.report.skipped[0]!.code }]);
+    expect(bytesOf(qFile(d, snapshotFileName(800))).equals(corrupt)).toBe(true);
+    expect(ticksIn(d)).toEqual([400, 500, 600, 700]);
+    expect(fs.readdirSync(qOf(d))).toEqual([snapshotFileName(800)]);
+    // The resumed world can now save the tick the corrupt file used to block.
+    const resumed = createSnapshot(runTo(r.world, r.config, 800), r.config);
+    expect(saveToStore(d, resumed).written).toBe(true);
+    const again = recoverLatestValid(d);
+    expect(again.report.skipped).toEqual([]);
+    expect(again.report.selected).toEqual({ fileName: snapshotFileName(800), tick: 800, stateHash: ref.get(800) });
+  });
+
+  it('multiple corrupt skipped files all move; the selected snapshot and the identity file stay', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    truncate(fileOf(d, 700));
+    empty(fileOf(d, 600));
+    const before = [800, 700, 600].map((t) => bytesOf(fileOf(d, t)));
+    const r = recoverLatestValid(d);
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.moved.map((m) => m.tick)).toEqual([800, 700, 600]);
+    expect(q.moved.map((m) => m.code)).toEqual(r.report.skipped.map((s) => s.code));
+    [800, 700, 600].forEach((t, i) => expect(bytesOf(qFile(d, snapshotFileName(t))).equals(before[i]!)).toBe(true));
+    expect(ticksIn(d)).toEqual([400, 500]);
+    expect(fs.existsSync(path.join(d, STORE_IDENTITY_FILE))).toBe(true);
+    expect(recoverLatestValid(d).report).toMatchObject({ skipped: [], selected: { tick: 500 } });
+  });
+
+  it('re-validates before moving: a file that became valid again stays active', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    const good700 = bytesOf(fileOf(d, 700));
+    flipByte(fileOf(d, 800));
+    flipByte(fileOf(d, 700));
+    const r = recoverLatestValid(d);
+    expect(r.report.skipped.map((s) => s.tick)).toEqual([800, 700]);
+    fs.writeFileSync(fileOf(d, 700), good700); // repaired by an operator after the report was made
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.moved.map((m) => m.tick)).toEqual([800]);
+    expect(q.kept).toEqual([{ fileName: snapshotFileName(700), tick: 700, reason: 'NOW_VALID' }]);
+    expect(ticksIn(d)).toEqual([400, 500, 600, 700]);
+    expect(fs.existsSync(qFile(d, snapshotFileName(700)))).toBe(false);
+  });
+
+  it('a valid file is never quarantined, even if a (stale or hand-made) report lists it', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    const report: RecoveryReport = {
+      identity: readStoreIdentity(d)!,
+      candidates: [800, 700, 600].map(snapshotFileName),
+      selected: { fileName: snapshotFileName(800), tick: 800, stateHash: ref.get(800)! },
+      skipped: [{ fileName: snapshotFileName(600), tick: 600, code: 'CHECKSUM_MISMATCH', reason: 'stale' }],
+    };
+    const before = dirState(d);
+    expect(quarantineSkippedSnapshots(d, report)).toEqual({ moved: [], kept: [{ fileName: snapshotFileName(600), tick: 600, reason: 'NOW_VALID' }] });
+    expect(dirState(d)).toEqual(before);
+    expect(fs.existsSync(qOf(d))).toBe(false);
+  });
+
+  it('the selected snapshot, the identity file and malformed entries are refused before anything moves', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    const r = recoverLatestValid(d);
+    const before = dirState(d);
+    const withSkipped = (extra: unknown): RecoveryReport => ({ ...r.report, skipped: [...r.report.skipped, extra as RecoveryReport['skipped'][number]] });
+    expectStoreError(() => quarantineSkippedSnapshots(d, withSkipped({ ...r.report.skipped[0], fileName: snapshotFileName(700), tick: 700 })), 'INVALID_RECOVERY_REPORT'); // the selected one
+    expectStoreError(() => quarantineSkippedSnapshots(d, withSkipped({ fileName: STORE_IDENTITY_FILE, tick: 0, code: 'FILE_ERROR', reason: '' })), 'INVALID_RECOVERY_REPORT');
+    expectStoreError(() => quarantineSkippedSnapshots(d, withSkipped({ fileName: `../${snapshotFileName(500)}`, tick: 500, code: 'FILE_ERROR', reason: '' })), 'INVALID_RECOVERY_REPORT');
+    expectStoreError(() => quarantineSkippedSnapshots(d, withSkipped({ fileName: snapshotFileName(500), tick: 600, code: 'FILE_ERROR', reason: '' })), 'INVALID_RECOVERY_REPORT');
+    expectStoreError(() => quarantineSkippedSnapshots(d, withSkipped(r.report.skipped[0])), 'INVALID_RECOVERY_REPORT'); // listed twice
+    expectStoreError(() => quarantineSkippedSnapshots(d, { ...r.report, identity: { ...r.report.identity, configHash: '0'.repeat(16) } }), 'WORLD_IDENTITY_MISMATCH');
+    expect(dirState(d)).toEqual(before);
+    expect(fs.existsSync(qOf(d))).toBe(false);
+  });
+
+  it('an already-missing skipped file is reported MISSING; files outside the report are ignored', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    flipByte(fileOf(d, 700));
+    const r = recoverLatestValid(d);
+    fs.renameSync(fileOf(d, 800), path.join(newDir(), 'taken-away.json')); // gone before quarantine runs
+    flipByte(fileOf(d, 500)); // corrupt, but not in the report
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.kept).toEqual([{ fileName: snapshotFileName(800), tick: 800, reason: 'MISSING' }]);
+    expect(q.moved.map((m) => m.tick)).toEqual([700]);
+    expect(ticksIn(d)).toEqual([400, 500, 600]);
+  });
+
+  it('an existing quarantine directory is reused and its contents are never overwritten; collisions get .1, .2', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    fs.mkdirSync(qOf(d));
+    fs.writeFileSync(qFile(d, 'operator-notes.txt'), 'keep me');
+    fs.writeFileSync(qFile(d, snapshotFileName(800)), 'earlier evidence');
+    fs.writeFileSync(qFile(d, `${snapshotFileName(800)}.1`), 'even earlier evidence');
+    flipByte(fileOf(d, 800));
+    const corrupt = bytesOf(fileOf(d, 800));
+    const q = quarantineSkippedSnapshots(d, recoverLatestValid(d).report);
+    expect(q.moved[0]!.quarantinedAs).toBe(`${snapshotFileName(800)}.2`);
+    expect(fs.readFileSync(qFile(d, 'operator-notes.txt'), 'utf-8')).toBe('keep me');
+    expect(fs.readFileSync(qFile(d, snapshotFileName(800)), 'utf-8')).toBe('earlier evidence');
+    expect(fs.readFileSync(qFile(d, `${snapshotFileName(800)}.1`), 'utf-8')).toBe('even earlier evidence');
+    expect(bytesOf(qFile(d, `${snapshotFileName(800)}.2`)).equals(corrupt)).toBe(true);
+    expect(ticksIn(d)).toEqual([400, 500, 600, 700]);
+  });
+
+  it('an intact snapshot of another world at a listed name refuses the whole call', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    flipByte(fileOf(d, 700));
+    const r = recoverLatestValid(d);
+    const other = defaultConfig(SEED + 1);
+    fs.writeFileSync(fileOf(d, 700), serializeSnapshot(createSnapshot(worldAt(SEED + 1, 700, other), other)));
+    const before = dirState(d);
+    expectStoreError(() => quarantineSkippedSnapshots(d, r.report), 'WORLD_IDENTITY_MISMATCH');
+    expect(dirState(d)).toEqual(before); // the corrupt 800 did not move either: all checks precede any move
+    expect(fs.existsSync(qOf(d))).toBe(false);
+  });
+
+  it('running quarantine twice with the same report moves nothing the second time and changes nothing', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    truncate(fileOf(d, 700));
+    const r = recoverLatestValid(d);
+    const first = quarantineSkippedSnapshots(d, r.report);
+    expect(first.moved.map((m) => m.tick)).toEqual([800, 700]);
+    const store = dirState(d);
+    const quarantine = dirState(qOf(d));
+    const second = quarantineSkippedSnapshots(d, r.report);
+    expect(second).toEqual({ moved: [], kept: [800, 700].map((t) => ({ fileName: snapshotFileName(t), tick: t, reason: 'MISSING' })) });
+    expect(quarantineSkippedSnapshots(d, r.report)).toEqual(second);
+    expect(dirState(d)).toEqual(store);
+    expect(dirState(qOf(d))).toEqual(quarantine);
+  });
+
+  it('an interrupted move (linked into quarantine, not yet removed from the store) completes safely on rerun', () => {
+    const d = storeWith([400, 500, 600, 700, 800]);
+    flipByte(fileOf(d, 800));
+    const corrupt = bytesOf(fileOf(d, 800));
+    const r = recoverLatestValid(d);
+    fs.mkdirSync(qOf(d));
+    fs.linkSync(fileOf(d, 800), qFile(d, snapshotFileName(800))); // the state a crash between link and unlink leaves
+    expect(recoverLatestValid(d).report).toEqual(r.report); // the active store still reads exactly as before
+    const q = quarantineSkippedSnapshots(d, r.report);
+    expect(q.moved[0]!.quarantinedAs).toBe(`${snapshotFileName(800)}.1`);
+    for (const name of [snapshotFileName(800), `${snapshotFileName(800)}.1`]) expect(bytesOf(qFile(d, name)).equals(corrupt)).toBe(true);
+    expect(ticksIn(d)).toEqual([400, 500, 600, 700]);
   });
 });

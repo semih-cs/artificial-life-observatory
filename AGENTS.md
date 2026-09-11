@@ -157,9 +157,11 @@ Do not add a database, server or UI before the deterministic save/resume
 invariant (Spec §18.60, §19.27) is proven. Persistence code lives in its own
 workspace package that consumes `simulation-core`, never inside it.
 
-**Slices 1 and 2 are done:** `packages/persistence` — snapshot format v1
-(slice 1) and the folder-based snapshot store (slice 2). The following
-persistence invariants are proven by test and must hold from now on:
+**Slices 1–3 are done:** `packages/persistence` — snapshot format v1
+(slice 1), the folder-based snapshot store (slice 2) and quarantine of corrupt
+snapshots (slice 3). The snapshot store is complete; do not open another
+persistence sub-project. The next step is the persistent world process. The
+following persistence invariants are proven by test and must hold from now on:
 
 - **Exact continuation.** A snapshot restores to a world that continues bit for
   bit: continuous run == save → load → resume. The continuation and golden-resume
@@ -186,6 +188,10 @@ persistence invariants are proven by test and must hold from now on:
 - **Recovery never creates a world.** `recoverLatestValid` falls back past
   invalid snapshots and reports each one. If none is valid, it throws. It only
   reads the folder.
+- **Quarantine, never delete.** Corrupt snapshots leave the active store only
+  through `quarantineSkippedSnapshots`. It re-validates every file first,
+  never moves a valid file, never overwrites anything in `quarantine/`, and
+  never deletes evidence.
 
 ### Demo seeds (product only)
 

@@ -17,7 +17,7 @@
 | **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
-| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** Slice 1 (deterministic save/load/resume) and slice 2 (snapshot store: retention, world identity, fallback recovery) are **DONE** (below) |
+| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots). The snapshot store is complete. **Next: the persistent world process** |
 | **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
 
 **Frozen v1 biological model:**
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-Phase 0C slice 2:
+Phase 0C slice 3:
 
 ```text
-(HEAD)  Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery — see `git log -1`
+(HEAD)  Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery — see `git log -1`
+c7dcd11 Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery
 bdcc156 Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume
 5633ffd Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked
 511aa10 diagnostic-reproducer-lifecycle-v1: results — VALID, NEITHER / INCONCLUSIVE
@@ -116,9 +117,10 @@ artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
 ```text
 simulation-core tests:    179 / 179 passed
 experiment-harness tests: 138 / 138 passed
-persistence tests:         59 / 59  passed   (slice 1: 31 — §18.60 continuation, golden resume, separate process;
-                                             slice 2: 28 — snapshot store 25, fallback-recovery regression 3)
-workspace total:          376 / 376 passed
+persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuation, golden resume, separate process;
+                                             slice 2: 28 — snapshot store 25, fallback-recovery regression 3;
+                                             slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
+workspace total:          387 / 387 passed
 workspace build:          PASS (simulation-core, then experiment-harness and persistence)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
@@ -126,7 +128,7 @@ golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Phase 0C slice 2 checkpoint (and at slice 1 before it):
+Re-confirmed at the Phase 0C slice 3 checkpoint (and at slices 1 and 2 before it):
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -529,8 +531,8 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
-| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2 snapshot store — layout, naming, retention, identity, fallback, no fresh world — and limitations) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world) |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 
 ---
@@ -1439,42 +1441,99 @@ primitive. `saveSnapshotAtomic` now uses it, with unchanged behaviour.
 A mutation check was done during implementation: disabling the identity
 comparison fails 4 tests, and breaking pruning fails 6.
 
-**Known limitation, deliberate:** after a fallback, the corrupt newer files
-stay in place as evidence. Because a stored tick is never overwritten and
-saves are monotonic, they block saves at or below their ticks
-(`DUPLICATE_TICK` / `NON_MONOTONIC_TICK`) until they are moved aside
-explicitly. That is the next step.
+**Limitation found in slice 2:** after a fallback, the corrupt newer files
+stay in place as evidence and block saves at or below their ticks. **Resolved
+by slice 3** (below).
+
+## Phase 0C slice 3 — RESULT: DONE (quarantine of corrupt snapshots)
+
+This is the final snapshot-store cleanup. No change to simulation-core,
+biology, `simulationVersion`, snapshot format v1, or the save and recovery
+rules of slice 2.
+
+**API:** `quarantineSkippedSnapshots(dir, report)` in `store.ts`
+→ `{ moved: [{ fileName, tick, quarantinedAs, code }], kept: [{ fileName, tick, reason: 'NOW_VALID' | 'MISSING' }] }`.
+It adds the error code `INVALID_RECOVERY_REPORT` and the constant
+`QUARANTINE_DIR = 'quarantine'`.
+
+**Behaviour:**
+
+- **The report is checked before anything moves.** It must belong to this
+  store's world (`WORLD_IDENTITY_MISMATCH`). Every skipped entry must name a
+  well-formed snapshot file whose name matches its tick. The report may not
+  list its own selected snapshot, `world-identity.json`, a path, or the same
+  file twice (`INVALID_RECOVERY_REPORT`).
+- **Every listed file is re-validated; the old report is not trusted.** Only
+  files that are still invalid are planned for moving.
+  - A file that now validates stays active (`NOW_VALID`).
+  - A file that is gone is reported (`MISSING`).
+  - An intact snapshot of another world refuses the whole call.
+  - Files not in the report are never touched.
+- **The move.** Once every file has been checked:
+  1. re-read and confirm the bytes are unchanged;
+  2. hard-link into `<dir>/quarantine/` (link(2) never overwrites);
+  3. fsync, and read back byte-identical;
+  4. unlink from the store.
+
+  An interruption leaves the file in both places or only in the store —
+  never in neither — and a rerun completes the move. The original file name
+  is kept; a taken name gets the first free `<name>.1`, `<name>.2`, …
+  Nothing is ever deleted.
+- **Idempotent.** Rerunning with the same report moves nothing and changes
+  nothing: every file is `MISSING`.
+- **Store isolation.** `quarantine/` is a directory, so listing, recovery and
+  retention never see it.
+
+**Proof** (11 new tests):
+
+| Test | Result |
+|---|---|
+| golden scenario (`storeRecovery.test.ts`) | seed 20260910, store 5,000–9,000, corrupt 9,000 → recover selects 8,000 → quarantine moves 9,000 → resume, saving 9,000 and 10,000 (hash-equal to the uninterrupted run) → recover selects 10,000, **0 skipped**, stateHash **`b95a0b4ef7dd8449`**; the live world also ends at `b95a0b4ef7dd8449`; `quarantine/snapshot-000000009000.json` byte-identical to the corrupted file |
+| one corrupt | moved byte-identical; the resumed world saves 800; the next recovery is clean |
+| multiple corrupt | flipped / truncated / empty all moved; the selected snapshot and identity file stay |
+| re-validation | a file repaired after the report stays active (`NOW_VALID`) |
+| valid never moved | a stale report naming a valid file moves nothing |
+| refused reports | selected snapshot, identity file, `../` path, tick mismatch, duplicate entry, wrong world — refused, directory unchanged |
+| already missing | reported `MISSING`; a corrupt file outside the report is not touched |
+| existing quarantine dir and collisions | unrelated files kept; the new file goes to `.2` after `name` and `.1` are taken; nothing overwritten |
+| foreign snapshot | refuses the whole call before any move |
+| twice | second and third runs move nothing and change nothing |
+| interrupted move | link-without-unlink state: the store still recovers identically, and a rerun completes the move |
+
+A mutation check was done during implementation. Removing re-validation
+fails 2 tests. Replacing the no-overwrite link with a copy that overwrites
+fails 2.
 
 **Phase 0C remaining** (Spec §17.60, §14.35):
 
-- explicit quarantine of reported corrupt snapshots, so a world resumed after
-  a fallback can save again (next step);
-- a persistent headless world process: launch from an immutable canonical
-  config or recover, tick loop, periodic saves through the store, and a
-  kill-and-restart proof (§14.36, §19.19–§19.20, §19.33–§19.34);
+- **the persistent world process — next** (§14.36, §19.19–§19.20,
+  §19.33–§19.34);
 - operational and biological event records (§19.35–§19.37);
 - PostgreSQL historical storage;
 - soak tests.
 
+The snapshot store is complete. Do not open another persistence sub-project
+before the world process exists.
+
 ## NEXT EXACT STEP
 
-**Phase 0C slice 3 — explicit quarantine of corrupt snapshots, local files only.**
+**Phase 0C — the persistent world process.** Implement a headless world
+process in `packages/persistence` (or a thin package on top of it). It uses
+only the existing store API.
 
-Add `quarantineSkippedSnapshots(dir, report)` to `packages/persistence/src/store.ts`.
+- **Launch or recover.**
+  - A new world starts from an explicit immutable launch config written with
+    the store identity.
+  - An existing store is recovered with `recoverLatestValid`, then
+    `quarantineSkippedSnapshots`.
+  - It never silently starts fresh when a store exists.
+- **Run.** The tick loop runs continuously and saves through `saveToStore`
+  every N ticks.
+- **Stop cleanly.** A final save on stop.
+- **Restart and continue exactly.** Proof: run, stop (and also kill
+  mid-run), restart in a new process, recover and continue. The canonical
+  hash must equal the uninterrupted run — `b95a0b4ef7dd8449` at 10,000 on
+  seed 20260910.
 
-- It moves exactly the files named in a `recoverLatestValid` report's
-  `skipped` list into `<dir>/quarantine/`, with a rename that never deletes or
-  overwrites.
-- It re-validates each named file first and refuses to move any file that now
-  validates, or that belongs to another world.
-
-Prove it with a test on the golden seed:
-
-1. Save every 1,000 ticks, then corrupt 9,000.
-2. Recover 8,000 → quarantine → resume → save 9,000 and 10,000.
-3. Recover again: it must select 10,000 with nothing skipped, at hash
-   `b95a0b4ef7dd8449`.
-4. The quarantined file must still exist, unchanged.
-
-No database, server, scheduler or UI in this step. No change to
-simulation-core, biology or snapshot format v1.
+No change to simulation-core or biology. No database, server or UI in this
+step.

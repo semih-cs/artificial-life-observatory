@@ -39,6 +39,7 @@ export type SnapshotStoreErrorCode =
   | 'FILENAME_TICK_MISMATCH'
   | 'INVALID_RETENTION'
   | 'NO_VALID_SNAPSHOT'
+  | 'INVALID_RECOVERY_REPORT'
   | 'STORE_IO_ERROR';
 
 export class SnapshotStoreError extends Error {
