@@ -9,8 +9,9 @@ validation seeds are untouched.**
 > the multi-founder default baseline. §15 is the `0A.2.0` food-limitation
 > diagnostic (precommitted design and result: INCONCLUSIVE). §16 is the design
 > of the trajectory-based outcome classifier v2; §17 its implementation and the
-> read-only reclassification of persisted runs. Every classification in §§2–15
-> is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
+> read-only reclassification of persisted runs; §18 the continuation that
+> completes the 15-seed `0A.2.0` default profile under v2. Every classification
+> in §§2–15 is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
 Every number in this report was read from the persisted result files under
@@ -2077,3 +2078,91 @@ covers each `outcome` field, the extinct/runaway/viable counts and every
 `viableCompletionRate`. The decisions taken under v1 stand. v2 labels live only
 in the reclassification output. `0A.1.0` and `0A.2.0` are never pooled. Nothing
 here is evidence about adaptation, intelligence or evolutionary advantage.
+
+---
+
+## 18. `continuation-multifounder-default-v1` — completing the 15-seed `0A.2.0` default profile (PRECOMMITMENT)
+
+**Written and committed before any code for this run exists and before anything
+is run. §18.6 is empty at this point.**
+
+**This is not a qualification attempt.** Under `trajectory-outcome-v2` the
+`0A.2.0` default baseline has **already failed** the ~70% gate. It has 5
+EXTINCTION runs among its 15 pilot seeds, and a passing 15-run cohort can have
+at most 4 runs that are neither `BOUNDED_VIABLE` nor `HIGH_BOUNDED` (§17.5).
+Nothing these six runs show can change that. Their only purpose is to complete
+the descriptive 15-seed outcome profile of the default multi-founder model.
+
+### 18.1 Design (fixed)
+
+| Item | Value |
+|---|---|
+| Id | `continuation-multifounder-default-v1` |
+| Model | `simulationVersion 0A.2.0`, `founderGroupCount = 5`, `DEFAULT_SIMULATION_CONFIG` with no override |
+| Seeds | the six pilot seeds the v1 cap stopped in `multifounder-default-baseline`: **115838, 155433, 163352, 171271, 179190, 202947**. The other nine are not rerun |
+| Horizon | 20,000 ticks |
+| Early stops | extinction; the diagnostic **execution safety ceiling of 1000** (`SAFETY_CEILING`); nothing else. The 200 cap does **not** stop execution |
+| Recorded | standard 200-tick timeseries (what the classifier reads), per-tick food flux (context), replicate summaries |
+| Classification | `trajectory-outcome-v2` exactly as implemented in `daab8b6`. Thresholds unchanged; the ceiling is not a classification rule beyond §16.4 step 3 |
+| Output | `packages/experiment-harness/results/continuation-multifounder-default-v1/` |
+| Provenance | clean committed worktree; each replicate records `gitCommit`, `gitDirty = false`, `sourceIdentity`, `simulationVersion`; the classification records `classifierVersion` |
+| Validation seeds | not used |
+
+### 18.2 Validity check, per seed, before any interpretation
+
+At the tick where the baseline run stopped, the continuation must agree
+**exactly** with the persisted baseline replicate on five things: the canonical
+state hash, population, cumulative births, cumulative deaths and food count.
+
+| Seed | Stop tick | `finalStateHash` | Population | Births | Deaths | Food |
+|---:|---:|---|---:|---:|---:|---:|
+| 115838 | 3389 | `187ce9dba4a57f07` | 200 | 259 | 84 | 60 |
+| 155433 | 3597 | `f324c5ff4e03f447` | 200 | 371 | 196 | 60 |
+| 163352 | 3782 | `11e00e24d8788908` | 200 | 425 | 250 | 56 |
+| 171271 | 6444 | `ec2ca3f9ae35a43b` | 200 | 466 | 291 | 53 |
+| 179190 | 3587 | `bfff9ef115a23623` | 200 | 289 | 114 | 57 |
+| 202947 | 18876 | `b6fbde0b63d26a5d` | 200 | 1484 | 1309 | 57 |
+
+Values are transcribed from `results/multifounder-default-baseline/replicates.json`
+(commit `d9dfb92`).
+
+A seed that fails is **INVALID**. Its continuation is not interpreted, only the
+reproducibility failure is investigated, and the model is never altered to
+force a match.
+
+### 18.3 The 15-seed profile
+
+Each seed contributes exactly one record:
+
+- **Baseline record**, where the baseline trajectory is complete: seeds 100000,
+  131676, 147514, 187109 and 195028 (EXTINCTION), and 210866 (reached 20,000).
+- **Verified continuation from `diagnostic-food-limitation-v1`**: 139595,
+  123757 and 107919. Their §15.9 integrity gate passed with the same
+  `configHash`.
+- **Verified continuation from this run**: the six seeds above, where valid.
+
+Reported for the 15:
+
+- count and rate of each v2 class, and `boundedCompletionRate`;
+- mean and median final population, mean births and maximum generation depth.
+
+These are taken from each seed's chosen record. The `boundedCompletionRate` is
+**descriptive**: the gate verdict is already FAIL and is not re-evaluated. If
+any seed is INVALID, the profile is reported as incomplete for that seed, and
+nothing is inferred for it.
+
+### 18.4 Interpretation, fixed in scope
+
+After the profile is complete, answer **one** question: what does the full
+15-seed profile suggest is the dominant failure mode of the default `0A.2.0`
+model? Then identify **one** smallest next model-level question. No parameter
+sweep is proposed, and no change is implemented.
+
+### 18.5 Not claimed
+
+No claim about adaptation, intelligence or evolutionary advantage. The `0A.1.0`
+and `0A.2.0` results stay separate.
+
+### 18.6 Results
+
+*(empty at precommitment)*

@@ -600,6 +600,28 @@ modifying the model.
 
 ---
 
+## `continuation-multifounder-default-v1` — PRECOMMITMENT (not yet run)
+
+Full text: pilot report §18. Committed before any code for it exists and before
+anything runs.
+
+**Not a qualification attempt.** The `0A.2.0` default baseline has already
+FAILED the ~70% gate under v2. Its 5 extinctions out of 15 rule the gate out
+whatever the six missing seeds do (§17.5). This run only completes the
+descriptive 15-seed profile.
+
+| Item | Value |
+|---|---|
+| Model | `0A.2.0`, `founderGroupCount 5`, `DEFAULT_SIMULATION_CONFIG` unchanged |
+| Seeds | 115838, 155433, 163352, 171271, 179190, 202947 (pilot; the other nine not rerun) |
+| Horizon / stops | 20,000 ticks; extinction; execution safety ceiling 1000. The 200 cap does NOT stop execution |
+| Validity | at each baseline stop tick (3389, 3597, 3782, 6444, 3587, 18876), exact agreement with the persisted baseline on canonical hash, population, births, deaths and food; a failing seed is INVALID and not interpreted |
+| Classification | `trajectory-outcome-v2` as implemented in `daab8b6`, thresholds unchanged |
+| Profile | 15 seeds: complete baseline records, plus verified continuations (`diagnostic-food-limitation-v1` for 139595/123757/107919, this run for the six) |
+| Output | `packages/experiment-harness/results/continuation-multifounder-default-v1/` |
+
+Validation seeds untouched.
+
 ## Outcome classifier v2 — IMPLEMENTED AND APPLIED TO PERSISTED RUNS
 
 Implemented in `daab8b6` (`src/analysis/trajectoryOutcome.ts`,
@@ -833,17 +855,12 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing run — an uncapped continuation of the six
-cap-stopped `0A.2.0` default-baseline seeds (115838, 155433, 163352, 171271,
-179190, 202947) under the §15 execution settings. Its purpose is to let the full
-15-seed default baseline be classified by `trajectory-outcome-v2`.**
+**Execute `continuation-multifounder-default-v1` exactly as precommitted in pilot
+report §18: add the minimal harness support, commit it, run the six seeds from
+the clean commit, enforce the per-seed validity check, classify with
+`trajectory-outcome-v2`, and report the complete 15-seed profile.**
 
-The settings are: 20,000 ticks, 200 cap not an early stop, safety ceiling 1000,
-and an integrity check against each baseline `finalStateHash`. State in the
-precommitment that its gate result is already fixed — it cannot reach 0.70,
-per §17.5 — and that it only completes the regime description.
-
-Constraints that still hold: no simulation-core change; do not change the 200
-cap in code, the v2 thresholds, food parameters or `founderGroupCount`; no
-calibration sweep; do not touch `packages/experiment-harness/seeds/validation.json`;
-do not begin Phase 0C.
+Constraints that still hold: no simulation-core change; v2 thresholds, 200 cap
+code, food parameters and `founderGroupCount` unchanged; no calibration sweep;
+do not touch `packages/experiment-harness/seeds/validation.json`; do not begin
+Phase 0C.
