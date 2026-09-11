@@ -1,17 +1,19 @@
 # Artificial Life Observatory
 
-A headless, deterministic artificial-life simulation core, plus the
-experiment harness that calibrates and validates it. Organisms with a
-five-gene morphology and a fixed-topology neural controller live, move, eat,
-reproduce, mutate and die in a bounded 2D world with a static seeded fertility
-field. No UI, no server, no database — those are later phases.
+A headless, deterministic artificial-life simulation core, the experiment
+harness that studied it, and — from Phase 0C — exact world persistence.
+Organisms with a five-gene morphology and a fixed-topology neural controller
+live, move, eat, reproduce, mutate and die in a bounded 2D world with a static
+seeded fertility field. No UI, no server and no database yet; those are later
+phases.
 
-Two workspace packages:
+Three workspace packages:
 
 | Package | Phase | Purpose |
 |---|---|---|
 | `packages/simulation-core` | 0A | the deterministic headless biological simulation |
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
+| `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly |
 
 ## Status
 
@@ -20,7 +22,7 @@ Two workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| **Phase 0C — persistent canonical world** | **active — the current phase** |
+| **Phase 0C — persistent canonical world** | **active — the current phase.** Slice 1, exact save/load/resume, is done |
 | Phase 0D — Observatory UI | next, after 0C |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -97,6 +99,9 @@ Consequences that follow from this, and that you should not "fix":
     │   ├── vitest.config.ts
     │   ├── src/
     │   └── tests/
+    ├── persistence/                 Phase 0C — snapshot format v1, atomic save/load
+    │   ├── src/                     snapshot.ts, file.ts, errors.ts, stableStringify.ts
+    │   └── tests/                   continuation, corruption, file, snapshot (+ fixtures/)
     └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
@@ -203,8 +208,8 @@ Requires Node.js 20+ (developed against Node 22).
 
 ```bash
 npm install     # installs the workspace (reproducible from package-lock.json)
-npm test        # runs the vitest suite in both packages
-npm run build   # type-checks and emits dist/ for both packages
+npm test        # runs the vitest suite in all three packages
+npm run build   # builds simulation-core first, then the harness and persistence
 ```
 
 Headless run:
@@ -225,6 +230,89 @@ config.rootSeed = 123;
 const { world, summary } = runSimulation(config, 10_000);
 console.log(summary.finalStateHash, summary.endingPopulation);
 ```
+
+Save and resume a world (Phase 0C, `@alo/persistence`):
+
+```ts
+import { bootstrapWorld, stepWorld, cloneConfig, DEFAULT_SIMULATION_CONFIG } from '@alo/simulation-core';
+import { createSnapshot, saveSnapshotAtomic, loadSnapshot, restoreSnapshot } from '@alo/persistence';
+
+const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+config.rootSeed = 123;
+let world = bootstrapWorld(config);
+for (let i = 0; i < 5000; i++) world = stepWorld(world, config).world;
+
+saveSnapshotAtomic('world.snapshot.json', createSnapshot(world, config));
+
+// later, in any process:
+const restored = restoreSnapshot(loadSnapshot('world.snapshot.json'));
+let w = restored.world;                     // exactly the world at tick 5000
+w = stepWorld(w, restored.config).world;    // continues as if never stopped
+```
+
+## World persistence (Phase 0C, slice 1)
+
+**The invariant, proven by test:** continuous run == save → load → resume,
+bit for bit. On the golden seed, a world saved at tick 10,000 and resumed —
+including in a fresh Node process — has the same canonical state hash as the
+uninterrupted run at every 1,000 ticks up to 20,000. A world saved at 5,000
+resumes to exactly `b95a0b4ef7dd8449` at 10,000.
+
+**Snapshot format v1** (`packages/persistence/src/snapshot.ts`) is one JSON
+document with these fields:
+
+- `format`, `snapshotFormatVersion: 1`, `simulationVersion`, `tick`;
+- `config` — the complete `SimulationConfig` including `rootSeed` — and
+  `configHash`;
+- `state` — exactly `canonicalizeWorldState(world)` from simulation-core: tick,
+  world size, the full fertility lattice, the ID counters, every organism with
+  its runtime state, lineage and genome, all food, and both the BootstrapRNG
+  and CanonicalRNG states;
+- `stateHash` — `canonicalStateHash` at save time;
+- `checksum` — SHA-256 over every other field.
+
+Snapshots are serialized deterministically: keys sorted, no whitespace, one
+trailing newline.
+
+**Semantics.**
+
+- **Tick convention.** A snapshot labelled tick N is the world *after* tick N
+  has completed. That is the `WorldState` with `.tick === N`, the input to the
+  step that produces N + 1.
+- **No randomness.** Saving and loading draw no random numbers from any stream
+  and never modify the live world. Restore builds fresh objects.
+- **Supported versions.** Snapshots restore `0A.2.0` (canonical) and `0A.1.0`
+  (historical).
+
+**Corruption handling.** `parseSnapshot`, `validateSnapshot`,
+`restoreSnapshot` and `loadSnapshot` refuse with a `SnapshotError` carrying a
+`code`. Nothing is ever repaired. The refusals:
+
+| Code | Refused when |
+|---|---|
+| `INVALID_SERIALIZATION` | the text is not JSON |
+| `NON_CANONICAL_SERIALIZATION` | the text is not byte-identical to its canonical form — this catches any altered byte |
+| `UNSUPPORTED_FORMAT_VERSION` | the format version is not 1 |
+| `MALFORMED_SNAPSHOT` / `MALFORMED_WORLD_STATE` | a field is missing or has the wrong structure |
+| `CHECKSUM_MISMATCH` | the checksum does not match the content |
+| `INCOMPATIBLE_SIMULATION_VERSION` | the version is unsupported, or the snapshot, config and state disagree |
+| `CONFIG_HASH_MISMATCH` / `INVALID_CONFIG` | the config was altered or is invalid |
+| `INVALID_RNG_STATE` | an RNG state is missing, not unsigned 32-bit, or all zero |
+| `STATE_HASH_MISMATCH` | the restored world does not hash to the saved value |
+| `FILE_ERROR` | the file cannot be read or written |
+
+`saveSnapshotAtomic` writes a temporary file in the same directory, fsyncs it,
+then renames it over the target. A reader therefore sees the old snapshot or
+the new one, never a partial file. It refuses to write a snapshot that would
+not load.
+
+**Current limitations.**
+
+- One local file, written by explicit calls only.
+- No snapshot rotation, no fallback to an older snapshot.
+- No persistent world process or tick scheduler.
+- No database, events or API.
+- The checksums detect corruption, not deliberate tampering.
 
 Phase 0B experiments (see `docs/Phase 0B Experiment Guide.md` for what each one
 means and how to read its output):
@@ -508,7 +596,7 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. The deterministic save/load/resume invariant comes first |
+| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Slice 1 is done: deterministic save/load/resume, snapshot format v1 |
 | 0D      | the Observatory UI — realtime stream, rendering, organism and lineage inspection |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**

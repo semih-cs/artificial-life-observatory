@@ -17,7 +17,7 @@
 | **Phase 0A** — simulation core | **COMPLETE / FROZEN**, with one adopted versioned amendment: multi-founder initialization, `0A.1.0` → `0A.2.0` |
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
-| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** The first slice is deterministic save/load/resume (below) |
+| **Phase 0C** — Persistent Canonical World | **ACTIVE — current phase.** Slice 1, deterministic save/load/resume, is **DONE** (below) |
 | **Phase 0D** — Observatory / visualisation | NOT STARTED; follows 0C |
 
 **Frozen v1 biological model:**
@@ -87,11 +87,12 @@ has been chosen yet.
 
 ## Git state
 
-Branch: `master`. `git log -1` is authoritative. The most recent work is the
-Phase 0B closure and the Phase 0C transition:
+Branch: `master`. `git log -1` is authoritative. The most recent work is
+Phase 0C slice 1:
 
 ```text
-(HEAD)  Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked — see `git log -1`
+(HEAD)  Phase 0C slice 1: persistence package, snapshot format v1, exact save/load/resume — see `git log -1`
+5633ffd Phase 0B closed for v1; biology frozen at 0A.2.0; Phase 0C unblocked
 511aa10 diagnostic-reproducer-lifecycle-v1: results — VALID, NEITHER / INCONCLUSIVE
 1f07f69 diagnostic-reproducer-lifecycle-v1: read-only recorder, analysis and CLI
 80766e0 reproduction-participation: results — B, repeat-reproduction difference (read-only)
@@ -112,18 +113,18 @@ artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
 ## Verification (this session, on the committed tree)
 
 ```text
-simulation-core tests:   179 / 179 passed
+simulation-core tests:    179 / 179 passed
 experiment-harness tests: 138 / 138 passed
-workspace total:          317 / 317 passed
-workspace build:          PASS (tsc -p tsconfig.json in both packages)
+persistence tests:         31 / 31  passed   (incl. §18.60 continuation, golden resume, separate process)
+workspace total:          348 / 348 passed
+workspace build:          PASS (simulation-core, then experiment-harness and persistence)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the Phase 0B closure checkpoint (documentation only, no code
-change):
+Re-confirmed at the Phase 0C slice 1 checkpoint:
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -526,8 +527,8 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0B Experiment Guide.md` | UPDATED — movement-policy diagnostic, chunked sweeps, provenance and the reverified paths |
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
-| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2 |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy |
+| `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; three packages, the persistence API example, and a World persistence section (format v1, semantics, corruption codes, limitations) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 | `AGENTS.md` | unchanged |
 
@@ -1213,7 +1214,89 @@ movement in the intended direction. `founderGroupCount` is not a calibration
 axis. Validation seeds are not used. Optional, observational, non-decisional:
 pairwise founder functional distance per world (§14.6).
 
-## Phase 0C — first slice: deterministic save / load / resume
+## Phase 0C slice 1 — RESULT: DONE (deterministic save / load / resume)
+
+**Package:** `packages/persistence` (`@alo/persistence`). It depends only on
+`@alo/simulation-core`; simulation-core and the biology are unchanged.
+
+**API:**
+
+- `createSnapshot(world, config)`;
+- `serializeSnapshot` / `parseSnapshot`;
+- `validateSnapshot`;
+- `restoreSnapshot → { world, config }`;
+- `saveSnapshotAtomic(file, snapshot)` / `loadSnapshot(file)`;
+- `SnapshotError` with a `code`.
+
+**Snapshot format v1:**
+
+- `format`, `snapshotFormatVersion: 1`, `simulationVersion`, `tick`;
+- the full `config` and its `configHash` (hash64 of sorted-key JSON);
+- `state` = `canonicalizeWorldState(world)`, which covers both RNG states, the
+  full fertility lattice, the organisms with runtime state, lineage and
+  genomes, the food and the ID counters;
+- `stateHash` (the canonical hash);
+- `checksum` (SHA-256 over every other field).
+
+It is serialized deterministically as sorted-key JSON with a trailing newline.
+`parseSnapshot` also requires the text to be byte-identical to its canonical
+serialization, so every altered byte is caught. Supported versions: `0A.2.0`
+and `0A.1.0`.
+
+**Semantics:**
+
+- snapshot tick N = the world after tick N completed;
+- the fertility lattice is stored in full;
+- loading draws no RNG;
+- restore builds fresh objects.
+
+**Proof** (`packages/persistence/tests`, 31 tests):
+
+| Test | Result |
+|---|---|
+| continuous 20,000 vs 10,000 → snapshot → serialize → file → load → restore → 20,000 (seed 20260910) | hash equal at every 1,000 ticks and at the end |
+| golden resume: save at 5,000 → resume to 10,000 | `b95a0b4ef7dd8449` |
+| separate processes: A creates and saves, a fresh B loads and resumes | hashes equal to the reference every 1,000 ticks |
+| round trip world → serialize → parse → restore | canonical state string and hash identical |
+| deterministic serialization | identical text, independent of config key order |
+| purity | world, RNG streams and config byte-identical after save; works on deep-frozen inputs; restored RNG equals source; restore shares no objects |
+| tick 0 and `0A.1.0` save/resume | exact |
+| corruption | all of the cases below rejected with a coded `SnapshotError` |
+| atomic file | no temp file left, whole replacement, a partial target refused, a stray temp file ignored, an invalid snapshot never written, file errors coded |
+
+Corruption cases rejected:
+
+- 300 single flipped bytes;
+- a change that decodes to identical values but is non-canonical;
+- malformed or truncated JSON;
+- a wrong checksum;
+- a wrong state hash, including a tampered state that was resealed;
+- a missing or malformed RNG state (negative, ≥ 2³², fractional, string,
+  missing word, all zero);
+- a wrong format version;
+- an incompatible or inconsistent simulation version;
+- a modified config with a stale hash;
+- a broken structure.
+
+Also in this checkpoint:
+
+- the root `npm run build` now builds simulation-core first;
+- `package-lock.json` gains the new workspace.
+
+**Still needed for Phase 0C** (Spec §17.60, §14.35):
+
+- snapshot rotation (3–5 recent) and fallback from a corrupt newest snapshot
+  (§14.38, §18.61, §19.21–§19.25);
+- world identity and an immutable canonical launch configuration
+  (§19.33–§19.34);
+- a persistent world process with a tick scheduler and periodic snapshots
+  (§14.36, §19.19–§19.20);
+- a recovery algorithm that never silently starts a fresh world (§19.23–§19.24);
+- operational and biological event records (§19.35–§19.37);
+- PostgreSQL historical storage;
+- soak tests.
+
+### Slice 1 specification (historical record — IMPLEMENTED)
 
 The authority is Spec v4: §14.34–§14.38, §18.24–§18.26, §18.60–§18.62,
 §19.4–§19.17 and §19.27–§19.28. The first slice proves one invariant before
@@ -1285,17 +1368,23 @@ seed.
 
 ## NEXT EXACT STEP
 
-**Implement Phase 0C slice 1 as specified above.**
+**Phase 0C slice 2 — snapshot rotation and recovery, local files only:**
 
-1. Create `packages/persistence`, depending only on `@alo/simulation-core`,
-   with snapshot schema v1: create, serialize, parse, validate and restore, plus
-   an atomic file save/load.
-2. Add the §18.60 continuation test (20,000 continuous against
-   10,000 → save → load → resume, with the hash every 1,000 ticks equal).
-3. Add the golden resume test (seed 20260910: save at 5000 → resume →
-   `b95a0b4ef7dd8449`).
-4. Add the separate-process restore test and the §19.28 corrupt-snapshot
-   rejection tests.
+1. **Add a directory-backed snapshot store to `packages/persistence`.** It
+   writes each snapshot atomically under a tick-ordered name and keeps only
+   the newest K. Default K = 5, from the Spec §14.38 3–5 baseline. It refuses
+   snapshots whose `configHash` or `simulationVersion` differ from the world
+   already in that directory.
+2. **Add `recoverLatestValid(dir)`.** It loads the newest snapshot that
+   validates, falls back to older ones when newer ones are corrupt, and reports
+   each skipped snapshot and why (§18.61, §19.21–§19.24). It throws, and never
+   creates a fresh world, if none is valid.
+3. **Prove it with tests:**
+   - retention count;
+   - a corrupt newest snapshot falls back to the previous one, and resuming
+     from it equals the continuous run from that tick;
+   - every snapshot corrupt → a clear failure;
+   - a mixed-world directory is refused.
 
-No change to simulation-core or biology. No database, server or UI in this
-step.
+No database, server, scheduler or UI in this step. No change to
+simulation-core or biology.

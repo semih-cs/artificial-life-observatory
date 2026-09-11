@@ -157,6 +157,26 @@ Do not add a database, server or UI before the deterministic save/resume
 invariant (Spec §18.60, §19.27) is proven. Persistence code lives in its own
 workspace package that consumes `simulation-core`, never inside it.
 
+**Slice 1 is done:** `packages/persistence`, snapshot format v1. The invariant
+is proven by test, and the following persistence invariants must hold from now
+on:
+
+- **Exact continuation.** A snapshot restores to a world that continues bit for
+  bit: continuous run == save → load → resume. The continuation and golden-resume
+  tests in `packages/persistence/tests` are live regressions. Never weaken
+  them.
+- **Purity.** Snapshot creation, serialization, validation, loading and restore
+  draw no RNG from any stream and never modify the live world or its config.
+- **One definition of state.** The stored world state is
+  `canonicalizeWorldState(world)`. Any change to its shape, or to anything
+  `stepWorld` reads, needs a new `snapshotFormatVersion` and an explicit loader.
+- **Tick convention.** Snapshot tick N = the world after tick N completed.
+- **Refuse, never repair.** A snapshot that fails any check is rejected with a
+  coded `SnapshotError`. There is no automatic fresh world or approximate
+  catch-up (§19.24, §19.26).
+- **Atomic writes.** Files are written temp → fsync → rename. A partial file is
+  never accepted.
+
 ### Demo seeds (product only)
 
 A clearly labelled DEMO seed may be chosen for the product UI because it
@@ -296,9 +316,7 @@ Current npm workspace:
 
 - `packages/simulation-core`
 - `packages/experiment-harness`
-
-Planned for Phase 0C: a separate persistence package that depends only on
-`simulation-core`.
+- `packages/persistence` (Phase 0C) — depends only on `simulation-core`
 
 Keep experiment-specific code out of `simulation-core`.
 
@@ -345,6 +363,10 @@ Expected hash depends on the model version, and the two must never be conflated:
 | `0A.1.0` historical single-founder | `singleFounderModelConfig()` | `6a6576bd49e86b27` |
 
 Results from the two models must not be pooled or compared numerically.
+
+Persistence regression, part of `npm test`: `npm test -w packages/persistence`.
+It covers the §18.60 continuation, the golden resume to `b95a0b4ef7dd8449`, a
+separate-process restore and corrupt-snapshot rejection. It takes about 75 s.
 
 Phase 0B CLI:
 

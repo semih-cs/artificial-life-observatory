@@ -2,13 +2,13 @@
   "name": "artificial-life-observatory",
   "private": true,
   "version": "0.1.0",
-  "description": "Artificial Life Observatory — Phase 0A simulation core + Phase 0B experiment harness.",
+  "description": "Artificial Life Observatory — simulation core (0A), experiment harness (0B), persistence (0C).",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w packages/simulation-core && npm run build -w packages/experiment-harness -w packages/persistence",
     "simulate": "npm run simulate --workspace=packages/simulation-core --",
     "experiment": "npm run experiment --workspace=packages/experiment-harness --"
   }
