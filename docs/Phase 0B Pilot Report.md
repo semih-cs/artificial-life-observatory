@@ -13,7 +13,8 @@ validation seeds are untouched.**
 > completes the 15-seed `0A.2.0` default profile under v2; §19 a read-only
 > analysis of those worlds' early establishment; §20 a read-only comparison of
 > the stalled worlds that recover and those that die; §21 whether that split is
-> reproduction participation or repeat reproduction. Every classification in §§2–15
+> reproduction participation or repeat reproduction; §22 an observational
+> per-organism lifecycle diagnostic of the same worlds. Every classification in §§2–15
 > is a v1 (peak ≥ 200) result and stays as recorded. Results from the two models are separate
 > evidence bases and must not be pooled — see §12.1 and §14.4.
 
@@ -2952,3 +2953,194 @@ first reproducing?**
 The persisted aggregates cannot answer this. It needs per-organism records of
 reproduction times and death times, which have never been recorded. This is a
 question only. Nothing is implemented or run.
+
+---
+
+## 22. `diagnostic-reproducer-lifecycle-v1` — longer gaps or earlier death? (PRECOMMITMENT)
+
+**Written and committed before any code for this diagnostic exists and before
+anything is run. §22.9 is empty at this point.**
+
+This is an observational diagnostic. The seven stalled-cohort worlds are rerun
+with a read-only event recorder attached, and the biological trajectory must be
+unchanged. No biological, neural, ecological or reproduction rule changes, and
+`founderGroupCount` and `trajectory-outcome-v2` are untouched.
+
+### 22.1 Question
+
+In the stalled worlds that go extinct, reproducers produce fewer offspring over
+their lives (§21). Is that because of **(A) longer intervals between successive
+reproductions**, or **(B) shorter survival after first reproduction**?
+
+### 22.2 Seeds (fixed)
+
+- Extinct (E\*): 131676, 147514, 187109, 195028.
+- Late establishers (L): 107919, 202947, 210866.
+
+These are the same seven as §20–§21. Nothing is added or removed after results
+are seen.
+
+### 22.3 Execution (fixed)
+
+- **Configuration:** `simulationVersion 0A.2.0`, `DEFAULT_SIMULATION_CONFIG`
+  with no override, 20,000 ticks, stop on extinction.
+- **Early stops:** the 200 cap does not stop execution. The execution safety
+  ceiling is 1000.
+- **Sampling:** standard 200-tick samples, the same cadence as the baseline.
+- **Output:** `packages/experiment-harness/results/diagnostic-reproducer-lifecycle-v1/`.
+- **Provenance:** clean committed worktree; every replicate records
+  `gitCommit`, `gitDirty = false`, `sourceIdentity` and `simulationVersion`.
+- **Validation seeds:** not used.
+
+### 22.4 Recording — observational only
+
+All events are read from the harness's existing read-only per-tick hook,
+`onTick(before, after, telemetry)`. **simulation-core is not changed.**
+
+**Tick convention.** Every event is stamped with the tick of the post-step
+world in which its result first appears. Birth and reproduction use the
+offspring's own `birthTick`. Death uses the first post-step tick in which the
+organism is absent. The core stores `deathTick` one lower internally; the
+harness convention keeps birth, reproduction and death on one scale.
+
+**Per organism:**
+
+| Field | Source |
+|---|---|
+| organism id, parent id, generation depth, birth tick | the organism record when first seen |
+| every reproduction tick | the birth tick of each offspring naming it as parent; Phase 0A produces exactly one offspring per reproduction, so offspring count = reproduction events |
+| number of offspring | count of those events |
+| age at first reproduction | first reproduction tick − birth tick |
+| energy at first reproduction | **the parent's energy after that step**, i.e. after paying the reproduction cost. It is the only value visible, so it is labelled as such and is descriptive only |
+| death tick, age at death | first tick absent; age before + 1 |
+| death cause | derived, see below |
+
+**Death cause** is not visible after the step, because the core's working copy
+is discarded. It is derived from the only two Phase 0A death mechanisms:
+
+- age at death < `maxAge` → `ENERGY_DEPLETION`, which is exact;
+- age at death = `maxAge` → `AT_MAX_AGE`. The core labels such a death
+  `MAX_AGE` unless energy was also depleted in that tick, in which case energy
+  takes precedence. The two cannot be separated here, and this is stated with
+  the result.
+
+Death cause is descriptive only and plays no part in the decision.
+
+**Purity, tested before the run:**
+
+- a run with the recorder gives the identical canonical hash and timeseries as
+  a run without it;
+- the recorder runs without error on deep-frozen before/after states, proving
+  it mutates nothing;
+- its counts balance exactly with telemetry: recorded births and deaths per
+  tick equal telemetry births and deaths, and offspring counts sum to births.
+
+The recorder draws no RNG and touches no state, ordering or decision.
+
+### 22.5 Validity check (before interpretation)
+
+No canonical state hash was ever persisted at ticks 3000, 5000, 7000 or 9000.
+The check therefore has two parts.
+
+**(a) Exact canonical hash** at the persisted exact checkpoint of each seed:
+
+| Seed | Tick | Expected hash | Source |
+|---:|---:|---|---|
+| 131676 | 14505 (extinction) | `c3213619b9c38edf` | baseline |
+| 147514 | 9092 (extinction) | `d796624c0cc0b4f6` | baseline |
+| 187109 | 18374 (extinction) | `96a753e86be9dc3a` | baseline |
+| 195028 | 9235 (extinction) | `8d14961c1201f613` | baseline |
+| 107919 | 9793 | `da0a52515e7c9bc6` | baseline stop state |
+| 107919 | 20000 | `93f7b89eaf6b1247` | `diagnostic-food-limitation-v1` |
+| 202947 | 18876 | `b6fbde0b63d26a5d` | baseline stop state |
+| 202947 | 20000 | `52633379cc4603fa` | `continuation-multifounder-default-v1` |
+| 210866 | 20000 | `16b073462ec8b5c4` | baseline |
+
+**(b) Exact equality of the complete standard timeseries row** at ticks
+**3000, 5000, 7000 and 9000**, against the baseline file, for all seven seeds.
+That is all 25 fields at full double precision: population, food, births,
+deaths, energy statistics, age, generation, lineages, morphology and neural
+summaries, and `fractionEverReproduced`. It is the closest exact persisted
+record at those ticks.
+
+Any mismatch makes the diagnostic **INVALID**. Nothing is interpreted, only the
+cause is investigated, and biology is never changed to force a match.
+
+### 22.6 Analysis population and censoring (fixed)
+
+- **Included organism:** a descendant (generation ≥ 1) born in ticks
+  **3001–9000**, after the founders died. This is the period in which §20 and
+  §21 located the divergence, and every organism born in it is a descendant.
+- **Censoring:** an included organism counts only if its death is observed
+  within the run. Lifespan is at most `maxAge` 3000, so an organism born by
+  9000 dies by 12,000. A run that goes extinct observes everyone's death. A run
+  that reaches the ceiling or horizon before an included organism dies censors
+  that organism: it is excluded and counted. No outcome is imputed.
+- **Eligible reproducer:** an included, uncensored organism with at least one
+  reproduction event.
+
+### 22.7 Measures and per-world summaries (fixed)
+
+Per eligible reproducer:
+
+1. age at first reproduction;
+2. number of lifetime reproduction events, which equals total offspring (§22.4);
+3. inter-reproduction intervals: the successive differences of its
+   reproduction ticks, summarised as the organism's median interval, for
+   reproducers with ≥ 2 events;
+4. post-first-reproduction survival = death tick − first reproduction tick;
+5. whether it died before a second reproduction (exactly 1 event).
+
+Per world, over its eligible reproducers:
+
+- median age at first reproduction;
+- median of the per-organism median intervals, over reproducers with ≥ 2
+  events;
+- median post-first-reproduction survival;
+- median lifetime reproduction events;
+- fraction dying before a second reproduction.
+
+The number of eligible reproducers, and of those with ≥ 2 events, is reported
+per world. **Worlds are the units**: 4 against 3. Organism-level distributions
+are descriptive only and are never pooled across worlds as if independent.
+
+### 22.8 Decision rule (fixed)
+
+Two primary world-level measures:
+
+- **IV** — the median inter-reproduction interval. The expected direction is L
+  shorter.
+- **SV** — the median post-first-reproduction survival. The expected direction
+  is L longer.
+
+For each, find the best single threshold across the 7 world values:
+
+- CLEAR = 0 worlds misclassified;
+- STRONG PARTIAL = 1;
+- WEAK / NONE = 2 or more.
+
+A measure **supports** a mechanism only if it is CLEAR *in the expected
+direction*.
+
+- **LONGER GAPS** — IV supports, SV does not.
+- **EARLIER DEATH** — SV supports, IV does not.
+- **MIXED** — both support.
+- **NEITHER / INCONCLUSIVE** — neither supports.
+
+The call is also **NEITHER / INCONCLUSIVE** if any world has no eligible
+reproducer, or has no reproducer with ≥ 2 events (no IV value). The world
+counts are reported.
+
+Separation strength is reported for both measures. The other per-world summaries
+are descriptive. With one look per measure at n = 4 against n = 3, a CLEAR cut
+arises for 5.7% of random labellings. That is stated with the result, and no
+significance language is used.
+
+**Causal limit.** No claim that food, neural quality, sensing or morphology
+caused any difference. Permitted: reproduction intervals differ,
+post-reproduction survival differs, one or both lifecycle patterns accompany
+establishment success.
+
+### 22.9 Results
+
+*(empty at precommitment)*

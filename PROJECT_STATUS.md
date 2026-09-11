@@ -630,6 +630,47 @@ modifying the model.
 
 ---
 
+## `diagnostic-reproducer-lifecycle-v1` — PRECOMMITMENT (not yet run)
+
+Full text: pilot report §22. Committed before any code for it exists and before
+anything runs.
+
+- **Question:** do reproducers in the extinct stalled worlds produce fewer
+  offspring because of longer inter-reproduction intervals or shorter survival
+  after first reproduction?
+- **Seeds:**
+  - E\* 131676, 147514, 187109, 195028;
+  - L 107919, 202947, 210866.
+- **Run:** `0A.2.0` defaults, 20,000 ticks, cap not an early stop, ceiling
+  1000, 200-tick samples.
+- **Recorder:** events read through the existing read-only `onTick` hook, with
+  no simulation-core change. Purity is tested: identical hash and timeseries,
+  deep-frozen states, telemetry balance.
+- **Death cause:** derived. `ENERGY_DEPLETION` is exact below `maxAge`;
+  `AT_MAX_AGE` is ambiguous with simultaneous starvation.
+- **Validity:**
+  - exact canonical hash at each seed's persisted exact checkpoint: the
+    baseline extinction or stop ticks, and 20,000 from the uncapped runs;
+  - exact equality of the full 200-tick timeseries row at 3000, 5000, 7000 and
+    9000;
+  - any mismatch makes the diagnostic INVALID.
+- **Analysis population:** descendants born in ticks 3001–9000 whose death is
+  observed; censored organisms are excluded and counted. An eligible
+  reproducer has ≥ 1 reproduction.
+- **Per-world medians:**
+  - age at first reproduction;
+  - inter-reproduction interval (IV);
+  - post-first-reproduction survival (SV);
+  - lifetime events;
+  - fraction dying before a second reproduction.
+- **Decision** (best single cut over 4 against 3 worlds; a measure supports
+  only if CLEAR in the expected direction):
+  - LONGER GAPS if IV supports (L shorter) and SV does not;
+  - EARLIER DEATH if SV supports (L longer) and IV does not;
+  - MIXED if both support;
+  - NEITHER / INCONCLUSIVE otherwise, or if any world lacks an IV value.
+- **Output:** `packages/experiment-harness/results/diagnostic-reproducer-lifecycle-v1/`.
+
 ## Reproduction participation analysis — RESULT: B (repeat reproduction)
 
 Code in `8cf1759` (`src/analysis/reproductionParticipation.ts`, CLI
@@ -1122,17 +1163,13 @@ pairwise founder functional distance per world (§14.6).
 
 ## NEXT EXACT STEP
 
-**Precommit — design only, nothing run — an observational diagnostic that
-records per-organism life-history events for the same 7 stalled-cohort seeds.**
-The events are birth tick, each reproduction tick, and death tick and cause.
-Its purpose is to answer pilot report §21.7: longer inter-reproduction
-intervals, or shorter reproductive lifespans.
+**Execute `diagnostic-reproducer-lifecycle-v1` exactly as precommitted in pilot
+report §22:**
 
-The diagnostic must be read-only with respect to the trajectory, with the
-canonical hash unchanged. It must be verified against the persisted baseline
-states at fixed ticks. Its window, measures and rule must be fixed before
-anything runs.
+1. implement the read-only recorder and its purity tests in the harness;
+2. commit;
+3. run the seven seeds from the clean commit;
+4. enforce the §22.5 validity check;
+5. apply the §22.8 rule unchanged.
 
-Constraints that still hold: no model, ecology, `founderGroupCount` or
-`trajectory-outcome-v2` change; no calibration sweep; do not touch
-`packages/experiment-harness/seeds/validation.json`; do not begin Phase 0C.
+No simulation-core change; no biological, ecological or parameter change.
