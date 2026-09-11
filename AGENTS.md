@@ -146,7 +146,7 @@ reopened.
 
 ### Phase 0C — Persistent Canonical World
 
-**COMPLETE FOR V1** (runner and observer bridge done; Phase 0D is next). Scope, in order:
+**COMPLETE FOR V1** (runner and observer bridge done; Phase 0D is active). Scope, in order:
 
 1. **deterministic snapshot save/load/resume** — first, and alone;
 2. snapshot validation, checksum, rotation and fallback;
@@ -162,9 +162,9 @@ workspace package that consumes `simulation-core`, never inside it.
 snapshots (slice 3). The snapshot store is complete; do not open another
 persistence sub-project. The persistent world process is also done:
 `packages/world-runner`, and so is its read-only observer bridge (WebSocket
-frames, observer protocol v1, tick pacing). The next step is the Phase 0D
-Observatory frontend. The following persistence, runner and observer
-invariants are proven by test and must hold from now on:
+frames, observer protocol v1, tick pacing). The Phase 0D Observatory
+frontend consumes it (slice 1 done). The following persistence, runner and
+observer invariants are proven by test and must hold from now on:
 
 - **Exact continuation.** A snapshot restores to a world that continues bit for
   bit: continuous run == save → load → resume. The continuation and golden-resume
@@ -229,14 +229,45 @@ produces a long-lived, interesting world.
 
 ### Phase 0D — Observatory
 
-**NEXT — ready to start.** The frontend consumes the read-only observer
-stream from `packages/world-runner`: `--observe <port>`, observer protocol
-v1, see README. It never sends commands that change the world (§14.50). Scope:
+**ACTIVE — slice 1 done.** `packages/observatory` (React + TypeScript +
+Vite + PixiJS) consumes the read-only observer stream from
+`packages/world-runner`: `--observe <port>`, observer protocol v1, see
+README. It never sends commands that change the world (§14.50). Scope:
 
 - observer UI,
 - React/PixiJS,
 - live visualization,
 - inspection/analytics presentation.
+
+Slice 1 is the live world view: organisms (lineage colour, heading, size,
+energy), food, births/deaths, interpolated motion, camera, selection with
+lineage emphasis, an organism inspector, HUD and connection states. Later
+slices make evolution visible (lineage history, event feed, mutation
+visibility, trends) — see `PROJECT_STATUS.md`.
+
+Frontend rules that hold from now on:
+
+- **Read-only, structurally.** The connection's socket type
+  (`ReadOnlySocket`) has no `send`. Nothing in the frontend transmits to the
+  runner; the read-only test in `packages/observatory/tests` is a live
+  regression. Never add a mutation path "for convenience".
+- **Display is not state.** Interpolation, birth/death effects, lineage
+  emphasis, the view pause and the camera are presentation only. Nothing is
+  written back, nothing is extrapolated past the newest frame, and a paused
+  view never pauses the simulation.
+- **No history in the UI.** The frame store keeps the newest frame and the
+  previous one. A later slice that needs history must bound it and say so;
+  it must not become a hidden event database.
+- **The frontend owns its protocol types.** `protocol/observerV1.ts` mirrors
+  the runner's frame shape and validates every message. A frame-shape
+  change bumps `OBSERVER_PROTOCOL_VERSION` in the runner *and* the
+  frontend's supported version; unknown versions are refused, never guessed.
+- **Only real data.** Colours mean nothing but identity, energy is a
+  number, and no qualitative labels (healthy, weak, fit, intelligent, …)
+  are invented.
+- **Organisms live in Pixi, not React.** React owns the shell (HUD,
+  inspector, controls, connection); entities are Pixi display objects reused
+  across frames. React state updates at most once per frame.
 
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
@@ -362,12 +393,16 @@ Current npm workspace:
 - `packages/persistence` (Phase 0C) — depends only on `simulation-core`
 - `packages/world-runner` (Phase 0C) — depends on `simulation-core` and `persistence`;
   the long-running world process and its CLI (`npm run world`)
+- `packages/observatory` (Phase 0D) — the browser frontend (`npm run observatory`);
+  depends on no other workspace package. It talks to the world runner only
+  over the observer WebSocket, read-only
 
 Keep experiment-specific code out of `simulation-core`.
 
 Keep UI/server/database/persistence code out of `simulation-core` and
 `experiment-harness`. Persistence belongs in its own Phase 0C package, and
-UI/server belong to Phase 0D.
+UI belongs to `packages/observatory`. The frontend never imports simulation
+types; it validates the wire protocol itself.
 
 Generated artifacts should not be committed unless intentionally selected as small fixtures.
 
@@ -424,7 +459,18 @@ It covers:
 - observer purity and the read-only stream;
 - golden runs with an observer, with pacing, and with both.
 
-It takes about 50 s. The full `npm test` takes about 2.5–3 minutes.
+It takes about 50 s.
+
+Observatory regression, part of `npm test`: `npm test -w packages/observatory`
+(vitest, about 1 s, no browser). It covers protocol parsing, the connection
+lifecycle and the read-only guarantee, frame replacement without history,
+selection and the inspector, interpolation bounds and angular wrap, lineage
+colour determinism and the camera. `npm run build` type-checks and bundles
+it. The live check — a world runner with `--observe` plus the built
+Observatory in a browser — is manual (or scripted with a headless browser
+where one is available) and is recorded in `PROJECT_STATUS.md`.
+
+The full `npm test` takes about 2.5–3 minutes.
 
 Phase 0B CLI:
 

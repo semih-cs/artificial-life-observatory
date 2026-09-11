@@ -1,14 +1,15 @@
 # Artificial Life Observatory
 
 A headless, deterministic artificial-life simulation core, the experiment
-harness that studied it, and — from Phase 0C — exact world persistence and a
-long-running world process.
+harness that studied it, exact world persistence with a long-running world
+process (Phase 0C), and — from Phase 0D — the Observatory: a read-only browser
+frontend for watching the live world.
 Organisms with a five-gene morphology and a fixed-topology neural controller
 live, move, eat, reproduce, mutate and die in a bounded 2D world with a static
-seeded fertility field. No UI, no server and no database yet; those are later
-phases.
+seeded fertility field. No database and no cloud deployment yet; those are
+later phases.
 
-Four workspace packages:
+Five workspace packages:
 
 | Package | Phase | Purpose |
 |---|---|---|
@@ -16,6 +17,20 @@ Four workspace packages:
 | `packages/experiment-harness` | 0B | multi-seed experiments, metrics, probes, calibration analysis |
 | `packages/persistence` | 0C | versioned world snapshots: save, load, resume exactly; a snapshot store with retention and fallback recovery |
 | `packages/world-runner` | 0C → 0D bridge | the persistent world process: create or recover a world, run it continuously, save periodically, stop cleanly; optional tick pacing and a read-only WebSocket observer stream |
+| `packages/observatory` | 0D | the Observatory frontend (React + TypeScript + Vite + PixiJS): watch the live world in a browser — organisms, lineages, food, births and deaths, with an organism inspector. Read-only |
+
+**Quick start — watch a live world:**
+
+```bash
+npm install
+npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # terminal 1 (first time)
+npm run observatory                                                                           # terminal 2
+# open http://localhost:5173/
+```
+
+Pick any seed outside the pilot and validation sets (no demo seed has been
+chosen yet). If `worlds/demo` already holds a world, drop `--new --seed`.
+Full details: *Observatory (Phase 0D)* below.
 
 ## Status
 
@@ -24,8 +39,8 @@ Four workspace packages:
 | Phase 0A — simulation core | **complete, frozen**. The v1 biological model is `simulationVersion 0A.2.0`, multi-founder, `founderGroupCount 5` |
 | Phase 0B — engineering (harness, diagnostics, classifiers) | **complete, frozen** |
 | Phase 0B — research calibration | **exploratory, closed for v1**. The ~70% research gate was not met. That is not a v1 blocker |
-| Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing). Next: the Phase 0D Observatory frontend |
-| **Phase 0D — Observatory UI** | **next — ready to start.** The frontend connects to the read-only observer stream (protocol v1) |
+| Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing) |
+| **Phase 0D — Observatory UI** | **active — slice 1 done.** `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector. Later slices: lineage history, event feed, mutation visibility, trends |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
 inherit and mutate genomes, form lineages and evolve across generations. All of
@@ -37,11 +52,12 @@ and many live for tens of thousands of ticks at a stable population of about
 150–320 organisms. The 15-seed pilot profile and everything learned in Phase 0B
 are in `docs/Phase 0B Pilot Report.md`; its closure is §23.
 
-**What comes next is persistence, then visualisation — not more calibration.**
+**What comes next is visualisation — not more calibration.**
 
-- Phase 0C makes a world save, load and resume exactly.
+- Phase 0C (done) makes a world save, load and resume exactly.
 - Phase 0D lets you watch it live and inspect organisms, lineages and
-  mutations.
+  mutations. The first slice — the live world view with selection and an
+  inspector — is done; see *Observatory (Phase 0D)*.
 
 The biology is frozen for v1: do not change it unless a genuine bug is found.
 The held-out validation seeds are reserved for future research and must not be
@@ -107,6 +123,16 @@ Consequences that follow from this, and that you should not "fix":
     ├── world-runner/                Phase 0C — the persistent world process, its CLI, the observer stream
     │   ├── src/                     runner.ts (WorldRunner), cli.ts, observer/ (frame.ts, server.ts, runnerObserver.ts)
     │   └── tests/                   runner, process, observerFrame, observerStream, golden{Observer,Paced,PacedObserver}
+    ├── observatory/                 Phase 0D — the read-only browser frontend (React + TypeScript + Vite + PixiJS)
+    │   ├── index.html, vite.config.ts, vitest.config.ts, .env.example
+    │   ├── src/
+    │   │   ├── protocol/            observerV1.ts — protocol v1 types and the defensive parser
+    │   │   ├── connection/          observerConnection.ts — WebSocket lifecycle, backoff, read-only socket contract
+    │   │   ├── world/               frameStore.ts (latest + previous frame only), interpolation.ts, lineageColor.ts, selection.ts
+    │   │   ├── render/              WorldRenderer.ts (PixiJS world, organisms, food, effects, input), camera.ts, textures.ts
+    │   │   ├── ui/                  App shell pieces: WorldView, Hud, Inspector, Controls, ConnectionOverlay
+    │   │   ├── App.tsx, main.tsx, config.ts, styles.css
+    │   └── tests/                   protocol, connection, frameStore, interpolation, lineageColor, selection (+ HUD), camera
     └── experiment-harness/          Phase 0B — a consumer of simulation-core
         ├── package.json
         ├── tsconfig.json
@@ -213,8 +239,8 @@ Requires Node.js 20+ (developed against Node 22).
 
 ```bash
 npm install     # installs the workspace (reproducible from package-lock.json)
-npm test        # runs the vitest suite in all four packages
-npm run build   # builds simulation-core, then the harness and persistence, then the world runner
+npm test        # runs the vitest suite in all five packages
+npm run build   # builds simulation-core, then the harness and persistence, then the world runner, then the Observatory
 ```
 
 Headless run:
@@ -576,6 +602,146 @@ Also tested:
 
 A snapshot at tick 10,000 (population 407) is about 0.9 MB.
 
+## Observatory (Phase 0D)
+
+`packages/observatory` is the first Observatory frontend: open a browser and
+watch the live world. It is a static client that only *reads* the observer
+stream above. It has no server, no database, no accounts, and no way to
+change the simulation.
+
+**Stack:** React 19 + TypeScript + Vite 5 + PixiJS 8. React owns the shell
+(HUD, inspector, controls, connection state); PixiJS draws the world,
+organisms, food and selection on one canvas. Organisms are never React
+elements.
+
+### Run it
+
+```bash
+# terminal 1 — a world, paced at 10 ticks/s, streaming observer frames on port 8787
+npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # first time only
+npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787                       # every later time (recovers the world)
+
+# terminal 2 — the Observatory (Vite dev server)
+npm run observatory
+# → http://localhost:5173/
+```
+
+`--new` creates a world and is refused if `worlds/demo` already holds one, so
+use the second form to continue an existing world. Any seed outside the pilot
+and validation sets is fine; no demo seed has been chosen and none is
+scientific evidence (`PROJECT_STATUS.md`).
+
+The Observatory connects to `ws://127.0.0.1:8787/` by default. To point it
+elsewhere set `VITE_OBSERVER_WS_URL`, either in the environment or in
+`packages/observatory/.env.local` (see `.env.example`):
+
+```bash
+VITE_OBSERVER_WS_URL=ws://127.0.0.1:9000/ npm run observatory
+```
+
+Production build and preview: `npm run build -w packages/observatory`, then
+`npm run preview -w packages/observatory` (serves `packages/observatory/dist`).
+
+### What you see
+
+- **The world is the hero.** A dark navy floor with a faint 50-unit grid and a
+  soft boundary fills the viewport; the world's aspect ratio is preserved with
+  letterboxing. The HUD sits top-left, view controls top-right, the inspector
+  on the right when an organism is selected.
+- **Organisms** are abstract procedural cells: a lineage-coloured body with a
+  darker rim, a lighter triangular nose and a forward-offset core (so heading
+  is readable at any size), an outer energy ring and a faint glow. Body scale
+  follows `morphology.size`. No sprites, faces or icons.
+- **Lineage colours** are computed on the client from `lineageRootId`
+  (golden-ratio hue spacing, tuned for the dark background). The same lineage
+  always gets the same colour; colours mean nothing else.
+- **Energy** modulates the ring length and the glow only; the lineage colour
+  stays recognisable. Energy is shown as a number in the inspector — there are
+  no qualitative labels. The ring is scaled against 100 (the default
+  `energyCapacity`) or the largest energy in the frame if that is higher; the
+  frame itself carries no capacity.
+- **Motion** is interpolated between the two newest received frames on
+  `requestAnimationFrame`, with headings interpolated along the shortest arc.
+  Interpolation is bounded by the received states: nothing extrapolates, and
+  when frames stop the view settles on the newest known state.
+- **Births** pulse in briefly (scale + glow); **deaths** fade out over
+  ~0.45 s at the last known position. Food fades in when it spawns and out when
+  eaten. All of this is display only; nothing is queued or stored.
+- **Food** is drawn as small luminous points.
+
+### Controls
+
+| Action | How |
+|---|---|
+| zoom | mouse wheel (centred on the cursor), `+` / `−` buttons, double-click |
+| pan | click-drag |
+| fit the whole world | `Fit` button or `F` |
+| select an organism | click it; `Esc` or `×` deselects |
+| emphasise a lineage | selecting an organism emphasises its lineage; **Focus lineage** in the inspector keeps that emphasis (a chip top-right clears it) |
+| pause the view | **Pause view** or `Space` — pauses only the browser's drawing; the simulation and the stream continue, and resuming jumps to the newest frame |
+
+Selecting an organism opens the inspector: identity (id, parent, lineage
+root, generation), life (age, energy with a small bar), morphology (size,
+max speed, vision range, vision angle, metabolism). Only real frame data is
+shown. If the selected organism leaves the live frame, the inspector keeps
+its last known values and says *no longer alive · last seen at tick N*.
+
+The HUD shows connection state (connecting / live / disconnected /
+reconnecting / error), tick and population (large), food, snapshot tick,
+lineage count and maximum generation depth (both derived from the current
+frame), `simulationVersion`, seed, `configHash` and world size.
+
+### Connection behaviour
+
+- Connects automatically on load; the first valid frame makes it *live*.
+- On disconnect it retries with backoff (0.5 s → 1 s → 2 s → 4 s → 5 s cap).
+  While frames have been seen, the last world stays visible with a small
+  *reconnecting* pill; before the first frame a card shows the expected
+  address and the command to start a world runner.
+- On reconnect the newest frame is accepted and rendering resumes. Missed
+  frames are never replayed.
+- A malformed frame is ignored; a compact count and the last error appear in
+  the HUD.
+- An `observerProtocolVersion` other than 1 is a hard, explicit error with a
+  manual *Retry*. Unknown data is never interpreted.
+
+### Read-only guarantee
+
+The frontend never sends simulation commands. Its socket contract
+(`ReadOnlySocket` in `connection/observerConnection.ts`) has no `send`
+method at all, and a test drives the whole lifecycle — frames, garbage,
+errors, reconnects — asserting nothing was ever transmitted. The runner
+discards anything a client sends in any case (§14.50).
+
+### Frames and performance
+
+Each message is parsed and validated (`protocol/observerV1.ts`); only the
+newest frame and the previous one are retained (`world/frameStore.ts`), so
+memory does not grow with time. Organism visuals are PixiJS display objects
+reused across frames: bodies are drawn once per organism (morphology is
+fixed for life), the energy ring is redrawn only when it crosses a 1/24
+step, and React state updates once per frame for the HUD and inspector, not
+per organism. Around 500 organisms plus food at 10 frames/s is comfortable.
+
+### Tests
+
+`npm test -w packages/observatory` (vitest, no browser needed): protocol
+parsing (valid, malformed, unsupported version), deterministic lineage
+colour, selection and the inspector (including a selected organism that
+disappears), the HUD, connection lifecycle and backoff, the read-only
+guarantee, frame replacement without history, interpolation bounds and
+angular wrap, and camera maths.
+
+### Current limitations
+
+- Slice 1 only: no lineage history, event feed, mutation visibility,
+  population/generation trends, family tree or neural fingerprints.
+- Desktop first. The layout survives narrow widths (the inspector becomes a
+  bottom sheet) but there is no pinch-zoom and no mobile polish.
+- No organism labels except the selected one; no search by id.
+- The energy ring scale is a display assumption (see above), because
+  protocol v1 does not carry `energyCapacity`.
+
 ## Running Phase 0B experiments
 
 Phase 0B experiments (see `docs/Phase 0B Experiment Guide.md` for what each one
@@ -845,6 +1011,18 @@ npm run test:watch --workspace=packages/simulation-core
 | `observerStream.test.ts` | frame on connect, ≤ 10 fps, 426 / 400 for non-WebSocket requests, read-only (commands, binary, ping, unmasked, oversized), two clients, stalled clients (bounded buffering, simulation unaffected), disconnect/reconnect, short pacing checks |
 | `goldenObserver.test.ts`, `goldenPaced.test.ts`, `goldenPacedObserver.test.ts` | seed 20260910 to 10,000 = `b95a0b4ef7dd8449` with observer + client, paced, and paced + observer + client |
 
+`packages/observatory/tests` (vitest, Node environment, no browser):
+
+| File | Covers |
+|---|---|
+| `protocol.test.ts` | a valid observer-v1 frame is accepted (including the README example), non-JSON and malformed payloads are rejected without throwing, an unsupported `observerProtocolVersion` is reported explicitly |
+| `connection.test.ts` | connecting → live on the first frame; disconnect → backoff retry → reconnecting → live with the newest frame and a reset backoff; capped delays; unsupported version → error with no automatic retry; malformed frames ignored while staying live; `stop()`; the read-only guarantee (a fake socket records that nothing is ever sent) |
+| `frameStore.test.ts` | newer frames replace live state, at most two frames retained over 500 pushes; derived HUD summary; interval estimate and subscriptions; collapse-to-latest |
+| `selection.test.tsx` | the selected organism's data and inspector groups; founders; a selected organism that disappears is kept as *no longer alive*; the HUD renders every connection state, tick and population (rendered with `react-dom/server`) |
+| `interpolation.test.ts` | position interpolation bounded by the received states, progress saturating at 1, heading interpolation across the 0/2π wrap and in both directions, bounded interval estimate |
+| `lineageColor.test.ts` | same id → same colour; pure in call order; representative founder ids distinguishable; never too dark for the background |
+| `camera.test.ts` | fit (centred, aspect-preserving), zoom around the cursor, zoom limits, pan clamping, wheel mapping |
+
 **Do not weaken or delete a test to get green output.** If a test fails, either
 the code is wrong or the test encodes a misreading of Spec v4 — fix whichever it
 actually is.
@@ -881,8 +1059,8 @@ are never pooled with these.
 |---------|----------------------------------------------------------------|
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
-| **0C**  | **active** — persistence, snapshots, recovery, the canonical continuous world. Done: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
-| 0D      | the Observatory UI — rendering, organism and lineage inspection. **Next.** It connects to the observer stream (protocol v1) |
+| **0C**  | **complete for v1** — persistence, snapshots, recovery, the canonical continuous world: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
+| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Next slices: lineage history, event feed, mutation visibility, trends |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 

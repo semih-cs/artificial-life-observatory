@@ -10,3 +10,6 @@ results/
 
 # world runner data directories (npm run world -- --dir worlds/<name>)
 worlds/
+
+# Vite local environment overrides (packages/observatory/.env.local)
+*.local

@@ -18,7 +18,7 @@
 | **Phase 0B Engineering** — harness, diagnostics, probes, classifiers, provenance | **COMPLETE / FROZEN** |
 | **Phase 0B Research Calibration** | **EXPLORATORY — CLOSED FOR V1** (project decision, 2026-09-11) |
 | **Phase 0C** — Persistent Canonical World | **COMPLETE FOR V1.** **DONE** (below): slice 1 (deterministic save/load/resume), slice 2 (snapshot store: retention, world identity, fallback recovery) and slice 3 (quarantine of corrupt snapshots); the **persistent world runner** (`packages/world-runner`) and its **read-only observer bridge** (WebSocket frames, protocol v1, tick pacing). Phase 0C is complete for v1 |
-| **Phase 0D** — Observatory / visualisation | **READY TO START** — the frontend connects to the observer stream. **Next** |
+| **Phase 0D** — Observatory / visualisation | **ACTIVE — slice 1 DONE** (below): `packages/observatory`, the first usable Observatory frontend (React + TypeScript + Vite + PixiJS). It renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. **Next:** make evolution visible (lineage history, event feed, trends) |
 
 **Frozen v1 biological model:**
 
@@ -88,10 +88,11 @@ has been chosen yet.
 ## Git state
 
 Branch: `master`. `git log -1` is authoritative. The most recent work is
-the Phase 0D observer bridge:
+Phase 0D slice 1, the Observatory frontend:
 
 ```text
-(HEAD)  Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing — see `git log -1`
+(HEAD)  Phase 0D slice 1: Observatory frontend (packages/observatory) — live world view over observer protocol v1 — see `git log -1`
+96732ab Phase 0D bridge: read-only observer stream (protocol v1) and tick pacing
 68865c7 Phase 0C: persistent world runner (create/recover, continuous run, periodic saves, clean stop)
 3b040ac Phase 0C slice 3: quarantine of corrupt snapshots after fallback recovery
 c7dcd11 Phase 0C slice 2: folder snapshot store, retention 5, world identity, fallback recovery
@@ -124,15 +125,23 @@ persistence tests:         70 / 70  passed   (slice 1: 31 — §18.60 continuati
                                              slice 3: 11 — quarantine 10, golden fallback → quarantine → resume → save → recover 1)
 world-runner tests:        41 / 41  passed   (runner 13; processes and signals 10; observer frame 4; observer stream 11;
                                              golden observer / paced / paced+observer 3)
-workspace total:          428 / 428 passed   (root `npm test` ≈ 2.5–3 min on this VM)
-workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner)
+observatory tests:         39 / 39  passed   (protocol 6; connection lifecycle + read-only 7; selection/inspector/HUD 7;
+                                             frame store 4; interpolation 5; lineage colour 5; camera 5) — ≈ 1 s
+workspace total:          467 / 467 passed   (root `npm test` ≈ 2.5–3 min on this VM)
+workspace build:          PASS (simulation-core, then experiment-harness and persistence, then world-runner, then observatory:
+                                tsc --noEmit + vite build, ≈ 8 s total)
+live integration:          22 / 22 checks passed (world runner --observe + built Observatory + headless Chromium; see the Phase 0D section)
 
 golden hashes, seed 20260910, 10000 ticks — one per MODEL, never conflated:
   0A.2.0 multi-founder canonical (frozen v1): b95a0b4ef7dd8449  CONFIRMED
   0A.1.0 historical single-founder:           6a6576bd49e86b27  CONFIRMED
 ```
 
-Re-confirmed at the observer-bridge checkpoint (and at every Phase 0C checkpoint before it):
+Re-confirmed at the Observatory slice 1 checkpoint (the biology packages are
+byte-for-byte unchanged by this slice: `git diff --stat` touches only
+`packages/observatory/`, the root `package.json` / `package-lock.json` /
+`.gitignore`, and the three documentation files), at the observer-bridge
+checkpoint, and at every Phase 0C checkpoint before it:
 
 - the amended hash via `npm run simulate`;
 - the historical hash via `singleFounderModelConfig()` on the built core;
@@ -536,7 +545,8 @@ implemented as specified. **The model was not modified.**
 | `docs/Phase 0A Amendment - Multi-Founder Initialization.md` | CREATED — the adopted §13.76 amendment |
 | `docs/Phase 0B Pilot Report.md` | UPDATED — §7, §9, §10, §11 calibration-v3, §12 model amendment, §14 multi-founder default baseline (determination C), §15 food-limitation diagnostic (precommitted design, result INCONCLUSIVE), §16 outcome classifier v2 design, §17 v2 implementation and reclassification, §18 complete 15-seed `0A.2.0` default profile, §19 early-establishment analysis (PARTIAL), §20 stalled-cohort analysis (conclusion A), §21 reproduction participation (B), §22 reproducer-lifecycle diagnostic (NEITHER / INCONCLUSIVE), §23 closure for v1 |
 | `README.md` | UPDATED — status table, v1 freeze, Phase 0B closed, Phase 0C active, current baseline behaviour under v2; four packages, the world-runner section (create, run/recover, cadence, graceful shutdown, crash recovery, no silent new world, throughput), the observer stream (protocol v1, WebSocket usage, pacing, TPS vs FPS, read-only guarantee), the persistence API example, and a World persistence section (format v1, semantics, corruption codes, the slice 2–3 snapshot store — layout, naming, retention, identity, fallback, no fresh world, quarantine — and limitations) |
-| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete; world-runner invariants (runner never changes the simulation, no silent new world, restart equivalence), package list and runner regression; observer invariants (read-only and pure, TPS is not FPS, protocol versioning) |
+| `AGENTS.md` | UPDATED — amendment in the source hierarchy, multi-founder invariant, per-model golden hashes; Phase 0B closed for v1, frozen v1 biology, Phase 0C active, demo-seed policy; persistence invariants and the persistence regression; slice 2 store invariants (one folder = one world, never overwrite a stored tick, recovery never creates a world); slice 3 quarantine-never-delete invariant, snapshot store declared complete; world-runner invariants (runner never changes the simulation, no silent new world, restart equivalence), package list and runner regression; observer invariants (read-only and pure, TPS is not FPS, protocol versioning); **Phase 0D slice 1 done, the Observatory package, frontend rules (read-only, display-only interpolation and effects, no history, protocol types owned by the frontend, no qualitative labels) and the Observatory regression** |
+| `README.md` | UPDATED (Phase 0D slice 1) — five packages, quick start, status table, repository structure, the *Observatory (Phase 0D)* section (stack, run commands, WebSocket default and `VITE_OBSERVER_WS_URL`, what you see, controls, inspector, HUD, connection behaviour, read-only guarantee, frames and performance, tests, limitations), the observatory test table, phase boundaries |
 | `docs/Phase 0A Implementation Report.md` | unchanged |
 
 ---
@@ -1684,18 +1694,144 @@ to show organism positions, headings, sizes, energy, generation and lineage,
 food, population, and tick. Organism detail beyond the live frame, such as
 neural fingerprints, needs a later on-demand message and a protocol bump.
 
+## Phase 0D slice 1 — RESULT: DONE (the first Observatory frontend)
+
+No change to simulation-core, experiment-harness, persistence or
+world-runner. No change to biology, `simulationVersion`, the snapshot
+format, the store, or observer protocol v1 (no blocker was found; nothing
+needed a protocol bump). No database, server, REST API, authentication or
+mutation command. The Observatory is read-only.
+
+**Package:** `packages/observatory` (`@alo/observatory`) — React 19 +
+TypeScript + Vite 5 + PixiJS 8. Root scripts: `npm run observatory` (dev
+server, `http://localhost:5173/`), `npm run build` now ends with the
+Observatory (`tsc --noEmit` + `vite build`), root `npm test` includes its
+vitest suite. New dependencies (all frontend-only, in this package): `react`,
+`react-dom`, `pixi.js`, `@vitejs/plugin-react`, `@types/react*`, `vite`
+(already in the lockfile through vitest).
+
+**Code** (`packages/observatory/src`):
+
+- `protocol/observerV1.ts` — the frontend's own protocol-v1 types (they
+  mirror `world-runner/src/observer/frame.ts` without importing it) and a
+  defensive parser: non-JSON and malformed payloads are rejected without
+  throwing, an unsupported `observerProtocolVersion` is reported explicitly
+  and never interpreted.
+- `connection/observerConnection.ts` — the WebSocket lifecycle
+  (`connecting → live → disconnected → reconnecting → live`, plus `error`),
+  backoff 0.5 s → 1 s → 2 s → 4 s → 5 s cap, malformed frames ignored and
+  counted, unsupported version → error with manual retry. Its socket type
+  (`ReadOnlySocket`) has no `send`: the frontend cannot transmit anything.
+- `world/frameStore.ts` — the newest frame and the previous one, nothing
+  else; a derived HUD summary (tick, population, food, snapshot, lineage
+  count, max generation, max energy); a bounded frame-interval estimate.
+- `world/interpolation.ts` — bounded lerp, shortest-arc angle lerp,
+  progress that saturates at the newest frame.
+- `world/lineageColor.ts` — deterministic colour from `lineageRootId`
+  (golden-ratio hue, three lightness tiers keyed on id mod 3, lifted blues);
+  frontend only, never stored anywhere.
+- `world/selection.ts` — selection as a pure view over the newest frame;
+  a selected organism that disappears keeps its last data as *no longer
+  alive*; inspector groups (Identity / Life / Morphology) with real values
+  only.
+- `render/WorldRenderer.ts` — PixiJS: floor with a faint 50-unit grid and a
+  soft boundary; organisms as procedural cells (lineage-coloured body with a
+  darker rim, lighter triangular nose, forward-offset core, outer energy
+  ring, additive glow), body radius `2.0 + 2.2 × size` world units; food as
+  small luminous points; display-only interpolation on the Pixi ticker;
+  birth pulse (≈ 0.7 s) and death fade (≈ 0.45 s); lineage emphasis
+  (unrelated lineages at 26 % alpha); animated selection ring and id
+  label; camera fit (with HUD insets), wheel zoom around the cursor,
+  drag pan, double-click zoom, zoom limits 0.5×–40× of fit; nearest-organism
+  click picking; view pause (freezes captured frame references; resume
+  jumps to the newest frame).
+- `render/camera.ts`, `render/textures.ts` — camera maths; three canvas-
+  generated textures (glow, dot, floor). No sprite assets.
+- `ui/` — `WorldView` (mounts the renderer), `Hud`, `Inspector`,
+  `Controls`, `ConnectionOverlay`; `App.tsx` wires them. React state updates
+  once per frame (summary and selection), never per organism.
+
+**Proof** (39 tests, `packages/observatory/tests`, ≈ 1 s, Node
+environment):
+
+| Requirement | Test | Result |
+|---|---|---|
+| protocol parsing | `protocol.test.ts` | valid frame (incl. the README example) accepted; non-JSON / binary / 12 malformed shapes rejected without throwing; version 2 → explicit `unsupported-version` |
+| lineage colour | `lineageColor.test.ts` | same id → same colour, pure in call order; ids 1–10 pairwise weighted-RGB distance > 60; luma > 90 for ids 1–200 |
+| selection | `selection.test.tsx` | inspector groups and values for a live organism; founder label; disappearance → `alive: false`, last data kept, stable across later frames; render with `react-dom/server` shows *no longer alive · last seen at tick N*; no qualitative labels |
+| HUD | `selection.test.tsx` | every connection state renders; tick, population, version, seed, hash, world size |
+| connection lifecycle | `connection.test.ts` | connecting → live on first frame; close → disconnected (500 ms) → reconnecting → 1000 ms → 2000 ms; newest frame accepted on reconnect and backoff reset; delay cap; unsupported version → error, socket closed, no retry, manual `retryNow`; malformed frames ignored while live; `stop()` cancels the retry |
+| read-only guarantee | `connection.test.ts` | a fake socket records zero `send` calls across frames, garbage, errors, reconnects and stop |
+| frame replacement | `frameStore.test.ts` | 500 pushes → at most 2 frames retained; summary; interval estimate; subscriptions; collapse-to-latest |
+| interpolation | `interpolation.test.ts` | lerp bounded at t < 0 and t > 1; progress saturates at 1; shortest arc across 0/2π both ways; normalisation; bounded interval estimate |
+| camera | `camera.test.ts` | fit centred and aspect-preserving; zoom keeps the cursor's world point fixed; limits; pan clamp; wheel mapping |
+
+**Live integration** (`world-runner --observe 8787` on the golden seed
+fast-forwarded to tick 4,000, the production build served statically,
+headless Chromium 1440×900 with software GL; 22 / 22 checks):
+
+- stream serves protocol v1 (tick 4001, population 160, food 59); the page
+  becomes live; HUD tick advances (4,039 → 4,088) and population shows;
+  85–557 frames received; the Pixi canvas has a GL context; world pixels
+  change between screenshots (organisms move);
+- clicking an organism's projected position opens the inspector for a real
+  organism of the frame; its lineage root and generation match the frame;
+  *Focus lineage* shows the chip; wheel zoom → 287 %, *Fit* → 100 %;
+- *Pause view* shows the view-only pill and the HUD tick keeps advancing
+  (4,420 → 4,440): the simulation is untouched;
+- SIGTERM on the runner → *reconnecting* with the last world still visible
+  and the inspector intact; restarting the runner → live again automatically
+  (`live → reconnecting → live`); the runner recovered from its stop-tick
+  snapshot; the browser sent **0** WebSocket data frames while receiving
+  557;
+- no application console errors (Chrome's refused-connect lines during the
+  reconnect attempts are expected);
+- screenshots were inspected: layout, HUD placement (the world is fitted
+  clear of the HUD row), organism readability at fit and at 287 %,
+  selection ring, lineage dimming, the reconnect pill, and the narrow
+  layout (inspector as a bottom sheet at 700 px).
+
+**Performance** (observational): at population ≈ 220 in the software-GL
+headless browser, script time was 2.7 % of one core over 5 s with a
+13.5 MB JS heap; the render loop there was rasteriser-bound (≈ 4 fps under
+SwiftShader), which does not represent a GPU-backed laptop. The per-frame
+JS work is small: bodies are drawn once per organism, the energy ring is
+redrawn only on a 1/24 step change, React updates once per frame.
+
+**Design decisions recorded:**
+
+- The energy ring is scaled against `max(100, largest energy in the
+  frame)`; protocol v1 carries no `energyCapacity`. Display only.
+- Births are detected as an id absent from the previous frame when the
+  tick gap is ≤ 8; larger gaps (reconnects, fast worlds) show no birth
+  effect, deliberately.
+- Lineage count and maximum generation in the HUD are derived from the
+  current frame only; they are not history.
+- No demo seed was chosen; the documented commands stay generic.
+
+**Local usage:**
+
+```bash
+npm run world -- --dir worlds/demo --new --seed <seed> --ticks-per-second 10 --observe 8787   # terminal 1, first time
+npm run world -- --dir worlds/demo --ticks-per-second 10 --observe 8787                       # terminal 1, later (recover)
+npm run observatory                                                                           # terminal 2 → http://localhost:5173/
+# override the stream address: VITE_OBSERVER_WS_URL=ws://127.0.0.1:<port>/ npm run observatory
+```
+
+**Not in this slice** (later Observatory slices): lineage history, a
+birth/death event feed, mutation visibility, population/generation trends,
+family tree, neural fingerprints, organism search, mobile polish.
+
 ## NEXT EXACT STEP
 
-**Phase 0D — create the first Observatory frontend.** It connects to the
-observer WebSocket stream and renders the live world.
+**Phase 0D slice 2 — make evolution visible: a live lineage panel.** A
+small panel (toggle from the HUD) listing the lineages alive in the current
+frame — colour swatch, `lineageRootId`, living count, max generation depth
+in that lineage — sorted by count, each row clickable to focus that lineage
+(display emphasis only, reusing the existing focus mechanism), with a
+compact population sparkline built from frames received in this browser
+session (bounded ring buffer, display only). Derived from the live frame
+only; no backend change, no history storage, no protocol bump. Add tests
+for the per-frame lineage aggregation and the bounded buffer.
 
-- **Package:** a new workspace package, e.g. `packages/observatory`, using
-  React + TypeScript + PixiJS (Spec §14.45).
-- **Connection:** connect to `ws://127.0.0.1:<port>/` and consume observer
-  protocol v1.
-- **Render:** draw the world bounds, food and organisms (position, heading,
-  size; colour by lineage), with a tick / population / snapshot status bar.
-- **Interpolation:** visual only (§14.48).
-- **Read-only:** no mutation controls (§14.50).
-
-Backend work is limited to what the frontend demonstrably needs.
+Backend work stays limited to what the frontend demonstrably needs.
