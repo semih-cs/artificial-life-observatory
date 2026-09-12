@@ -185,10 +185,12 @@ is `31415926`.
 ## Git state
 
 Branch: `main` (tracking `origin/main`). `git log -1` is authoritative. The
-most recent implementation is the V2.5 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
+most recent implementation is the V2.6 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
+82b83ed V2.6: regulated recurrent initialization — model 0A.8.0, snapshot format v3 reused
+2736ab8 PROJECT_STATUS: record the V2.5 commit hash
 3e4cc11 V2.5: lifetime plasticity — model 0A.7.0, snapshot format v4
 5bbb05f PROJECT_STATUS: record the V2.4 commit hash
 5d63787 V2.4: contestable food handling — model 0A.6.0 (5-tick eating, held food, contact dislodges)
@@ -219,9 +221,15 @@ da79527 Phase 0A amendment: multi-founder initialization (0A.1.0 -> 0A.2.0)
 db294c2 Phase 0A: complete the headless deterministic simulation core
 ```
 
-The full history is in `git log`. Before the V2.5 commit, the only unrelated
-working-tree item was the owner's untracked `Claude outputs/`; it was preserved
-untouched. Generated artifacts are gitignored (`node_modules/`, `dist/`,
+**V2.6 implementation commit: `82b83ed`.** Nothing has been pushed to
+`origin/main`; pushing is the owner's call.
+
+The full history is in `git log`. Before and after the V2.6 commit, the only
+unrelated working-tree item was the owner's untracked `Claude outputs/`; it was
+preserved untouched. The V2.6 read-only analysis scripts and their outputs
+(including `results/v2.6/PRECOMMITMENT.md`, written before any evaluation run)
+live under the gitignored `results/v2.6/` and are deliberately not committed;
+the live verification world is the gitignored `worlds/v2-recurrent-init/`. Generated artifacts are gitignored (`node_modules/`, `dist/`,
 `coverage/`, `results/`, `.DS_Store`, `*.log`).
 
 ---
