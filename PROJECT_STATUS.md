@@ -161,7 +161,7 @@ most recent work is the V2.4 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
-(HEAD)  V2.4: contestable food handling — model 0A.6.0 (5-tick eating, held food, contact dislodges) — see `git log -1`
+5d63787 V2.4: contestable food handling — model 0A.6.0 (5-tick eating, held food, contact dislodges)
 62b16fb PROJECT_STATUS: record the V2.3 commit hash
 031a301 V2.3: physical bodies — model 0A.5.0 (solid bodies, size-weighted displacement)
 ed7644a V2.2: recurrent memory — model 0A.4.0 (10→8 recurrent→4), snapshot format v2
