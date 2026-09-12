@@ -147,7 +147,7 @@ most recent work is the V2.3 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
-(HEAD)  V2.3: physical bodies — model 0A.5.0 (solid bodies, size-weighted displacement) — see `git log -1`
+031a301 V2.3: physical bodies — model 0A.5.0 (solid bodies, size-weighted displacement)
 ed7644a V2.2: recurrent memory — model 0A.4.0 (10→8 recurrent→4), snapshot format v2
 ceecbc8 V2.1: other organisms enter the sensory world — model 0A.3.0 (10→8→4), selected-organism vision cone
 cb29594 demo scripts: demo:new:settled (fast-forward to tick 5000, then stream) and demo:resume:slow (3 ticks/s); document the 25-founder opening burst
