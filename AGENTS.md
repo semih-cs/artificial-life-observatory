@@ -73,6 +73,15 @@ amended by**:
   (10 → 8 recurrent → 4), inherited recurrent weights, runtime memory that
   starts at zero and is never inherited, and snapshot format v2. It changes
   none of `0A.1.0`–`0A.3.0`.
+- `docs/V2.3 Amendment - Physical Bodies (0A.5.0).md` — V2.3 adds a NEW
+  model, `0A.5.0`: the `0A.4.0` model exactly (same ten inputs, same
+  recurrence, same four outputs, same 188 parameters) plus SOLID BODIES — a
+  physical radius derived from the inherited `size` gene and deterministic
+  size-weighted displacement when two living organisms overlap. Displacement
+  only: no attack, damage, predation, energy transfer, event, new input,
+  output, action or persistent state. Snapshot format stays v2 and observer
+  protocol stays v1. It changes none of `0A.1.0`–`0A.4.0`, which keep passing
+  through one another.
 
 An adopted amendment wins over the base document where they conflict.
 
@@ -342,11 +351,12 @@ Frontend rules that hold from now on:
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
 
-### V2 — started (V2.1 done: organism sensing; V2.2 done: recurrent memory)
+### V2 — started (V2.1 organism sensing; V2.2 recurrent memory; V2.3 physical bodies)
 
 V2 is the next product phase. It changes biology only through NEW, versioned
-models; `0A.1.0`, `0A.2.0` and `0A.3.0` stay frozen historical ground truth and are
-never redefined, re-hashed or silently upgraded.
+models; every earlier model (`0A.1.0`–`0A.4.0` as of V2.3) stays frozen
+historical ground truth and is never redefined, re-hashed or silently
+upgraded.
 
 **V2.1 — model `0A.3.0` (done).** Organisms of `0A.3.0` additionally perceive
 the nearest visible other living organism through four appended inputs
@@ -402,6 +412,40 @@ Rules that hold from now on:
   v2); feed-forward canonical records are unchanged.
 - **Observer protocol v1** carries no memory, weights, inputs or intents.
 
+**V2.3 — model `0A.5.0` (done).** Physical bodies: organisms occupy space and
+displace one another. Contract:
+`docs/V2.3 Amendment - Physical Bodies (0A.5.0).md`. Rules that hold from now
+on:
+
+- **Solid vs non-solid is a model property** (`physicalBodies` in the
+  registry), true only for `0A.5.0`. `0A.1.0`–`0A.4.0` pass through one
+  another exactly as they always did and are never made solid.
+- **The simulation owns the body.** `physicalRadiusFromSize(size, config)` in
+  `simulation-core/src/biology/physicalBody.ts` is authoritative; physics never
+  depends on renderer code. The Observatory mirrors the same two constants and
+  a test pins them together.
+- **Model-specific configuration is present only on its model.** `body`
+  (`radiusBase`, `radiusPerSize`, `separationPasses`) exists only on `0A.5.0`;
+  `validateConfig` refuses it elsewhere and refuses its absence there. This is
+  what keeps every historical `configHash` byte-identical.
+- **Displacement only.** No damage, attack, predation, energy transfer, event,
+  health, stun, momentum or persistent physics state; only `x` and `y` change.
+- **The resolver is deterministic and RNG-free**: ascending-id ordering, a
+  fixed number of Jacobi passes, corrections accumulated then applied at once,
+  clamped by the existing hard-wall rule. Exactly coincident centres separate
+  along an axis-aligned direction chosen by pair identity. Residual overlap in
+  packed or wall-pressed configurations is documented, never randomised away.
+  Do not add a physics engine, a spatial index or a convergence/timing test.
+- **Collision is Resolve-only**, at phase 4b (after movement, before feeding)
+  and phase 17b (after births, so a newborn is separated by the same passive
+  rule with no extra action, no extra RNG draw and memory still zero).
+- **Snapshot format stays v2 and observer protocol stays v1.** Physical bodies
+  add no future-affecting state beyond position, so no format v3 exists and no
+  collision metadata is stored or broadcast.
+- **Size is not rebalanced.** Its existing energetic cost is unchanged; the
+  only new benefit is space occupation and displacement resistance. Observe
+  before tuning.
+
 ---
 
 ## 5. Phase 0A invariants that must be preserved
@@ -419,17 +463,18 @@ Do not change these casually.
 - Morphology and neural mutation channels are independently controllable.
 - Disabled mutation channels still consume their fixed RNG draw schedule so paired experiments retain RNG isolation.
 - Phase 0A neural topology is fixed and feedforward.
-- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
+- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0` and `0A.5.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
+- Organisms are non-solid in `0A.1.0`–`0A.4.0` and solid in `0A.5.0` only. A physical body is a circle of radius `body.radiusBase + body.radiusPerSize * morphology.size`; overlap is strict (`centreDistance < radiusA + radiusB`) and is resolved by displacement alone, weighted so the larger body moves less. Never make a historical model solid.
 - Sensing (every model) is a pure read of the pre-decision snapshot S_t; in `0A.3.0` it includes the nearest visible other living organism and nothing else about other organisms.
-- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The one recurrent model, `0A.4.0` (V2.2), has an Elman hidden state whose weights are genome and whose memory is runtime state.
+- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The recurrent models `0A.4.0` (V2.2) and `0A.5.0` (V2.3) have an Elman hidden state whose weights are genome and whose memory is runtime state.
 - No learning, plasticity, backpropagation, reinforcement learning or stochastic policy in ANY model: genomes are fixed for life.
 - Neural evaluation is deterministic, pure and RNG-free.
 - Decision logic returns `ActionIntent`; it does not directly mutate shared world state.
-- Canonical lifecycle follows **Sense → Decide → Resolve**.
+- Canonical lifecycle follows **Sense → Decide → Resolve**. Physical collision belongs entirely to Resolve: it never reaches the sensory vector already used for the tick, never causes a second neural evaluation, and never advances recurrent memory again.
 - Newborns do not act in their birth tick.
 - Food is single-consumption.
 - Same-tick food conflict is resolved by distance, then deterministic organism ID for exact ties.
-- Feeding occurs before the single death-resolution pass and may rescue an organism in the same tick.
+- Feeding occurs before the single death-resolution pass and may rescue an organism in the same tick. In `0A.5.0` it reads POST-collision positions, so a displacement can move an organism into or out of feeding range; there is no food-defence rule.
 - Death mechanisms in Phase 0A are energy depletion and maximum age.
 - Reproduction requires maturity and configured energy/action conditions.
 - `reproductionCost > birthEnergy`.
@@ -574,6 +619,7 @@ npm run simulate -- --seed 20260910 --ticks 10000
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.3.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.1.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.4.0
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.5.0
 ```
 
 Expected hash depends on the model version, and models must never be conflated:
@@ -584,6 +630,7 @@ Expected hash depends on the model version, and models must never be conflated:
 | `0A.1.0` historical single-founder (frozen) | `singleFounderModelConfig()` | 6 → 8 → 4 | `6a6576bd49e86b27` |
 | `0A.3.0` V2.1 organism sensing | `organismSensingModelConfig()` | 10 → 8 → 4 | `e54d0c11249b7849` |
 | `0A.4.0` V2.2 recurrent memory | `recurrentMemoryModelConfig()` | 10 → 8 ↺ → 4 | `436a377506063609` |
+| `0A.5.0` V2.3 physical bodies | `physicalBodiesModelConfig()` | 10 → 8 ↺ → 4, solid | `1006a56393e19cd9` |
 
 Results from different models must not be pooled or compared numerically.
 Never "update" a historical hash to match changed behaviour — a changed
@@ -626,6 +673,18 @@ V2.2 regressions, part of `npm test`: `simulation-core/tests/recurrentMemory.tes
 coverage checkpoint); `persistence/tests/recurrentSnapshot.test.ts` (format
 v2, V2.1-written `0A.3.0` fixtures, refusals, exact resume);
 `world-runner/tests/recurrentMemoryModel.test.ts`.
+
+V2.3 regressions, part of `npm test`:
+`simulation-core/tests/physicalBodies.test.ts` (model gating, the radius
+contract, strict overlap, size weighting, resolver determinism /
+order-independence / tie handling / numeric safety / dense clusters, lifecycle
+timing, feeding on post-collision positions, newborn separation, the `0A.5.0`
+golden hash with checkpoints at ticks 500 / 1,000 / 2,000 and a seed-8 coverage
+checkpoint); `persistence/tests/physicalBodiesSnapshot.test.ts` (format v2
+reuse, no collision metadata, no relabelling, exact resume in and across
+processes); `world-runner/tests/physicalBodiesModel.test.ts` (runner,
+`--model 0A.5.0`, observer purity); `observatory/tests/bodyRadius.test.ts`
+(the drawn radius is pinned to the simulation contract).
 
 Observatory regression, part of `npm test`: `npm test -w packages/observatory`
 (vitest, about 1 s, no browser). It covers protocol parsing, the connection

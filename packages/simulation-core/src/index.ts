@@ -18,6 +18,7 @@ export * from './perception/sense.js';
 export * from './actions/types.js';
 export * from './actions/decide.js';
 export * from './biology/movement.js';
+export * from './biology/physicalBody.js';
 export * from './biology/energy.js';
 export * from './biology/reproduction.js';
 export * from './biology/mutation.js';

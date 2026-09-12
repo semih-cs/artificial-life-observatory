@@ -12,6 +12,9 @@
  *           sensory world (nearest visible organism)
  *   0A.4.0  V2.2 — recurrent memory: the 0A.3.0      10 -> 8 (recurrent) -> 4
  *           inputs and outputs, Elman hidden state
+ *   0A.5.0  V2.3 — physical bodies: the 0A.4.0       10 -> 8 (recurrent) -> 4
+ *           controller exactly, plus solid organism
+ *           bodies that displace one another
  *
  * Everything that depends on the input dimension — founder drawing and
  * screening, network evaluation, the Sense phase, snapshot validation — asks
@@ -23,8 +26,14 @@
  *
  * `recurrent` separates the feed-forward models (0A.1.0-0A.3.0: no recurrent
  * weights, no runtime hidden state, snapshot format v1) from the recurrent
- * model 0A.4.0 (recurrent weights in the genome, a runtime hidden state per
- * organism, snapshot format v2).
+ * models 0A.4.0 and 0A.5.0 (recurrent weights in the genome, a runtime hidden
+ * state per organism, snapshot format v2).
+ *
+ * `physicalBodies` separates the models whose organisms pass through one
+ * another (0A.1.0-0A.4.0) from 0A.5.0, whose organisms occupy space and are
+ * displaced when they overlap. It adds NO neural input, output, action or
+ * persistent state: only positions change, in the Resolve phase. Historical
+ * models are never made solid.
  */
 
 /** Historical model: one founder controller, 25 near-clones of it. */
@@ -49,6 +58,17 @@ export const ORGANISM_SENSING_MODEL_VERSION = '0A.3.0';
  */
 export const RECURRENT_MEMORY_MODEL_VERSION = '0A.4.0';
 
+/**
+ * V2.3 model: the 0A.4.0 model — the same ten inputs, the same Elman recurrent
+ * hidden layer, the same four outputs, the same 188 neural parameters — plus
+ * PHYSICAL BODIES. Each organism occupies a circle whose radius is a fixed
+ * function of its inherited morphology `size`; two living organisms whose
+ * circles overlap are pushed apart in the Resolve phase, the larger one moving
+ * less. No damage, no attack, no predation, no energy transfer, no new
+ * sensory channel and no new persistent state: only positions change.
+ */
+export const PHYSICAL_BODIES_MODEL_VERSION = '0A.5.0';
+
 /** §11.58 six-input vector: food (3), boundary (2), own energy (1). Models 0A.1.0 and 0A.2.0. */
 export const V1_NEURAL_INPUT_SIZE = 6;
 
@@ -68,13 +88,24 @@ export interface SimulationModel {
    * False: the historical feed-forward controller, with neither.
    */
   readonly recurrent: boolean;
+  /**
+   * True when living organisms are solid: two of them overlap when their
+   * centre distance is strictly less than the sum of their physical radii
+   * (`physicalRadiusFromSize`), and the Resolve phase separates them by
+   * moving both — the larger one less. False for the historical models
+   * 0A.1.0-0A.4.0, whose organisms pass through one another exactly as they
+   * always have. It is a physical property only: no input, output, action,
+   * event or persistent state is added by it.
+   */
+  readonly physicalBodies: boolean;
 }
 
 const MODELS: readonly SimulationModel[] = Object.freeze([
-  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false }),
-  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false }),
-  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false }),
-  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true }),
+  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false }),
+  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false }),
+  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false }),
+  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false }),
+  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true }),
 ]);
 
 /** Every simulation version this core can bootstrap, step and validate, oldest first. */
@@ -92,7 +123,7 @@ export function simulationModel(version: string): SimulationModel {
   );
 }
 
-/** Neural input dimension of a model (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0 and 0A.4.0). */
+/** Neural input dimension of a model (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0, 0A.4.0 and 0A.5.0). */
 export function neuralInputSizeFor(version: string): number {
   return simulationModel(version).neuralInputSize;
 }

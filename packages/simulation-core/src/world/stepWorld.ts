@@ -6,6 +6,7 @@ import { SenseContext } from '../perception/sense.js';
 import { decideAction, decideRecurrentAction } from '../actions/decide.js';
 import { ActionIntent } from '../actions/types.js';
 import { resolveMovement, movementEnergyCost } from '../biology/movement.js';
+import { resolveBodyOverlap } from '../biology/physicalBody.js';
 import { basalEnergyCost, applyEnergyDelta, evaluateDeath } from '../biology/energy.js';
 import { resolveFeeding } from './foodCompetition.js';
 import { isReproductionEligible, applyParentReproductionCost } from '../biology/reproduction.js';
@@ -69,6 +70,18 @@ export function senseContextFor(state: WorldState, config: SimulationConfig): Se
  *    8 Energy gain                    20 Advance tick
  *    9 Reproduction eligibility
  *   10 Reproduction intent resolution
+ *
+ * V2.3 (model 0A.5.0 only) inserts two position-only steps into Resolve, and
+ * changes nothing else about the order:
+ *
+ *    4b Body overlap resolution        after movement, BEFORE feeding, so
+ *                                      feeding uses post-collision positions
+ *   17b Body overlap resolution        after births become active, so a
+ *                                      newborn never persists inside a body
+ *
+ * Both are pure displacement: no energy, no damage, no event, no RNG, no
+ * extra decision and no change to any organism's memory. Models 0A.1.0-0A.4.0
+ * skip them entirely and behave exactly as they always have.
  *
  * Consequences that are specified, not incidental:
  *   - there is exactly ONE death check per tick (phase 16), after every
@@ -154,6 +167,18 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
     o.age += 1;
   }
 
+  // ---- Phase 4b (V2.3, model 0A.5.0 only): body overlap resolution -------
+  // Movement has just had its physical consequence. Bodies that ended the
+  // movement step overlapping are pushed apart along the line joining their
+  // centres, the larger body moving less (biology/physicalBody.ts). It is
+  // deterministic, RNG-free and independent of array order, it changes
+  // positions and nothing else, and it happens BEFORE feeding — so being
+  // displaced can move an organism into, or out of, feeding range. That
+  // consequence is intended. It cannot influence this tick's sensing or
+  // decisions: both are already complete and both read S_t, which is never
+  // modified.
+  if (model.physicalBodies) resolveBodyOverlap(living, state.worldConfig, config);
+
   // ---- Phases 6-7: Feeding & food competition ---------------------------
   // Deterministic and RNG-free: nearest eligible eater wins each food item,
   // exact-distance ties broken by ascending organism ID, food processed in
@@ -215,6 +240,16 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // sense, decide or act this tick. Dead organisms leave the active set.
   const survivors = workingOrganisms.filter((o) => o.alive);
   const allOrganisms = [...survivors, ...children].sort((a, b) => a.id - b.id);
+
+  // ---- Phase 17b (V2.3, model 0A.5.0 only): newborn body separation ------
+  // Offspring placement is unchanged (the same polar offset, the same two
+  // canonical draws), so a newborn can land inside its parent or a neighbour.
+  // Rather than inventing a birth-time search, a reproduction failure or any
+  // parent-specific rule, the SAME passive separation rule is applied once to
+  // the post-birth living population. The newborn gets no extra neural
+  // action, its memory stays exactly zero, no RNG is drawn and no genome is
+  // touched — only positions move.
+  if (model.physicalBodies) resolveBodyOverlap(allOrganisms, state.worldConfig, config);
 
   // ---- Phase 18: Food regeneration --------------------------------------
   // Canonical RNG serves this only after every reproduction-related draw for

@@ -89,7 +89,7 @@ describe('format v1 is untouched by V2.2', () => {
 
   it('formats are tied to models: v1 for 0A.1.0–0A.3.0, v2 for 0A.4.0', () => {
     expect(SUPPORTED_SNAPSHOT_FORMAT_VERSIONS).toEqual([1, 2]);
-    expect(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0'].map(snapshotFormatVersionFor)).toEqual([1, 1, 1, 2]);
+    expect(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0'].map(snapshotFormatVersionFor)).toEqual([1, 1, 1, 2, 2]);
     expect(RECURRENT_SNAPSHOT_FORMAT_VERSION).toBe(2);
   });
 });

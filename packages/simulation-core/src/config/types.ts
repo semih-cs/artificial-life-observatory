@@ -1,4 +1,4 @@
-import { isSupportedSimulationVersion, SUPPORTED_MODEL_VERSIONS } from '../model/simulationModel.js';
+import { isSupportedSimulationVersion, simulationModel, SUPPORTED_MODEL_VERSIONS } from '../model/simulationModel.js';
 
 /**
  * Phase 0A configuration surface.
@@ -198,6 +198,40 @@ export interface ReproductionConfig {
   maxOffspringOffset: number;
 }
 
+/**
+ * V2.3 physical bodies (model 0A.5.0 only). Every number here is
+ * configuration — no biological constant of this slice lives anywhere else
+ * (§24.41).
+ *
+ * The authoritative physical radius of an organism is
+ *
+ *     radius = radiusBase + radiusPerSize * morphology.size
+ *
+ * a pure function of the INHERITED morphology size and these constants: no
+ * runtime adaptation, no randomness, no lineage, energy or age term. The
+ * defaults reproduce the body radius the Observatory has drawn since Phase 0D
+ * slice 1 (`2.0 + 2.2 * size`), so what is seen is what collides.
+ *
+ * This section is present on a model with physical bodies and ABSENT on every
+ * other model, exactly as recurrent weights are. That keeps the configuration
+ * — and therefore the `configHash` — of 0A.1.0-0A.4.0 byte-identical to what
+ * it was before V2.3.
+ */
+export interface PhysicalBodyConfig {
+  /** [BASELINE] world units of body radius at morphology size 0. */
+  radiusBase: number;
+  /** [BASELINE] additional world units of body radius per unit of morphology size. Must be > 0: larger size means a larger body. */
+  radiusPerSize: number;
+  /**
+   * [BASELINE] the FIXED number of deterministic separation passes the
+   * overlap resolver performs per resolution. Not a convergence tolerance and
+   * not a time budget: the count is part of the model's definition, so the
+   * result of a dense configuration is reproducible rather than "however far
+   * it got". A pass that finds no overlapping pair ends the resolution early.
+   */
+  separationPasses: number;
+}
+
 export interface SimulationConfig {
   /**
    * The model identity (see `model/simulationModel.ts`): 0A.1.0, 0A.2.0 or
@@ -215,6 +249,12 @@ export interface SimulationConfig {
   food: FoodConfig;
   mutation: MutationConfig;
   reproduction: ReproductionConfig;
+  /**
+   * Present if and only if the model has physical bodies (0A.5.0). Its
+   * absence on 0A.1.0-0A.4.0 is what keeps their configurations, and their
+   * configHashes, exactly as they were.
+   */
+  body?: PhysicalBodyConfig;
 }
 
 /**
@@ -285,6 +325,32 @@ export function validateConfig(config: SimulationConfig): void {
       `simulationVersion (${JSON.stringify(config.simulationVersion)}) is not a supported model ` +
         `(${SUPPORTED_MODEL_VERSIONS.join(', ')}); a model version is never guessed.`
     );
+  } else {
+    // One model, one body contract: a physical-body model must carry `body`
+    // and every other model must not, so a historical configuration can never
+    // acquire physics and a 0A.5.0 configuration can never lose it.
+    const physical = simulationModel(config.simulationVersion).physicalBodies;
+    const body = config.body;
+    if (physical && body === undefined) {
+      problems.push(`model ${config.simulationVersion} has physical bodies and requires a body configuration.`);
+    } else if (!physical && body !== undefined) {
+      problems.push(
+        `model ${config.simulationVersion} has no physical bodies, so it must not carry a body configuration ` +
+          '(historical models are never made solid).'
+      );
+    } else if (physical && body !== undefined) {
+      if (!Number.isFinite(body.radiusBase) || body.radiusBase < 0) {
+        problems.push(`body.radiusBase (${body.radiusBase}) must be a non-negative finite number.`);
+      }
+      if (!Number.isFinite(body.radiusPerSize) || body.radiusPerSize <= 0) {
+        problems.push(
+          `body.radiusPerSize (${body.radiusPerSize}) must be a positive finite number — larger size must mean a larger body.`
+        );
+      }
+      if (!Number.isInteger(body.separationPasses) || body.separationPasses < 1) {
+        problems.push(`body.separationPasses (${body.separationPasses}) must be an integer >= 1.`);
+      }
+    }
   }
 
   if (problems.length > 0) {

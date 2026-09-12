@@ -1,9 +1,10 @@
-import { SimulationConfig } from './types.js';
+import { PhysicalBodyConfig, SimulationConfig } from './types.js';
 import {
   SINGLE_FOUNDER_MODEL_VERSION,
   MULTI_FOUNDER_MODEL_VERSION,
   ORGANISM_SENSING_MODEL_VERSION,
   RECURRENT_MEMORY_MODEL_VERSION,
+  PHYSICAL_BODIES_MODEL_VERSION,
 } from '../model/simulationModel.js';
 
 /**
@@ -17,11 +18,21 @@ import {
  *   0A.3.0 vs 0A.4.0: 0A.4.0 makes the hidden layer recurrent (Elman:
  *   10 -> 8 recurrent -> 4, +64 recurrent weights, runtime memory);
  *   everything else is 0A.3.0.
+ *   0A.4.0 vs 0A.5.0: 0A.5.0 gives organisms physical bodies (a size-derived
+ *   radius and deterministic displacement on overlap) and adds the `body`
+ *   configuration section; the controller, ecology and every other configured
+ *   value are 0A.4.0's.
  *
  * Each changes the canonical trajectory, so they are different models and must
  * never share a regression reference or be mixed in one analysis.
  */
-export { SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION };
+export {
+  SINGLE_FOUNDER_MODEL_VERSION,
+  MULTI_FOUNDER_MODEL_VERSION,
+  ORGANISM_SENSING_MODEL_VERSION,
+  RECURRENT_MEMORY_MODEL_VERSION,
+  PHYSICAL_BODIES_MODEL_VERSION,
+};
 
 /**
  * The historical single-founder model's deterministic regression reference:
@@ -51,6 +62,34 @@ export const ORGANISM_SENSING_GOLDEN_HASH = 'e54d0c11249b7849';
  * memory is biologically useful.
  */
 export const RECURRENT_MEMORY_GOLDEN_HASH = '436a377506063609';
+
+/**
+ * The V2.3 physical-bodies model's deterministic regression reference:
+ * `physicalBodiesModelConfig()`, seed 20260910, 10,000 ticks, confirmed on
+ * linux-arm64 (the canonical development platform; see PROJECT_STATUS.md,
+ * known gap 13). Evidence of trajectory stability for 0A.5.0 only — not that
+ * physical bodies are biologically better in any sense. The four historical
+ * hashes above are unchanged by V2.3 and must never be replaced by it.
+ */
+export const PHYSICAL_BODIES_GOLDEN_HASH = '1006a56393e19cd9';
+
+/**
+ * The V2.3 body contract (model 0A.5.0 only).
+ *
+ * `radiusBase` and `radiusPerSize` are transcribed from the body radius the
+ * Observatory has drawn since Phase 0D slice 1 (`2.0 + 2.2 * size`), so the
+ * physical body an organism occupies is the body a viewer sees: over the
+ * §10.4 size range [0.5, 1.5] the radius runs [3.1, 5.3] world units.
+ * `separationPasses` is the model's fixed deterministic solver budget.
+ *
+ * These are engineering baselines, not calibrated biology. They are NOT part
+ * of any model before 0A.5.0.
+ */
+export const DEFAULT_PHYSICAL_BODY_CONFIG: PhysicalBodyConfig = {
+  radiusBase: 2.0, // [BASELINE] world units at size 0
+  radiusPerSize: 2.2, // [BASELINE] world units per unit of morphology size
+  separationPasses: 4, // [BASELINE] fixed deterministic passes per resolution
+};
 
 const DEG = Math.PI / 180;
 
@@ -238,9 +277,25 @@ export function recurrentMemoryModelConfig(): SimulationConfig {
 }
 
 /**
+ * The V2.3 physical-bodies model `0A.5.0`: the `0A.4.0` configuration (itself
+ * the frozen v1 defaults) with the model identity changed and the `body`
+ * section added. Nothing else differs — no ecology, mutation, energy,
+ * reproduction or neural value is retuned for physical bodies. Size already
+ * costs energy (movement cost scales with size); V2.3 only gives it a
+ * physical consequence as well.
+ */
+export function physicalBodiesModelConfig(): SimulationConfig {
+  const config = cloneConfig(DEFAULT_SIMULATION_CONFIG);
+  config.simulationVersion = PHYSICAL_BODIES_MODEL_VERSION;
+  config.body = { ...DEFAULT_PHYSICAL_BODY_CONFIG };
+  return config;
+}
+
+/**
  * The configuration of a supported model by version: 0A.1.0 →
  * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
- * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`.
+ * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`,
+ * 0A.5.0 → `physicalBodiesModelConfig()`.
  * Always a fresh copy. Throws for any other version.
  */
 export function modelConfig(simulationVersion: string): SimulationConfig {
@@ -249,6 +304,7 @@ export function modelConfig(simulationVersion: string): SimulationConfig {
     case MULTI_FOUNDER_MODEL_VERSION: return cloneConfig(DEFAULT_SIMULATION_CONFIG);
     case ORGANISM_SENSING_MODEL_VERSION: return organismSensingModelConfig();
     case RECURRENT_MEMORY_MODEL_VERSION: return recurrentMemoryModelConfig();
+    case PHYSICAL_BODIES_MODEL_VERSION: return physicalBodiesModelConfig();
     default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
   }
 }

@@ -31,8 +31,9 @@ describe('snapshot format v1', () => {
     expect(snap.state.organisms.length).toBe(world.organisms.length);
     expect(snap.state.food.length).toBe(world.food.length);
     expect(snap.checksum).toMatch(/^[0-9a-f]{64}$/);
-    // V2.1 added 0A.3.0 to the same format v1; V2.2 added the recurrent 0A.4.0 (format v2).
-    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
+    // V2.1 added 0A.3.0 to the same format v1; V2.2 added the recurrent 0A.4.0 (format v2);
+    // V2.3 added the physical-bodies 0A.5.0, which reuses format v2 unchanged.
+    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.5.0', '0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
   });
 
   it('round trip world → serialize → parse → restore preserves the canonical state exactly', () => {

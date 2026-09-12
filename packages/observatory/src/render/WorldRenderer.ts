@@ -41,9 +41,25 @@ const BIRTH_TICK_GAP = CONTINUOUS_TICK_GAP;
 const FOOD_SIZE = 9;
 const EMPTY_MAP: ReadonlyMap<number, ObserverOrganism> = new Map();
 
-/** Body radius in world units from morphology.size (0.5–1.5 → ~3.1–5.3). */
+/**
+ * Body radius in world units from morphology.size (0.5–1.5 → 3.1–5.3).
+ *
+ * This is the drawn body, and from V2.3 it MIRRORS the simulation's
+ * authoritative physical radius contract for model `0A.5.0`
+ * (`physicalRadiusFromSize` in `simulation-core/src/biology/physicalBody.ts`,
+ * whose defaults are `radiusBase` 2.0 and `radiusPerSize` 2.2) — so in a
+ * `0A.5.0` world the circle a viewer sees is the circle that actually
+ * collides. The two constants are duplicated rather than imported because the
+ * frontend never imports simulation types (it owns its wire protocol); the
+ * mapping is unchanged from Phase 0D slice 1, so no world looks different.
+ * Older models are drawn with exactly the same mapping they always were; they
+ * simply have no physical body at all.
+ */
+export const BODY_RADIUS_BASE = 2.0;
+export const BODY_RADIUS_PER_SIZE = 2.2;
+
 export function bodyRadius(size: number): number {
-  return 2.0 + 2.2 * size;
+  return BODY_RADIUS_BASE + BODY_RADIUS_PER_SIZE * size;
 }
 
 interface OrganismVisual {

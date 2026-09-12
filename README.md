@@ -23,6 +23,14 @@ the memory itself is runtime state that starts empty and is never inherited.
 There is no learning of any kind during life. `0A.1.0`–`0A.3.0` are unchanged.
 See *V2.2 — recurrent memory* below.
 
+**V2.3 gives them bodies.** Model `0A.5.0` makes organisms physically occupy
+space: each one is a circle whose radius comes from its inherited `size` gene,
+and two that overlap are pushed apart — the larger one moving less. That is
+all it is. No attack, no damage, no predation, no new input or output, no push
+action; existing movement simply starts to have physical consequences when
+bodies meet. `0A.1.0`–`0A.4.0` still pass straight through one another. See
+*V2.3 — physical bodies* below.
+
 Five workspace packages:
 
 | Package | Phase | Purpose |
@@ -135,6 +143,7 @@ it is not a DEMO seed and not evidence of anything.
 | Phase 0C — persistent canonical world | **complete for v1.** Done: exact save/load/resume, the snapshot store (retention, world identity, fallback recovery, quarantine), the persistent world runner, and the read-only observer bridge (WebSocket frames, tick pacing) |
 | **V2.1 — other organisms enter the sensory world** | **done.** New model `simulationVersion 0A.3.0` (10 → 8 → 4): the `0A.2.0` model plus four inputs describing the nearest visible other living organism. Perception only — no new action or interaction. Golden hash `e54d0c11249b7849`. Snapshot format v1 unchanged; observer protocol v1 unchanged; the Observatory adds the selected organism's vision cone |
 | **V2.2 — recurrent memory** | **done.** New model `simulationVersion 0A.4.0` (10 → 8 recurrent → 4): the `0A.3.0` model with an Elman hidden layer, h_t = tanh(W_in x_t + W_rec h_(t−1) + b). +64 inherited recurrent weights (188 parameters); runtime memory starts at zero and is never inherited; no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0` (memory is future-affecting state); format v1 unchanged for the older models; observer protocol v1 unchanged; no new UI |
+| **V2.3 — physical bodies** | **done.** New model `simulationVersion 0A.5.0`: the `0A.4.0` controller exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters) plus solid bodies. An organism occupies a circle of radius `2.0 + 2.2 × size` world units; two living organisms overlap when their centre distance is strictly less than the sum of their radii, and are separated along the line of centres with the larger body moving less. Displacement only — no damage, attack, predation, energy transfer, event or new state. Feeding uses post-collision positions, so a shove can take an organism out of reach of food. Golden hash `1006a56393e19cd9`. Snapshot format stays v2, observer protocol stays v1, and `0A.1.0`–`0A.4.0` are unchanged |
 | **Phase 0D — Observatory UI** | **complete, frozen for v1.** Slices 1–4 plus the final polish (organism quick-jump, first-run card, demo scripts, help hint). `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). **v1 is complete**; further work is v2 unless it is a genuine v1 bug |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -286,6 +295,118 @@ and dies out at tick 2,474; seed 8 (first of 1, 2, 3, … alive at tick 10,000)
 reaches ≈ 230 organisms. Neither says anything about whether memory helps.
 Recurrence costs almost nothing: at a fixed 230 organisms `0A.4.0` steps in
 ≈ 5.1 ms per tick vs 4.7 ms for `0A.3.0` (sensing, O(N²), dominates).
+
+---
+
+## V2.3 — physical bodies (model `0A.5.0`)
+
+Normative contract: `docs/V2.3 Amendment - Physical Bodies (0A.5.0).md`.
+
+> Organisms now physically occupy space and can displace one another.
+
+| Model | Controller | Parameters | Memory | Bodies | Snapshot format | Golden hash (seed 20260910, 10,000 ticks, linux-arm64) |
+|---|---|---|---|---|---|---|
+| `0A.1.0` | 6 → 8 → 4 feed-forward | 92 | none | non-solid | v1 | `6a6576bd49e86b27` |
+| `0A.2.0` | 6 → 8 → 4 feed-forward | 92 | none | non-solid | v1 | `b95a0b4ef7dd8449` |
+| `0A.3.0` | 10 → 8 → 4 feed-forward | 124 | none | non-solid | v1 | `e54d0c11249b7849` |
+| `0A.4.0` | 10 → 8 recurrent → 4 | 188 | 8 values | non-solid | v2 | `436a377506063609` |
+| `0A.5.0` | 10 → 8 recurrent → 4 | 188 | 8 values | **solid** | v2 | `1006a56393e19cd9` |
+
+**This is not combat.** No attack, damage, health, predation, energy transfer,
+stun, momentum or collision event exists. There is no new sensory input, no
+new output, no push action and no new persistent state. Only positions change.
+
+**The body.** The simulation owns the contract
+(`simulation-core/src/biology/physicalBody.ts`):
+
+```
+physicalRadiusFromSize(size, config) = config.body.radiusBase + config.body.radiusPerSize * size
+                                     = 2.0 + 2.2 * size          // world units
+```
+
+a pure function of the inherited `size` gene — no runtime adaptation, no random
+variation, no lineage, energy or age term. Over the gene range `[0.5, 1.5]` the
+radius runs `[3.1, 5.3]`. Those are the constants the Observatory has drawn with
+since Phase 0D slice 1, so the circle you see is the circle that collides; no
+world looks different from before. `config.body` exists only on `0A.5.0`, which
+is why every older model's configuration — and `configHash` — is byte-identical
+to what it was.
+
+**Overlap** is strict: `centreDistance < radiusA + radiusB`. Exact tangency is
+contact, not overlap, and is never resolved.
+
+**Separation** pushes the pair apart along the line of centres by the
+penetration depth, split so that each body's share is the *other's* fraction of
+the combined size:
+
+```
+shareA = sizeB / (sizeA + sizeB)      shareB = sizeA / (sizeA + sizeB)
+```
+
+Equal sizes share the work exactly in half; the bigger the body, the less of
+the separation it performs. It is continuous and monotone — no threshold, no
+immovable body, no strength score, no new gene, and a small organism can always
+displace a large one, just less. This is the *only* advantage size gains; its
+existing energetic cost is unchanged and deliberately not rebalanced.
+
+**The resolver** is a small deterministic Jacobi solver in the simulation core —
+no Matter.js, no Box2D, no spatial index. Living organisms in ascending id
+order; every overlapping pair measured against the positions at the start of a
+pass; corrections accumulated and applied all at once; four fixed passes, and a
+pass that finds no overlap ends it. It is RNG-free, independent of array order,
+free of iteration-order priority, and clamps into the world exactly as movement
+does. Two centres that are *exactly* identical separate along one of four
+axis-aligned unit vectors chosen by `(lowerId + higherId) mod 4`, pointing from
+the lower id to the higher — identity, never chance, and no trigonometry. Dense
+clusters and bodies against a wall can be impossible to separate completely;
+the fixed budget runs out and the residual is left and documented rather than
+randomised away.
+
+**Where it happens.** Sense → Decide → Resolve is unchanged; collision is
+Resolve-only, inserted twice into the §20.72 order:
+
+```
+ 4   Movement resolution
+ 4b  body overlap resolution          ← 0A.5.0 only
+ 5   Movement energy expenditure
+ 6-7 Feeding and food competition     ← uses post-collision positions
+ ...
+17   Births/removals become active
+17b  body overlap resolution          ← 0A.5.0 only, newborns included
+```
+
+So **being shoved can move an organism into or out of feeding range**, and it
+simply does not get the food. That is intended; there is no food-defence rule.
+Collision never touches the sensory vector already used this tick, never gives
+anyone a second decision, and never advances memory again.
+
+**Newborns.** Offspring placement is unchanged (same polar offset, same two RNG
+draws), so a newborn can land inside its parent — and the same passive
+separation rule then applies to it. The newborn gets no extra action, its
+memory is still exactly zero, no extra random number is drawn, and its genome
+is bit-identical to the one `0A.4.0` would produce.
+
+**Persistence and frames.** Bodies add no future-affecting state beyond
+position, which was always stored, so `0A.5.0` reuses **snapshot format v2**
+unchanged (no v3) and stores no collision metadata at all. Observer protocol
+stays **v1** and carries no contact, push or physics data. The frontend is
+unchanged and still read-only.
+
+**Run it.** `npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.5.0`
+(prints `1006a56393e19cd9`), or a live world with `--model 0A.5.0` (see *Quick
+start*).
+
+**Observed, not interpreted.** The canonical-seed `0A.5.0` world has two births
+and dies out at tick 2,551; seed 8 (first of 1, 2, 3, … alive at tick 10,000)
+reaches ≈ 234 organisms. Extinction is a legitimate result and no seed was
+shopped. Measured, not impressions: in a seed-8 world at ≈ 200 organisms there
+are contacts on every tick (≈ 19 pairs per tick); in 4,688 real contacting pairs
+of unequal size the larger organism moved less in 99.7% of them, and all 15
+exceptions were pairs clamped against a world wall; at tick 6,000 the worst
+interpenetration is 6 × 10⁻⁴ world units against `0A.4.0`'s 8.0 (bodies
+essentially co-located) at the same tick. Collision costs ≈ 2.5% of a tick at
+25 organisms and ≈ 20% at 240. None of this says anything about territory,
+dominance, cooperation, aggression or strategy.
 
 ---
 
@@ -1272,6 +1393,7 @@ population before the next begins.
  2  Sense                       §11.58 six-input vector per living organism (0A.3.0: ten)
  3  Decide                      neural evaluation -> buffered ActionIntent (0A.4.0: + buffered new memory, applied after all decide)
  4  Movement resolution         turn, then forward, clamped to world bounds
+ 4b Body overlap resolution     0A.5.0 only: overlapping bodies pushed apart, larger moves less
  5  Movement energy expenditure basal metabolism + movementCost(ACTUAL velocity)
  6  Feeding                     candidate (organism, food) pairs
  7  Food competition            nearest wins; exact ties by ascending organism ID
@@ -1285,6 +1407,7 @@ population before the next begins.
 15  Offspring placement         polar offset from parent, then independent heading
 16  Death resolution            energy <= 0 OR age >= maxAge, one combined pass
 17  Births/removals applied     children join world state, dead leave
+17b Body overlap resolution     0A.5.0 only: the same rule again, newborns included
 18  Food regeneration           fertility-weighted, capped at worldFoodCapacity
 19  Telemetry                   read-only
 20  Advance tick
@@ -1301,6 +1424,11 @@ Three consequences of this order are specified behaviour, not accidents:
 - **Newborns do not act in their birth tick.** They exist in world state from
   phase 17 and are visible to other organisms, but they were not part of S_t, so
   they first sense and decide on the following tick.
+- **Feeding sees post-collision positions (`0A.5.0`).** Phases 4b and 17b are
+  pure displacement — no energy, no damage, no event, no RNG, no extra decision
+  — but because 4b runs before feeding, a shove can carry an organism into or
+  out of range of a food item. Models `0A.1.0`–`0A.4.0` skip both phases and
+  behave exactly as they always have.
 
 `stepWorld` does not modify the state it is given: resolution writes to cloned
 runtime objects, so an earlier `WorldState` stays valid and replayable.
@@ -1368,7 +1496,8 @@ from the specification:
 
 - **`[LOCKED]`** — a simulation/research semantic invariant. Not a knob. The
   tick order, the sensory schema of each model (six inputs for `0A.1.0` /
-  `0A.2.0`, ten for `0A.3.0`), sense/decide/resolve separation, the
+  `0A.2.0`, ten for `0A.3.0`–`0A.5.0`), the `0A.5.0` overlap definition and
+  larger-moves-less displacement rule, sense/decide/resolve separation, the
   `reproductionCost > birthEnergy` relationship, "mutation OFF means exact
   inheritance", the two-stream RNG structure, and per-channel RNG isolation
   (§15.7) are all locked. Changing one changes what the simulation *means*,
@@ -1383,6 +1512,12 @@ from the specification:
 Every field in `config/types.ts` carries its classification and spec citation.
 `validateConfig()` enforces the structural invariants (including
 `reproductionCost > birthEnergy`) and is called by `bootstrapWorld()`.
+
+Two sections are **model-specific and present only on the model that has
+them**, so an older model's configuration — and its `configHash` — can never
+drift: `body` (`radiusBase`, `radiusPerSize`, `separationPasses`) exists only on
+`0A.5.0`, and `validateConfig()` refuses it on any other model and refuses its
+absence on `0A.5.0`.
 
 To change configuration, clone and override — never edit `defaults.ts` for a
 one-off experiment:

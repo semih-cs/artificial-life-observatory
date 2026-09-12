@@ -5,7 +5,7 @@
  *   - format v1: the feed-forward models 0A.1.0, 0A.2.0, 0A.3.0 — exactly the
  *     historical format; every existing v1 file reads, re-serialises and
  *     resumes as before.
- *   - format v2: the recurrent model 0A.4.0. Its canonical state additionally
+ *   - format v2: the recurrent models 0A.4.0 and 0A.5.0. Their canonical state additionally
  *     stores each organism's runtime memory `hiddenState` and its genome's
  *     `recurrentHiddenWeights`. Memory is future-affecting runtime state, so a
  *     recurrent world is never stored without it — hence a new format rather
@@ -61,6 +61,7 @@ import {
   SINGLE_FOUNDER_MODEL_VERSION,
   ORGANISM_SENSING_MODEL_VERSION,
   RECURRENT_MEMORY_MODEL_VERSION,
+  PHYSICAL_BODIES_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
   simulationModel,
 } from '@alo/simulation-core';
@@ -71,24 +72,28 @@ import { SnapshotError } from './errors.js';
 export const SNAPSHOT_FORMAT_ID = 'alo-canonical-world-snapshot' as const;
 /** Format v1: the feed-forward models (0A.1.0, 0A.2.0, 0A.3.0). */
 export const SNAPSHOT_FORMAT_VERSION = 1;
-/** Format v2: the recurrent model 0A.4.0 — v1 plus per-organism memory and recurrent weights. */
+/** Format v2: the recurrent models 0A.4.0 and 0A.5.0 — v1 plus per-organism memory and recurrent weights. */
 export const RECURRENT_SNAPSHOT_FORMAT_VERSION = 2;
 /** Every format this loader reads. */
 export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION];
 
 /**
- * Simulation versions this package can restore. `0A.4.0` is the V2.2
- * recurrent-memory model (format v2); `0A.3.0` is the V2.1 organism-sensing
- * model (10-input feed-forward controllers); `0A.2.0` is the frozen v1
- * canonical model; `0A.1.0` is the historical single-founder model. Adding
- * 0A.3.0 did not change the stored shape (format v1); adding 0A.4.0 did
- * (format v2).
+ * Simulation versions this package can restore. `0A.5.0` is the V2.3
+ * physical-bodies model and `0A.4.0` the V2.2 recurrent-memory model (both
+ * format v2); `0A.3.0` is the V2.1 organism-sensing model (10-input
+ * feed-forward controllers); `0A.2.0` is the frozen v1 canonical model;
+ * `0A.1.0` is the historical single-founder model. Adding 0A.3.0 did not
+ * change the stored shape (format v1); adding 0A.4.0 did (format v2). Adding
+ * 0A.5.0 did NOT: physical bodies add no future-affecting per-organism state
+ * beyond position, morphology and the existing memory, all of which format v2
+ * already stores — so 0A.5.0 reuses format v2 unchanged, and no format v3
+ * exists.
  */
 export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
-  RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+  PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
 ];
 
-/** The one format a supported model is stored in: 2 for the recurrent model, 1 for the feed-forward ones. */
+/** The one format a supported model is stored in: 2 for the recurrent models, 1 for the feed-forward ones. */
 export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 {
   return simulationModel(simulationVersion).recurrent ? 2 : 1;
 }
@@ -125,7 +130,7 @@ export interface CanonicalWorldStateV1 {
 }
 
 /**
- * The world record stored in a v2 snapshot (model 0A.4.0): the v1 record,
+ * The world record stored in a v2 snapshot (models 0A.4.0 and 0A.5.0): the v1 record,
  * with every organism also carrying `hiddenState` and its neural genome
  * `recurrentHiddenWeights` — exactly `canonicalizeWorldState` for a recurrent
  * world.
@@ -187,7 +192,7 @@ function detach<T>(value: T): T {
 /**
  * Capture a world and the configuration it runs under. Reads only; the world
  * and config are never modified, and no RNG is touched. The format follows
- * the model: v2 (with memory) for 0A.4.0, v1 for the feed-forward models.
+ * the model: v2 (with memory) for 0A.4.0 and 0A.5.0, v1 for the feed-forward models.
  */
 export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshot {
   if (world.simulationVersion !== config.simulationVersion) {
