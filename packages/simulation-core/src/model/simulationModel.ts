@@ -15,6 +15,11 @@
  *   0A.5.0  V2.3 — physical bodies: the 0A.4.0       10 -> 8 (recurrent) -> 4
  *           controller exactly, plus solid organism
  *           bodies that displace one another
+ *   0A.6.0  V2.4 — contestable food handling: the      10 -> 8 (recurrent) -> 4
+ *           0A.5.0 world, plus food that takes
+ *           several consecutive ticks to eat, travels
+ *           with its handler, and can be dislodged by
+ *           physical contact
  *
  * Everything that depends on the input dimension — founder drawing and
  * screening, network evaluation, the Sense phase, snapshot validation — asks
@@ -26,14 +31,23 @@
  *
  * `recurrent` separates the feed-forward models (0A.1.0-0A.3.0: no recurrent
  * weights, no runtime hidden state, snapshot format v1) from the recurrent
- * models 0A.4.0 and 0A.5.0 (recurrent weights in the genome, a runtime hidden
- * state per organism, snapshot format v2).
+ * models 0A.4.0, 0A.5.0 and 0A.6.0 (recurrent weights in the genome, a runtime
+ * hidden state per organism, snapshot format v2 or later).
  *
  * `physicalBodies` separates the models whose organisms pass through one
- * another (0A.1.0-0A.4.0) from 0A.5.0, whose organisms occupy space and are
- * displaced when they overlap. It adds NO neural input, output, action or
- * persistent state: only positions change, in the Resolve phase. Historical
+ * another (0A.1.0-0A.4.0) from 0A.5.0 and 0A.6.0, whose organisms occupy space
+ * and are displaced when they overlap. It adds NO neural input, output, action
+ * or persistent state: only positions change, in the Resolve phase. Historical
  * models are never made solid.
+ *
+ * `foodHandling` separates the models that eat instantaneously
+ * (0A.1.0-0A.5.0) from 0A.6.0, where eating is a multi-tick process: a food
+ * item is held, travels with its handler, and is consumed only after
+ * `handling.ticksRequired` consecutive handling ticks. It adds NO neural
+ * input, output or action — the existing `eat` output drives it — but it DOES
+ * add future-affecting per-food state (`holderId`, `handlingProgress`), which
+ * is why 0A.6.0 has its own snapshot format v3. Historical models never gain
+ * handling state.
  */
 
 /** Historical model: one founder controller, 25 near-clones of it. */
@@ -69,6 +83,18 @@ export const RECURRENT_MEMORY_MODEL_VERSION = '0A.4.0';
  */
 export const PHYSICAL_BODIES_MODEL_VERSION = '0A.5.0';
 
+/**
+ * V2.4 model: the 0A.5.0 world — the same ten inputs, the same Elman recurrent
+ * hidden layer, the same four outputs, the same 188 neural parameters, the
+ * same solid bodies — plus CONTESTABLE FOOD HANDLING. Eating is no longer
+ * instantaneous: an organism must handle a food item for several consecutive
+ * ticks before receiving its energy, the item travels with the handler
+ * meanwhile, and genuine organism-organism body contact dislodges it. No new
+ * output, action, steal, defend, attack, carry or share rule exists; the
+ * existing `eat` output acquires, continues and releases.
+ */
+export const FOOD_HANDLING_MODEL_VERSION = '0A.6.0';
+
 /** §11.58 six-input vector: food (3), boundary (2), own energy (1). Models 0A.1.0 and 0A.2.0. */
 export const V1_NEURAL_INPUT_SIZE = 6;
 
@@ -98,14 +124,27 @@ export interface SimulationModel {
    * event or persistent state is added by it.
    */
   readonly physicalBodies: boolean;
+  /**
+   * True when eating is a multi-tick, contestable process: an eligible food
+   * item is acquired (progress 1), follows its holder's resolved position,
+   * advances one step per consecutive handling tick, and is consumed only on
+   * reaching `handling.ticksRequired`. Holding is future-affecting per-food
+   * state (`holderId`, `handlingProgress`) and therefore canonical.
+   *
+   * False for 0A.1.0-0A.5.0, whose feeding is instantaneous exactly as it
+   * always has been: request eat within feeding range, win the item, receive
+   * its energy in the same tick.
+   */
+  readonly foodHandling: boolean;
 }
 
 const MODELS: readonly SimulationModel[] = Object.freeze([
-  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false }),
-  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false }),
-  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false }),
-  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false }),
-  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true }),
+  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false }),
+  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false }),
+  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false }),
+  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false, foodHandling: false }),
+  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: false }),
+  Object.freeze({ simulationVersion: FOOD_HANDLING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true }),
 ]);
 
 /** Every simulation version this core can bootstrap, step and validate, oldest first. */
@@ -123,7 +162,7 @@ export function simulationModel(version: string): SimulationModel {
   );
 }
 
-/** Neural input dimension of a model (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0, 0A.4.0 and 0A.5.0). */
+/** Neural input dimension of a model (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0 onwards). */
 export function neuralInputSizeFor(version: string): number {
   return simulationModel(version).neuralInputSize;
 }

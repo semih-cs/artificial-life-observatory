@@ -147,6 +147,21 @@ export interface BodySeparationResult {
   initialOverlaps: number;
   /** Overlapping pairs still present when the resolution ended (documented, never randomised away). */
   residualOverlaps: number;
+  /**
+   * The ids, ascending, of the organisms that were overlapping ANOTHER
+   * ORGANISM when this resolution began — that is, the bodies that actually
+   * met as a result of the movement this resolution is cleaning up. Taken from
+   * the FIRST pass only, deliberately: later passes correct the solver's own
+   * corrections, so contact would otherwise depend on `separationPasses`, a
+   * solver parameter, rather than on what the organisms did.
+   *
+   * This is DERIVED, per-resolution information. It is never stored on an
+   * organism, never persisted, never canonical and never sent to an observer.
+   * V2.4 uses it, from the ACTIVE (post-movement) resolution only, to decide
+   * whose held food is dislodged; the post-birth passive resolution's result
+   * is deliberately ignored.
+   */
+  contacts: readonly number[];
 }
 
 /** One solid body during a resolution: the organism, its fixed radius and size, and its pending correction. */
@@ -210,11 +225,13 @@ export function resolveBodyOverlap(
     }));
 
   const n = bodies.length;
-  if (n < 2) return { passes: 0, initialOverlaps: 0, residualOverlaps: 0 };
+  if (n < 2) return { passes: 0, initialOverlaps: 0, residualOverlaps: 0, contacts: [] };
 
   let passes = 0;
   let initialOverlaps = 0;
   let overlaps = 0;
+  // Organism ids that met another body when this resolution began (first pass).
+  const contacted = new Set<number>();
 
   for (let pass = 0; pass < body.separationPasses; pass++) {
     for (const s of bodies) {
@@ -235,6 +252,10 @@ export function resolveBodyOverlap(
         // not overlap, and is left alone.
         if (!(distanceSquared < sum * sum)) continue;
         overlaps += 1;
+        if (pass === 0) {
+          contacted.add(a.organism.id);
+          contacted.add(b.organism.id);
+        }
 
         let nx: number;
         let ny: number;
@@ -283,7 +304,13 @@ export function resolveBodyOverlap(
     }
   }
 
-  return { passes, initialOverlaps, residualOverlaps: overlaps };
+  return {
+    passes,
+    initialOverlaps,
+    residualOverlaps: overlaps,
+    // Ascending ids: a stable, array-order-independent report.
+    contacts: [...contacted].sort((x, y) => x - y),
+  };
 }
 
 /** Count the overlapping living pairs — a read-only diagnostic used by tests and reports. */

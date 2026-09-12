@@ -31,6 +31,14 @@ action; existing movement simply starts to have physical consequences when
 bodies meet. `0A.1.0`–`0A.4.0` still pass straight through one another. See
 *V2.3 — physical bodies* below.
 
+**V2.4 makes food contestable.** Model `0A.6.0` stops eating being
+instantaneous: an organism must handle a food item for five consecutive ticks
+before it gets the energy, the item travels with the handler meanwhile, and
+physical contact with another organism knocks it loose. Still no steal, defend,
+attack, carry or share action — the existing `eat` output does all of it, and
+an interrupted item simply becomes free again for anyone. `0A.1.0`–`0A.5.0`
+keep eating in a single tick. See *V2.4 — contestable food handling* below.
+
 Five workspace packages:
 
 | Package | Phase | Purpose |
@@ -144,6 +152,7 @@ it is not a DEMO seed and not evidence of anything.
 | **V2.1 — other organisms enter the sensory world** | **done.** New model `simulationVersion 0A.3.0` (10 → 8 → 4): the `0A.2.0` model plus four inputs describing the nearest visible other living organism. Perception only — no new action or interaction. Golden hash `e54d0c11249b7849`. Snapshot format v1 unchanged; observer protocol v1 unchanged; the Observatory adds the selected organism's vision cone |
 | **V2.2 — recurrent memory** | **done.** New model `simulationVersion 0A.4.0` (10 → 8 recurrent → 4): the `0A.3.0` model with an Elman hidden layer, h_t = tanh(W_in x_t + W_rec h_(t−1) + b). +64 inherited recurrent weights (188 parameters); runtime memory starts at zero and is never inherited; no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0` (memory is future-affecting state); format v1 unchanged for the older models; observer protocol v1 unchanged; no new UI |
 | **V2.3 — physical bodies** | **done.** New model `simulationVersion 0A.5.0`: the `0A.4.0` controller exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters) plus solid bodies. An organism occupies a circle of radius `2.0 + 2.2 × size` world units; two living organisms overlap when their centre distance is strictly less than the sum of their radii, and are separated along the line of centres with the larger body moving less. Displacement only — no damage, attack, predation, energy transfer, event or new state. Feeding uses post-collision positions, so a shove can take an organism out of reach of food. Golden hash `1006a56393e19cd9`. Snapshot format stays v2, observer protocol stays v1, and `0A.1.0`–`0A.4.0` are unchanged |
+| **V2.4 — contestable food handling** | **done.** New model `simulationVersion 0A.6.0`: the `0A.5.0` world exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters, same solid bodies) plus multi-tick, contestable eating. An item is acquired by the existing `eat` output under the unchanged nearest-wins competition, travels with its holder, advances one step per consecutive handling tick and is consumed at 5; `eat = false` releases it; genuine organism-organism body contact dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; held items count towards the food cap. No steal/defend/attack/share rule, no new input or output. Golden hash `3e5b9671f5750712`. New snapshot format **v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
 | **Phase 0D — Observatory UI** | **complete, frozen for v1.** Slices 1–4 plus the final polish (organism quick-jump, first-run card, demo scripts, help hint). `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). **v1 is complete**; further work is v2 unless it is a genuine v1 bug |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -407,6 +416,102 @@ interpenetration is 6 × 10⁻⁴ world units against `0A.4.0`'s 8.0 (bodies
 essentially co-located) at the same tick. Collision costs ≈ 2.5% of a tick at
 25 organisms and ≈ 20% at 240. None of this says anything about territory,
 dominance, cooperation, aggression or strategy.
+
+---
+
+## V2.4 — contestable food handling (model `0A.6.0`)
+
+Normative contract: `docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md`.
+
+> Eating is no longer instantaneous. An organism must handle a food item for
+> five consecutive ticks before receiving its energy. During that interval the
+> food travels with the organism. Physical contact with another organism can
+> dislodge it.
+
+| Model | Controller | Bodies | Feeding | Snapshot | Golden hash (seed 20260910, 10,000 ticks, linux-arm64) |
+|---|---|---|---|---|---|
+| `0A.1.0` | 6 → 8 → 4 feed-forward | non-solid | instant | v1 | `6a6576bd49e86b27` |
+| `0A.2.0` | 6 → 8 → 4 feed-forward | non-solid | instant | v1 | `b95a0b4ef7dd8449` |
+| `0A.3.0` | 10 → 8 → 4 feed-forward | non-solid | instant | v1 | `e54d0c11249b7849` |
+| `0A.4.0` | 10 → 8 recurrent → 4 | non-solid | instant | v2 | `436a377506063609` |
+| `0A.5.0` | 10 → 8 recurrent → 4 | solid | instant | v2 | `1006a56393e19cd9` |
+| `0A.6.0` | 10 → 8 recurrent → 4 | solid | **5-tick, contestable** | **v3** | `3e5b9671f5750712` |
+
+**No new action.** There is no grab, release, steal, hold, defend, carry or
+share output, and no handling, possession or touching input. The existing `eat`
+output does everything:
+
+| Holding? | `eat` | Meaning |
+|---|---|---|
+| no | true | try to acquire a free item in feeding range |
+| yes | true | keep handling it |
+| yes | false | **release it**, here and now, progress reset |
+
+**Acquisition** is the existing food competition, unchanged: nearest eligible
+organism wins, exact ties by lower organism id, items in ascending id order,
+one item per organism. The only added rule is that an organism already holding
+something cannot take another.
+
+**Progress** is 1 on acquisition, then 2, 3, 4, and the item is consumed at 5
+(`handling.ticksRequired`). Only completion pays: the holder receives exactly
+the ordinary `foodEnergyValue`, with the unchanged cap and the unchanged
+same-tick rescue and reproduction semantics. There is no bonus for handling
+longer, no way to keep a finished item, and no inventory.
+
+**The item travels with its holder** — after movement and collision, a held
+item's position becomes the holder's. It stays a real world food item: never
+duplicated, never removed from the food count, and counted in
+`worldFoodCapacity`, so carrying can never create extra regeneration. It is
+also ordinary food to the existing sensing: others can watch it move, and the
+holder sees it at zero distance under the existing zero-distance rule. No "I am
+carrying food" input exists.
+
+**Contact dislodges.** If a holder was overlapping another organism when the
+ACTIVE (post-movement) body resolution began, its item is released at the
+holder's post-collision position and progress resets. No damage, no energy
+transfer, **no recipient** — the item just becomes free again. Several contacts
+in one tick do nothing extra; there is no size term, no strength check and no
+randomness. A dropped item cannot be reacquired until the next tick, which
+removes drop/regrab ordering questions entirely.
+
+**What is not a contest:** wall clamping, visual proximity, vision-cone
+overlap, food proximity, and reproduction on its own. In particular the
+post-birth passive separation is *not* a contest — a newborn must not knock its
+parent's food loose merely by spawning.
+
+**Death and reproduction.** A holder that dies drops its item at its final
+position with progress reset and no energy granted; the item is never
+destroyed. Reproduction is unchanged: the food stays with the parent, and the
+child inherits neither item, progress nor possession (handling state lives on
+the food, so a child cannot carry one structurally).
+
+**Movement is free.** A holder is not frozen, slowed or charged extra, and
+gains no carrying mass. The only costs are the delayed energy, the need to keep
+requesting eat, and the risk of interruption.
+
+**Persistence.** Handling decides who is about to be fed, so it is canonical
+and `0A.6.0` worlds are stored in the new **snapshot format v3** (per-food
+`holderId` and `handlingProgress`). Formats v1 and v2 are unchanged for the
+older models; nothing is migrated, no handling state is invented for a
+historical model, and cross-model relabelling is refused in both directions.
+Resume is exact at every progress and immediately after a dislodgement.
+
+**Run it.** `npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.6.0`
+(prints `3e5b9671f5750712`), or a live world with `--model 0A.6.0` (see *Quick
+start*). The Observatory shows a `0A.6.0` world like any other; a held item is
+visible simply because its ordinary position moves.
+
+**Observed, not interpreted.** The canonical-seed `0A.6.0` world has no births
+at all and dies out at tick 2,854. Seed 3 is the first of 1, 2, 3, … alive at
+tick 10,000; seed 8 is the most active world found (both coverage seeds, not
+canonical). Contestable handling is plainly a much harsher ecology than
+instantaneous feeding — energy arrives at best once per five uninterrupted
+ticks — and extinction is a legitimate result; nothing was tuned and no seed was
+shopped. Mechanics measured over 6,000 ticks of the seed-8 world: 6,649
+acquisitions, 675 completions, 4,426 voluntary releases, 1,537 dislodgements by
+body contact, 6 drops on death, and food carried 10,863 world units in total.
+Nothing here is a claim about stealing, defending, hoarding, cooperation,
+pursuit or strategy.
 
 ---
 
@@ -1397,7 +1502,10 @@ population before the next begins.
  5  Movement energy expenditure basal metabolism + movementCost(ACTUAL velocity)
  6  Feeding                     candidate (organism, food) pairs
  7  Food competition            nearest wins; exact ties by ascending organism ID
- 8  Energy gain                 foodEnergy credited
+                                0A.6.0: instead, food handling — held items follow
+                                their holder, drops (eat=false / body contact),
+                                progress, completion, then acquisition
+ 8  Energy gain                 foodEnergy credited (0A.6.0: on COMPLETION only)
  9  Reproduction eligibility    alive AND mature AND energy>=threshold AND requested
 10  Reproduction resolution     every eligible parent reproduces
 11  Parent reproduction cost    parent.energy -= reproductionCost
@@ -1406,6 +1514,7 @@ population before the next begins.
 14  Neural mutation             if the neural channel is enabled
 15  Offspring placement         polar offset from parent, then independent heading
 16  Death resolution            energy <= 0 OR age >= maxAge, one combined pass
+16b Dead holders drop food      0A.6.0 only: at the final position, progress 0, no energy
 17  Births/removals applied     children join world state, dead leave
 17b Body overlap resolution     0A.5.0 only: the same rule again, newborns included
 18  Food regeneration           fertility-weighted, capped at worldFoodCapacity
@@ -1424,6 +1533,12 @@ Three consequences of this order are specified behaviour, not accidents:
 - **Newborns do not act in their birth tick.** They exist in world state from
   phase 17 and are visible to other organisms, but they were not part of S_t, so
   they first sense and decide on the following tick.
+- **Eating takes five ticks and can be interrupted (`0A.6.0`).** Phases 6–7
+  become multi-tick handling: an item is acquired under the same competition
+  rules, travels with its holder, and pays only on completion. `eat = false`
+  releases it, and body contact from the ACTIVE resolution dislodges it — a
+  dropped item is free again, but not until the next tick. Models
+  `0A.1.0`–`0A.5.0` keep instantaneous feeding exactly.
 - **Feeding sees post-collision positions (`0A.5.0`).** Phases 4b and 17b are
   pure displacement — no energy, no damage, no event, no RNG, no extra decision
   — but because 4b runs before feeding, a shove can carry an organism into or
@@ -1496,8 +1611,10 @@ from the specification:
 
 - **`[LOCKED]`** — a simulation/research semantic invariant. Not a knob. The
   tick order, the sensory schema of each model (six inputs for `0A.1.0` /
-  `0A.2.0`, ten for `0A.3.0`–`0A.5.0`), the `0A.5.0` overlap definition and
-  larger-moves-less displacement rule, sense/decide/resolve separation, the
+  `0A.2.0`, ten for `0A.3.0`–`0A.6.0`), the `0A.5.0` overlap definition and
+  larger-moves-less displacement rule, the `0A.6.0` handling contract (five
+  consecutive ticks, contact dislodges, no same-tick reacquisition),
+  sense/decide/resolve separation, the
   `reproductionCost > birthEnergy` relationship, "mutation OFF means exact
   inheritance", the two-stream RNG structure, and per-channel RNG isolation
   (§15.7) are all locked. Changing one changes what the simulation *means*,
@@ -1516,8 +1633,9 @@ Every field in `config/types.ts` carries its classification and spec citation.
 Two sections are **model-specific and present only on the model that has
 them**, so an older model's configuration — and its `configHash` — can never
 drift: `body` (`radiusBase`, `radiusPerSize`, `separationPasses`) exists only on
-`0A.5.0`, and `validateConfig()` refuses it on any other model and refuses its
-absence on `0A.5.0`.
+`0A.5.0` and `0A.6.0`, and `handling` (`ticksRequired`) only on `0A.6.0`.
+`validateConfig()` refuses each on any other model and refuses its absence on
+the model that needs it.
 
 To change configuration, clone and override — never edit `defaults.ts` for a
 one-off experiment:

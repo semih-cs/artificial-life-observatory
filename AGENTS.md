@@ -73,6 +73,16 @@ amended by**:
   (10 → 8 recurrent → 4), inherited recurrent weights, runtime memory that
   starts at zero and is never inherited, and snapshot format v2. It changes
   none of `0A.1.0`–`0A.3.0`.
+- `docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md` — V2.4 adds a
+  NEW model, `0A.6.0`: the `0A.5.0` world exactly (same ten inputs, same
+  recurrence, same four outputs, same 188 parameters, same solid bodies) plus
+  CONTESTABLE FOOD HANDLING — eating takes five consecutive ticks, the item
+  travels with its handler, and genuine organism-organism body contact
+  dislodges it. Driven entirely by the existing `eat` output: no grab, release,
+  steal, defend, attack, carry or share action, and no new input or output. It
+  adds future-affecting per-food state (`holderId`, `handlingProgress`) and so
+  has its own snapshot format v3; observer protocol stays v1. It changes none
+  of `0A.1.0`–`0A.5.0`, which keep instantaneous feeding.
 - `docs/V2.3 Amendment - Physical Bodies (0A.5.0).md` — V2.3 adds a NEW
   model, `0A.5.0`: the `0A.4.0` model exactly (same ten inputs, same
   recurrence, same four outputs, same 188 parameters) plus SOLID BODIES — a
@@ -351,10 +361,10 @@ Frontend rules that hold from now on:
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
 
-### V2 — started (V2.1 organism sensing; V2.2 recurrent memory; V2.3 physical bodies)
+### V2 — started (V2.1 organism sensing; V2.2 recurrent memory; V2.3 physical bodies; V2.4 contestable food handling)
 
 V2 is the next product phase. It changes biology only through NEW, versioned
-models; every earlier model (`0A.1.0`–`0A.4.0` as of V2.3) stays frozen
+models; every earlier model (`0A.1.0`–`0A.5.0` as of V2.4) stays frozen
 historical ground truth and is never redefined, re-hashed or silently
 upgraded.
 
@@ -446,6 +456,47 @@ on:
   only new benefit is space occupation and displacement resistance. Observe
   before tuning.
 
+**V2.4 — model `0A.6.0` (done).** Contestable food handling: eating takes five
+consecutive ticks, the item travels with its handler and body contact dislodges
+it. Contract:
+`docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md`. Rules that hold
+from now on:
+
+- **Instantaneous vs handled feeding is a model property** (`foodHandling` in
+  the registry), true only for `0A.6.0`. `0A.1.0`–`0A.5.0` keep instantaneous
+  feeding exactly and are never converted. Never replace feeding globally;
+  gate strictly by model.
+- **The existing `eat` output drives everything.** Not holding + eat = try to
+  acquire; holding + eat = continue; holding + no eat = release. No grab,
+  release, steal, defend, attack, carry or share action, and no handling,
+  possession or touching input, is ever added.
+- **Acquisition is the EXISTING competition**, unchanged (nearest wins, exact
+  ties by ascending organism id, items in ascending food id order, one item per
+  organism), plus one rule: an organism already holding cannot acquire. Never
+  invent a new competition score, a size term or an ownership rule.
+- **Handling state is food-owned** (`holderId`, `handlingProgress`), which makes
+  "one holder per item" structural. It is canonical and future-affecting.
+  Derived contact information is never persisted.
+- **Contact comes from the ACTIVE body resolution only**, and from its FIRST
+  pass, so it depends on what the organisms did rather than on
+  `body.separationPasses`. The post-birth passive separation is deliberately
+  NOT a contest: a newborn must not knock its parent's food loose by spawning.
+  Wall clamping, proximity, vision and reproduction alone never dislodge.
+- **Dislodgement is not theft.** No damage, no energy transfer, no recipient,
+  no event; the item becomes free and cannot be reacquired until the next tick.
+  Never add probability, strength, grip or a food-defence rule.
+- **Only completion feeds.** Progress resets to zero on release, dislodgement
+  and death, with no carry-over; a dead holder's item stays in the world and
+  grants nothing.
+- **Held food is ordinary food**: counted in the cap, visible to the existing
+  sensing (including the holder's own item at zero distance), never duplicated
+  and never hidden.
+- **Snapshot format v3 belongs to `0A.6.0` alone**; v1 and v2 are unchanged,
+  nothing is migrated, and relabelling is refused in both directions. Observer
+  protocol stays v1 and carries no handling data.
+- **No ecology tuning.** `handling.ticksRequired` is part of the model, not a
+  knob to make a trajectory survive. Extinction is a legitimate result.
+
 ---
 
 ## 5. Phase 0A invariants that must be preserved
@@ -463,16 +514,16 @@ Do not change these casually.
 - Morphology and neural mutation channels are independently controllable.
 - Disabled mutation channels still consume their fixed RNG draw schedule so paired experiments retain RNG isolation.
 - Phase 0A neural topology is fixed and feedforward.
-- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0` and `0A.5.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
-- Organisms are non-solid in `0A.1.0`–`0A.4.0` and solid in `0A.5.0` only. A physical body is a circle of radius `body.radiusBase + body.radiusPerSize * morphology.size`; overlap is strict (`centreDistance < radiusA + radiusB`) and is resolved by displacement alone, weighted so the larger body moves less. Never make a historical model solid.
+- Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0`, `0A.5.0` and `0A.6.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
+- Organisms are non-solid in `0A.1.0`–`0A.4.0` and solid in `0A.5.0` and `0A.6.0`. A physical body is a circle of radius `body.radiusBase + body.radiusPerSize * morphology.size`; overlap is strict (`centreDistance < radiusA + radiusB`) and is resolved by displacement alone, weighted so the larger body moves less. Never make a historical model solid.
 - Sensing (every model) is a pure read of the pre-decision snapshot S_t; in `0A.3.0` it includes the nearest visible other living organism and nothing else about other organisms.
-- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The recurrent models `0A.4.0` (V2.2) and `0A.5.0` (V2.3) have an Elman hidden state whose weights are genome and whose memory is runtime state.
+- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The recurrent models `0A.4.0` (V2.2), `0A.5.0` (V2.3) and `0A.6.0` (V2.4) have an Elman hidden state whose weights are genome and whose memory is runtime state.
 - No learning, plasticity, backpropagation, reinforcement learning or stochastic policy in ANY model: genomes are fixed for life.
 - Neural evaluation is deterministic, pure and RNG-free.
 - Decision logic returns `ActionIntent`; it does not directly mutate shared world state.
 - Canonical lifecycle follows **Sense → Decide → Resolve**. Physical collision belongs entirely to Resolve: it never reaches the sensory vector already used for the tick, never causes a second neural evaluation, and never advances recurrent memory again.
 - Newborns do not act in their birth tick.
-- Food is single-consumption.
+- Food is single-consumption. In `0A.1.0`–`0A.5.0` consumption is instantaneous; in `0A.6.0` it takes `handling.ticksRequired` (5) consecutive handling ticks, during which the item is held, travels with its handler, still counts in the food cap, and can be dislodged by genuine organism-organism body contact. Only completion grants energy. Never make a historical model handle food.
 - Same-tick food conflict is resolved by distance, then deterministic organism ID for exact ties.
 - Feeding occurs before the single death-resolution pass and may rescue an organism in the same tick. In `0A.5.0` it reads POST-collision positions, so a displacement can move an organism into or out of feeding range; there is no food-defence rule.
 - Death mechanisms in Phase 0A are energy depletion and maximum age.
@@ -620,6 +671,7 @@ npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.3.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.1.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.4.0
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.5.0
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.6.0
 ```
 
 Expected hash depends on the model version, and models must never be conflated:
@@ -631,6 +683,7 @@ Expected hash depends on the model version, and models must never be conflated:
 | `0A.3.0` V2.1 organism sensing | `organismSensingModelConfig()` | 10 → 8 → 4 | `e54d0c11249b7849` |
 | `0A.4.0` V2.2 recurrent memory | `recurrentMemoryModelConfig()` | 10 → 8 ↺ → 4 | `436a377506063609` |
 | `0A.5.0` V2.3 physical bodies | `physicalBodiesModelConfig()` | 10 → 8 ↺ → 4, solid | `1006a56393e19cd9` |
+| `0A.6.0` V2.4 contestable food handling | `foodHandlingModelConfig()` | 10 → 8 ↺ → 4, solid, 5-tick eating | `3e5b9671f5750712` |
 
 Results from different models must not be pooled or compared numerically.
 Never "update" a historical hash to match changed behaviour — a changed
@@ -685,6 +738,19 @@ reuse, no collision metadata, no relabelling, exact resume in and across
 processes); `world-runner/tests/physicalBodiesModel.test.ts` (runner,
 `--model 0A.5.0`, observer purity); `observatory/tests/bodyRadius.test.ts`
 (the drawn radius is pinned to the simulation contract).
+
+V2.4 regressions, part of `npm test`:
+`simulation-core/tests/foodHandling.test.ts` (model gating, the unchanged
+controller, acquisition under the existing competition, progress and
+completion, held-food movement and sensing, release, dislodgement and what does
+NOT dislodge, same-tick reacquisition refusal, death and reproduction,
+determinism and order-independence, canonical handling state, the `0A.6.0`
+golden with checkpoints at ticks 500 / 1,000 / 2,000 and the seed-3 / seed-8
+coverage checkpoints); `persistence/tests/foodHandlingSnapshot.test.ts` (format
+v3, validation refusals, cross-model relabelling, exact resume at every
+progress and after a dislodgement, in and across processes);
+`world-runner/tests/foodHandlingModel.test.ts` (runner stop/resume with food in
+hand, `--model 0A.6.0`, observer purity and moving held food in frames).
 
 Observatory regression, part of `npm test`: `npm test -w packages/observatory`
 (vitest, about 1 s, no browser). It covers protocol parsing, the connection

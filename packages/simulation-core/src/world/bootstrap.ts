@@ -156,7 +156,8 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
   const groupCount = founders.length;
 
   // 2. Bootstrap population
-  const recurrent = simulationModel(config.simulationVersion).recurrent;
+  const worldModel = simulationModel(config.simulationVersion);
+  const recurrent = worldModel.recurrent;
   const organisms: OrganismRuntimeState[] = [];
   const placed: Point[] = [];
   let nextOrganismId = 1;
@@ -215,7 +216,9 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
   const initialCount = Math.min(config.food.initialFoodCount, config.food.worldFoodCapacity);
   for (let i = 0; i < initialCount; i++) {
     const p = placeFoodByFertility(boot, fertility, worldConfig, FERTILITY_PLACEMENT_ATTEMPTS);
-    food.push({ id: nextFoodId++, x: p.x, y: p.y });
+    // V2.4: on a food-handling model every item carries its (free) handling
+    // state from the start; on every other model the keys are absent entirely.
+    food.push(worldModel.foodHandling ? { id: nextFoodId++, x: p.x, y: p.y, holderId: null, handlingProgress: 0 } : { id: nextFoodId++, x: p.x, y: p.y });
   }
 
   return {

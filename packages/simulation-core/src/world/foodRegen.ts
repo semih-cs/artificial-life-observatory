@@ -30,7 +30,17 @@ export function regenerateFood(
   rng: RngStream,
   foodConfig: FoodConfig,
   existingFood: readonly FoodItem[],
-  nextFoodId: number
+  nextFoodId: number,
+  /**
+   * V2.4: true for a model with contestable food handling (0A.6.0). A newly
+   * spawned item is born FREE — `holderId` null, `handlingProgress` 0. For
+   * every other model the keys are absent entirely, so historical food records
+   * and their canonical hashes are untouched. Regeneration itself is unchanged:
+   * the same three draws per attempt, the same fertility weighting, and the
+   * same hard cap counted over ALL existing items — held ones included, so
+   * carrying can never create extra regeneration.
+   */
+  foodHandling = false
 ): FoodRegenResult {
   const newFood: FoodItem[] = [];
   let id = nextFoodId;
@@ -64,7 +74,7 @@ export function regenerateFood(
       if (tooClose) continue;
     }
 
-    newFood.push({ id: id++, x, y });
+    newFood.push(foodHandling ? { id: id++, x, y, holderId: null, handlingProgress: 0 } : { id: id++, x, y });
     count += 1;
   }
 

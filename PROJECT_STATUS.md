@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-12 (V2.3 done: physical bodies, model `0A.5.0`; V2.2 recurrent memory `0A.4.0`; V2.1 organism sensing `0A.3.0`; v1 frozen)
+**Last updated:** 2026-09-12 (V2.4 done: contestable food handling, model `0A.6.0`; V2.3 physical bodies `0A.5.0`; V2.2 recurrent memory `0A.4.0`; V2.1 organism sensing `0A.3.0`; v1 frozen)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -21,6 +21,7 @@
 | **V2.1** — other organisms enter the sensory world | **DONE** (below): new model `simulationVersion 0A.3.0`, 10 → 8 → 4 — the `0A.2.0` model plus four inputs for the nearest visible other living organism. Perception only. Golden hash `e54d0c11249b7849`. `0A.1.0` / `0A.2.0` unchanged. Snapshot format v1 and observer protocol v1 unchanged. Observatory: selected-organism vision cone |
 | **V2.2** — recurrent memory | **DONE** (below): new model `simulationVersion 0A.4.0`, 10 → 8 recurrent → 4 — the `0A.3.0` model with an Elman hidden layer (+64 inherited recurrent weights, 188 parameters), runtime memory (8 values, zero at birth, never inherited), no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0`; format v1 unchanged; observer protocol v1 unchanged; no new UI |
 | **V2.3** — physical bodies | **DONE** (below): new model `simulationVersion 0A.5.0` — the `0A.4.0` controller exactly (10 → 8 recurrent → 4, 188 parameters, 8 memory values) plus SOLID BODIES. Radius `2.0 + 2.2 × size` world units from the inherited size gene; overlap is strict `centreDistance < rA + rB`; separation along the line of centres weighted `shareA = sizeB/(sizeA+sizeB)` so the larger body moves less. Displacement only — no damage, attack, predation, energy transfer, event, new input/output/action or persistent physics state. Feeding uses post-collision positions. Golden hash `1006a56393e19cd9` (canonical seed extinct at tick 2,551, 2 births — reported honestly, no seed shopping). Snapshot format stays v2, observer protocol stays v1, `0A.1.0`–`0A.4.0` unchanged |
+| **V2.4** — contestable food handling | **DONE** (below): new model `simulationVersion 0A.6.0` — the `0A.5.0` world exactly (10 → 8 recurrent → 4, 188 parameters, solid bodies) plus MULTI-TICK CONTESTABLE EATING. `handling.ticksRequired` = 5 consecutive handling ticks per item, driven entirely by the existing `eat` output (acquire / continue / release); the item travels with its holder and still counts in the food cap; genuine organism-organism body contact from the ACTIVE resolution dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; only completion grants the ordinary food energy. No steal/defend/attack/share rule, no new input or output, no damage, no transfer. Golden hash `3e5b9671f5750712` (canonical seed: 0 births, extinct at tick 2,854 — reported honestly, no seed shopping, no tuning). New **snapshot format v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
 | **Phase 0D** — Observatory / visualisation | **COMPLETE / FROZEN FOR V1** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. The final polish adds an organism quick-jump, the first-run card, `npm run demo:new` / `demo:resume` with DEMO seed `31415926`, and a help hint. **V1 COMPLETE.** Further work is v2 unless it is a genuine v1 bug |
 
 **Frozen v1 biological model:**
@@ -67,6 +68,19 @@ This is a **product freeze, not a research baseline qualification**.
 | snapshot format | v2 (unchanged — no format v3) |
 | observer protocol | v1 (unchanged) |
 | golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `1006a56393e19cd9` |
+
+**V2.4 model (new, separately versioned):**
+
+| Setting | Value |
+|---|---|
+| `simulationVersion` | `0A.6.0` (`foodHandlingModelConfig()`, `--model 0A.6.0`) |
+| controller | 10 → 8 recurrent → 4 (Elman), 188 neural parameters, 8 runtime memory values — identical to `0A.5.0` |
+| bodies | solid, radius `2.0 + 2.2 × size` — identical to `0A.5.0` |
+| feeding | 5 consecutive handling ticks per item (`handling.ticksRequired`); held items travel with their holder, count in the food cap, and are dislodged by active body contact |
+| configuration | the `0A.5.0` configuration with the version changed and the `handling` section added; nothing else retuned |
+| snapshot format | **v3** (per-food `holderId` and `handlingProgress`) |
+| observer protocol | v1 (unchanged) |
+| golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `3e5b9671f5750712` |
 
 **DEMO seed (presentation only): `31415926`** — used by `npm run demo:new`
 (`worlds/demo`, 10 ticks/s, observer on 8787). Chosen from a 40,000-tick
@@ -143,10 +157,12 @@ has been chosen yet.
 ## Git state
 
 Branch: `main` (tracking `origin/main`). `git log -1` is authoritative. The
-most recent work is the V2.3 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
+most recent work is the V2.4 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
+(HEAD)  V2.4: contestable food handling — model 0A.6.0 (5-tick eating, held food, contact dislodges) — see `git log -1`
+62b16fb PROJECT_STATUS: record the V2.3 commit hash
 031a301 V2.3: physical bodies — model 0A.5.0 (solid bodies, size-weighted displacement)
 ed7644a V2.2: recurrent memory — model 0A.4.0 (10→8 recurrent→4), snapshot format v2
 ceecbc8 V2.1: other organisms enter the sensory world — model 0A.3.0 (10→8→4), selected-organism vision cone
@@ -179,7 +195,46 @@ artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
 
 ---
 
-## Verification — V2.3 checkpoint (this session)
+## Verification — V2.4 checkpoint (this session)
+
+Development VM (linux-arm64, Node 22.23.2), package by package (one shell
+command is limited to 3 minutes there):
+
+```text
+simulation-core tests:    295 / 295 passed   (+34: foodHandling)
+experiment-harness tests: 138 / 138 passed   (unchanged)
+persistence tests:        111 / 111 passed   (+11: foodHandlingSnapshot)
+world-runner tests:        58 / 58  passed   (+4: foodHandlingModel)
+observatory tests:         90 / 90  passed   (unchanged — no frontend change)
+workspace total:          692 / 692 passed   (V2.3: 643)
+workspace build:          PASS (`npm run build`)
+
+golden hashes, seed 20260910, 10000 ticks (linux-arm64), each from a fresh CLI process:
+  0A.1.0 single-founder (frozen):     6a6576bd49e86b27  UNCHANGED
+  0A.2.0 multi-founder (frozen v1):   b95a0b4ef7dd8449  UNCHANGED  (also `npm run simulate` with no --model)
+  0A.3.0 organism sensing (frozen):   e54d0c11249b7849  UNCHANGED
+  0A.4.0 recurrent memory (frozen):   436a377506063609  UNCHANGED
+  0A.5.0 physical bodies (frozen):    1006a56393e19cd9  UNCHANGED
+  0A.6.0 contestable handling (V2.4): 3e5b9671f5750712  NEW (twice in-test + CLI; checkpoints 500 = 811dee5de25a3753,
+                                                        1,000 = 11f3da7c82ce8082, 2,000 = 5868f40d685adda3;
+                                                        0 births, extinct at tick 2,854)
+  0A.6.0 coverage checkpoints (NOT canonical): seed 3 @ 2,500 = 1ed9e874a5f493bf (1 birth, first living seed);
+                                               seed 8 @ 2,500 = e21dc19bcc7a85ec (22 births, the most active world)
+```
+
+No test was deleted or weakened. Pinned lists were extended for the new model
+(`SUPPORTED_MODEL_VERSIONS` in `recurrentMemory`, `organismSensingModel` and
+`physicalBodies` tests; `SUPPORTED_SIMULATION_VERSIONS` and the format mapping
+in `snapshot`, `recurrentSnapshot` and `physicalBodiesSnapshot` tests), two
+registry equality assertions gained `foodHandling: false` for the historical
+models, and the `physicalBodies` no-op assertion gained the new derived
+`contacts: []` field of `BodySeparationResult`.
+
+Also on the x86_64 cloud container (Node 22.22.2), a clean build of the same
+tree: `npm run build` passes and the browser live check ran there (22 / 22,
+below). The `0A.6.0` hashes differ there, as every model's do — Known gap 13.
+
+## Verification — V2.3 checkpoint (historical)
 
 Development VM (linux-arm64, Node 22.23.2), package by package (one shell
 command is limited to 3 minutes there):
@@ -714,6 +769,8 @@ implemented as specified. **The model was not modified.**
 | `docs/V2.1 Amendment - Organism Sensing (0A.3.0).md` | CREATED (V2.1) — the `0A.3.0` sensory contract, model dimensions, founders, mutation, persistence, Observatory scope, non-goals, platform note |
 | `docs/V2.2 Amendment - Recurrent Memory (0A.4.0).md` | CREATED (V2.2) — the `0A.4.0` Elman controller, genome vs runtime memory, founders, mutation, canonical state and snapshot format v2, Observatory scope, non-goals |
 | `docs/V2.3 Amendment - Physical Bodies (0A.5.0).md` | CREATED (V2.3) — the `0A.5.0` physical-body contract: radius rule, strict overlap definition, exact size weighting, the deterministic resolver and its tie/residual handling, lifecycle timing, newborn handling, feeding on post-collision positions, persistence and observer invariance, performance, non-goals, observed-not-interpreted |
+| `docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md` | CREATED (V2.4) — the `0A.6.0` handling contract: the meaning of `eat`, acquisition under the existing competition, progress/completion, held-food movement and sensing, contest and what is not a contest, the same-tick reacquisition refusal, death and reproduction, the final tick order, canonical state and snapshot format v3, observer invariance, performance, non-goals, observed-not-interpreted |
+| `README.md`, `AGENTS.md`, `PROJECT_STATUS.md` | UPDATED (V2.4) — status tables and model tables through `0A.6.0`; the V2.4 README section; lifecycle phases 6–7 / 16b; model-specific configuration sections; AGENTS §3 amendment list, §5 invariants (single-consumption vs handling, solid models, recurrent models), §4 V2.4 rules, §9 hash table, commands and the V2.4 regression list |
 | `README.md`, `AGENTS.md`, `PROJECT_STATUS.md` | UPDATED (V2.3) — status tables and model tables through `0A.5.0`; the V2.3 README section; lifecycle phases 4b / 17b; model-specific configuration sections; AGENTS §3 amendment list, §5 invariants (solid vs non-solid, collision is Resolve-only, feeding on post-collision positions), §4 V2.3 rules, §9 hash table, commands and the V2.3 regression list |
 | `README.md`, `AGENTS.md`, `PROJECT_STATUS.md` | UPDATED (V2.1) — V2 started; model table and hashes; the V2.1 section; model registry and V2 rules; the clarified snapshot rule; the vision-cone frontend rule; known gaps 13–15 |
 
@@ -2779,11 +2836,121 @@ about territory, dominance, cooperation, aggression, strategy or intelligence:
 only the physical effects above were measured. No DEMO seed was chosen for
 `0A.5.0`.
 
+## V2.4 — RESULT: DONE (contestable food handling, model `0A.6.0`)
+
+Contract: `docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md`.
+Multi-tick, contestable eating — no steal, defend, attack, carry or share
+action, no damage, no energy transfer, no new input, output or gene.
+
+**Model.** Registry flag `foodHandling` (only `0A.6.0`); `simulationModel()`
+now reports `{ neuralInputSize, organismSensing, recurrent, physicalBodies,
+foodHandling }`. `0A.6.0` is `0A.5.0` otherwise: ten V2.1 inputs, Elman
+recurrence, four outputs, 188 parameters, solid bodies, and bit-identical
+founder genomes from the same bootstrap stream (asserted in test).
+
+**Handling contract.** `handling.ticksRequired` = 5. `world/foodHandling.ts`:
+held items take their holder's resolved position; holders that did not request
+eat, or that met another body in the ACTIVE resolution, drop their item
+(progress 0, item free at the holder's position, NOT reacquirable this tick);
+surviving handlers advance one step; an item reaching 5 is consumed and its
+holder credited exactly `energy.foodEnergyValue` in the unchanged phase 8;
+free items are then acquired by eligible non-holders through
+`resolveFoodAcquisition` — `resolveFeeding`'s competition rules verbatim
+(nearest wins, exact ties by ascending organism id, items in ascending food id
+order, one per organism) plus one rule: an organism already holding cannot
+acquire.
+
+**State.** `holderId` / `handlingProgress` live on the FOOD item, so "one
+holder per item" is structural and a child cannot inherit a hold. Canonical and
+future-affecting (four progress values hash four different ways, and their
+futures differ). Food records of every older model are exactly `{ id, x, y }`;
+canonicalization refuses a world whose food does not match its model.
+
+**Contest.** `resolveBodyOverlap` now returns a derived `contacts` report — the
+ascending ids of organisms overlapping another organism at the START of that
+resolution (first pass only, so contact depends on what organisms did rather
+than on `body.separationPasses`). Only the ACTIVE (phase 4b) resolution's set
+is a contest; the post-birth passive resolution (17b) is deliberately ignored,
+so a newborn cannot knock its parent's food loose by spawning (tested with a
+real birth). Wall clamping, proximity and vision never dislodge (tested). The
+report is never stored, persisted, canonical or broadcast.
+
+**Lifecycle.** Phases 1–5 and 9–20 unchanged; 4b/17b unchanged; phases 6–7
+become handling for `0A.6.0` (instantaneous feeding for every older model); new
+phase 16b releases a dead holder's item at its final position with progress 0
+and no energy. Sense → Decide → Resolve intact: S_t is never modified (a
+deep-frozen one still steps), memory advances exactly once, and handling causes
+no second neural evaluation.
+
+**Persistence.** Snapshot format **v3** for `0A.6.0`
+(`snapshotFormatVersionFor` = 3 for a handling model, 2 for the other recurrent
+ones, 1 for feed-forward), with the format checked against the model before
+anything is trusted. Validation rejects missing holder/progress, non-integer or
+out-of-range progress (held `1..ticksRequired`, free exactly 0), a holder that
+is not a living organism of that world, one organism holding two items,
+handling state on an instantaneous-feeding model, v3 relabelled `0A.5.0` and v2
+relabelled `0A.6.0`. Formats v1 and v2 are untouched and the `v1.0.0` / V2.1
+fixtures still load byte-exactly. Exact resume proved at progress 1, 2, 3, 4
+(5 is unreachable in stored state) and immediately after a dislodgement, in
+process and across processes.
+
+**Observer.** Protocol v1 unchanged; the food entry is still `{ id, x, y }`, and
+a held item is visible only because its ordinary position moves. No Observatory
+change at all.
+
+**Live verification.**
+
+1. *Development VM (arm64), real CLI:* `--new --seed 8 --model 0A.6.0
+   --until-tick 1500` → resume with `--observe 8793 --ticks-per-second 60` and a
+   WebSocket client (197 frames, protocol 1, `0A.6.0`, food keys exactly
+   `id/x/y`, no handling field, 0 messages sent by the client; **818 of 11,664
+   food samples moved between consecutive frames** — carried items — up to
+   12.43 world units per frame; organisms moved in 4,173 of 4,175 samples; food
+   steady at the cap of 60 with 91 consumed and 91 regenerated) → SIGINT at tick
+   2,878, which saved **five items mid-handling** (progress 1, 2, 3, 1, 2) in
+   format v3 → the saved state equals the uninterrupted direct run
+   (`563124b4a568672e`), and resuming to 3,400 also matches
+   (`e1a4d566d06d46ee`).
+2. *Mechanics measured over 6,000 ticks of the seed-8 world*, each release
+   classified exactly against that tick's `eatRequested` and active contact
+   set: **6,649 acquisitions, 675 completions, 4,426 voluntary releases, 1,537
+   dislodgements by body contact, 6 drops on a holder's death**, body contact on
+   4,303 of 6,000 ticks, and food carried **10,863 world units** in total.
+3. *Browser (x86_64 cloud container, clean build, headless Chromium,
+   Playwright), 22 / 22:* a seed-8 `0A.6.0` world resumed at 10 ticks/s with
+   `--observe`; the Observatory connects and shows `0A.6.0` LIVE, the canvas
+   renders and changes, the tick advances, an organism can be selected and
+   inspected and selection changes what is drawn (the V2.1 vision cone still
+   works), **0** WebSocket messages sent by the browser, no handling internals
+   in the UI, no application console errors; SIGINT saved cleanly, resume
+   recovered the exact tick, and observed + paced + interrupted + resumed == one
+   uninterrupted run (`96558905dadcbe4e` at tick 1,971); the recovered world is
+   format v3 with memory and handling intact, the held item had a living holder
+   and valid progress, free items carried no progress, and the 60-item cap
+   included the held one.
+
+**Performance.** A plain deterministic O(food × organisms) scan; no spatial
+index, no new engine. At the standard 60-item cap: 0.052 ms/tick at 25
+organisms, 0.209 at 100, 0.589 at 250, 1.010 at 400. In real `0A.6.0` worlds
+(populations ≈ 20–30) handling is 0.045–0.10 ms of a 0.10–0.32 ms tick. No
+pathological regression, so nothing was optimised.
+
+**Observed, not interpreted.** Canonical seed 20260910: **no births at all,
+extinct at tick 2,854**. Seeds 1–2 also die out; seed 3 is the first of 1, 2,
+3, … alive at tick 10,000 (9 organisms, 38 births); seed 8 is the most active
+world found (≈ 20–46 organisms). Contestable handling is plainly a much harsher
+ecology than instantaneous feeding — energy arrives at best once per five
+uninterrupted ticks, and body contact is common — but nothing was tuned, no
+seed was shopped and no ecological parameter was touched. Extinction is a
+legitimate result. No claim is made about stealing, defending, hoarding,
+cooperation, pursuit, strategy or intelligence; only the mechanics above were
+measured. No DEMO seed was chosen for `0A.6.0`.
+
 ## V2 backlog (deferred)
 
 Richer senses — **started** (V2.1 above). Memory / recurrent neural state —
-**started** (V2.2 above). Physical interaction — **started** (V2.3 above).
-Neural fingerprint / neural mutation visualisation;
+**started** (V2.2 above). Physical interaction — **started** (V2.3 above). Contestable resources —
+**started** (V2.4 above). Neural fingerprint / neural mutation visualisation;
 lifetime learning, plasticity and RL experiments;
 richer morphology; full genealogy; persistent analytics; cloud / database /
 remote observers; mobile polish; richer ecosystem and environmental
@@ -2791,14 +2958,15 @@ complexity. Any of these is a new phase with its own spec.
 
 ## NEXT EXACT STEP
 
-**None pending — V2.3 is complete.** The next task, if any, is either a genuine
+**None pending — V2.4 is complete.** The next task, if any, is either a genuine
 bug fix (focused failing test, smallest correction, rerun the affected package
-and all five golden hashes on arm64) or the next V2 slice under its own approved
-specification, as a new model version (never an edit of `0A.1.0`–`0A.5.0`).
+and all six golden hashes on arm64) or the next V2 slice under its own approved
+specification, as a new model version (never an edit of `0A.1.0`–`0A.6.0`).
 Open decisions for the owner, not for an agent: whether new product worlds
-should default to a V2 model, DEMO seeds for `0A.3.0` / `0A.4.0` / `0A.5.0`,
-whether the `0A.5.0` size trade-off should eventually be rebalanced (deliberately
-left alone for now — observe first), and whether the platform dependence of the
-hashes (Known gap 13) should be addressed.
+should default to a V2 model, DEMO seeds for `0A.3.0`–`0A.6.0`, whether
+`0A.6.0`'s much harsher ecology should eventually be rebalanced (deliberately
+left alone for now — observe first), whether the `0A.5.0` size trade-off should
+be rebalanced, and whether the platform dependence of the hashes (Known gap 13)
+should be addressed.
 
 Backend work stays limited to what the frontend demonstrably needs.

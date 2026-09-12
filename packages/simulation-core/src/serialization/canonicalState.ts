@@ -25,6 +25,16 @@ import { simulationModel } from '../model/simulationModel.js';
  * a snapshot must restore (§19.4), not observational telemetry — even though
  * they do not themselves feed the tick equations.
  *
+ * Food-handling model 0A.6.0 (V2.4): each FOOD record additionally carries
+ * `holderId` (the handling organism's id, or null) and `handlingProgress`.
+ * Both are future-affecting — a world where an item is one tick from being
+ * eaten is not the world where it was just picked up — so two worlds that
+ * differ only in handling state hash differently. For every other model the
+ * food record is exactly the historical `{ id, x, y }`, so their canonical
+ * strings and hashes are untouched. As with memory, the model decides, and a
+ * world whose food does not match its model is refused rather than
+ * canonicalized.
+ *
  * Recurrent model 0A.4.0 (V2.2): each organism record additionally carries
  * `genome.neural.recurrentHiddenWeights` (appended after `outputBiases`) and
  * the runtime memory `hiddenState` (appended after `genome`) — both
@@ -35,7 +45,9 @@ import { simulationModel } from '../model/simulationModel.js';
  * refused rather than canonicalized.
  */
 export function canonicalizeWorldState(world: WorldState): unknown {
-  const recurrent = simulationModel(world.simulationVersion).recurrent;
+  const model = simulationModel(world.simulationVersion);
+  const recurrent = model.recurrent;
+  const foodHandling = model.foodHandling;
   const organisms = [...world.organisms]
     .sort((a, b) => a.id - b.id)
     .map((o) => {
@@ -79,7 +91,19 @@ export function canonicalizeWorldState(world: WorldState): unknown {
       return recurrent ? { ...record, hiddenState: [...o.hiddenState!] } : record;
     });
 
-  const food = [...world.food].sort((a, b) => a.id - b.id).map((f) => ({ id: f.id, x: f.x, y: f.y }));
+  const food = [...world.food]
+    .sort((a, b) => a.id - b.id)
+    .map((f) => {
+      const held = f.holderId !== undefined;
+      if (foodHandling !== held || foodHandling !== (f.handlingProgress !== undefined)) {
+        throw new Error(
+          `canonicalizeWorldState: food ${f.id} does not match the ${foodHandling ? 'food-handling' : 'instantaneous-feeding'} layout of model ${world.simulationVersion}`
+        );
+      }
+      return foodHandling
+        ? { id: f.id, x: f.x, y: f.y, holderId: f.holderId ?? null, handlingProgress: f.handlingProgress as number }
+        : { id: f.id, x: f.x, y: f.y };
+    });
 
   return {
     simulationVersion: world.simulationVersion,

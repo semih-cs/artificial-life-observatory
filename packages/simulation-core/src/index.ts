@@ -11,6 +11,7 @@ export * from './world/bootstrap.js';
 export * from './world/stepWorld.js';
 export * from './world/runner.js';
 export * from './world/foodCompetition.js';
+export * from './world/foodHandling.js';
 export * from './world/offspring.js';
 export * from './world/foodRegen.js';
 export * from './neural/network.js';

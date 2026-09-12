@@ -5,6 +5,10 @@
  *   - format v1: the feed-forward models 0A.1.0, 0A.2.0, 0A.3.0 — exactly the
  *     historical format; every existing v1 file reads, re-serialises and
  *     resumes as before.
+ *   - format v3: the contestable-food-handling model 0A.6.0. Its canonical
+ *     state additionally carries, per FOOD item, `holderId` and
+ *     `handlingProgress` — future-affecting state that decides who is about
+ *     to be fed.
  *   - format v2: the recurrent models 0A.4.0 and 0A.5.0. Their canonical state additionally
  *     stores each organism's runtime memory `hiddenState` and its genome's
  *     `recurrentHiddenWeights`. Memory is future-affecting runtime state, so a
@@ -62,10 +66,11 @@ import {
   ORGANISM_SENSING_MODEL_VERSION,
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
+  FOOD_HANDLING_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
   simulationModel,
 } from '@alo/simulation-core';
-import type { SimulationConfig, WorldState, OrganismRuntimeState, Xoshiro128State } from '@alo/simulation-core';
+import type { SimulationConfig, WorldState, OrganismRuntimeState, FoodItem, Xoshiro128State } from '@alo/simulation-core';
 import { stableStringify } from './stableStringify.js';
 import { SnapshotError } from './errors.js';
 
@@ -74,8 +79,12 @@ export const SNAPSHOT_FORMAT_ID = 'alo-canonical-world-snapshot' as const;
 export const SNAPSHOT_FORMAT_VERSION = 1;
 /** Format v2: the recurrent models 0A.4.0 and 0A.5.0 — v1 plus per-organism memory and recurrent weights. */
 export const RECURRENT_SNAPSHOT_FORMAT_VERSION = 2;
+/** Format v3: the contestable-food-handling model 0A.6.0 — v2 plus per-food holder and handling progress. */
+export const FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION = 3;
 /** Every format this loader reads. */
-export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION];
+export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [
+  SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION, FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION,
+];
 
 /**
  * Simulation versions this package can restore. `0A.5.0` is the V2.3
@@ -90,12 +99,21 @@ export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [SNAPSHOT_F
  * exists.
  */
 export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
-  PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+  FOOD_HANDLING_MODEL_VERSION, PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
 ];
 
-/** The one format a supported model is stored in: 2 for the recurrent models, 1 for the feed-forward ones. */
-export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 {
-  return simulationModel(simulationVersion).recurrent ? 2 : 1;
+/**
+ * The one format a supported model is stored in: 3 for a food-handling model,
+ * 2 for the other recurrent models, 1 for the feed-forward ones. Each model
+ * has exactly ONE format, and the format is checked against the model before
+ * anything in a snapshot is trusted — so a 0A.5.0 world can never be stored
+ * or relabelled as v3, and a 0A.6.0 world can never be stored or relabelled as
+ * v2 (which would silently drop who is handling what).
+ */
+export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 | 3 {
+  const model = simulationModel(simulationVersion);
+  if (model.foodHandling) return 3;
+  return model.recurrent ? 2 : 1;
 }
 
 /** The world record stored in a v1 snapshot: `canonicalizeWorldState` output. */
@@ -150,8 +168,23 @@ export interface WorldSnapshotV2 extends Omit<WorldSnapshotV1, 'snapshotFormatVe
   state: CanonicalWorldStateV2;
 }
 
-/** A snapshot of either format; `snapshotFormatVersion` discriminates. */
-export type WorldSnapshot = WorldSnapshotV1 | WorldSnapshotV2;
+/**
+ * The world record stored in a v3 snapshot (model 0A.6.0): the v2 record, with
+ * every FOOD item also carrying `holderId` (the handling organism's id, or
+ * null when the item is free) and `handlingProgress` — exactly
+ * `canonicalizeWorldState` for a food-handling world.
+ */
+export interface CanonicalWorldStateV3 extends Omit<CanonicalWorldStateV2, 'food'> {
+  food: Array<{ id: number; x: number; y: number; holderId: number | null; handlingProgress: number }>;
+}
+
+export interface WorldSnapshotV3 extends Omit<WorldSnapshotV1, 'snapshotFormatVersion' | 'state'> {
+  snapshotFormatVersion: 3;
+  state: CanonicalWorldStateV3;
+}
+
+/** A snapshot of any format; `snapshotFormatVersion` discriminates. */
+export type WorldSnapshot = WorldSnapshotV1 | WorldSnapshotV2 | WorldSnapshotV3;
 
 export interface WorldSnapshotV1 {
   format: typeof SNAPSHOT_FORMAT_ID;
@@ -192,7 +225,8 @@ function detach<T>(value: T): T {
 /**
  * Capture a world and the configuration it runs under. Reads only; the world
  * and config are never modified, and no RNG is touched. The format follows
- * the model: v2 (with memory) for 0A.4.0 and 0A.5.0, v1 for the feed-forward models.
+ * the model: v3 (with food handling) for 0A.6.0, v2 (with memory) for 0A.4.0
+ * and 0A.5.0, v1 for the feed-forward models.
  */
 export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshot {
   if (world.simulationVersion !== config.simulationVersion) {
@@ -339,6 +373,16 @@ function validateAndRestore(candidate: unknown): RestoredWorld {
   return { world, config: detach(config) };
 }
 
+/** The stored config's handling budget, for validating progress. Throws a coded error if the model needs one and has none. */
+function requireHandlingTicks(config: SimulationConfig): number {
+  const ticks = config.handling?.ticksRequired;
+  if (!Number.isInteger(ticks) || (ticks as number) < 1) {
+    throw new SnapshotError('INVALID_CONFIG',
+      `model ${config.simulationVersion} has food handling but its stored config has no valid handling.ticksRequired`);
+  }
+  return ticks as number;
+}
+
 function checkRngState(v: unknown, name: string): Xoshiro128State {
   if (v === undefined || v === null) throw new SnapshotError('INVALID_RNG_STATE', `${name} state missing`);
   if (!isObject(v)) throw new SnapshotError('INVALID_RNG_STATE', `${name} state is not an object`);
@@ -441,9 +485,48 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
     if (hiddenState !== undefined) organism.hiddenState = hiddenState;
     return organism;
   });
+  // Food handling (format v3, model 0A.6.0): every item carries `holderId`
+  // (null when free) and `handlingProgress`. For every other model both keys
+  // must be ABSENT — a historical world never acquires handling state and a
+  // v3 world can never pass as one that eats instantaneously.
+  const livingOrganismIds = new Set<number>(organisms.filter((o) => o.alive).map((o) => o.id));
+  const heldBy = new Map<number, number>(); // organism id -> food id it already holds
+  const maxProgress = model.foodHandling ? requireHandlingTicks(config) : 0;
   const food = (state['food'] as unknown[]).map((raw, i) => {
     if (!isObject(raw) || !isInt(raw['id']) || !isNum(raw['x']) || !isNum(raw['y'])) malformed(`food[${i}]`);
-    return { id: raw['id'] as number, x: raw['x'] as number, y: raw['y'] as number };
+    const item: FoodItem = { id: raw['id'] as number, x: raw['x'] as number, y: raw['y'] as number };
+    if (!model.foodHandling) {
+      if ('holderId' in raw || 'handlingProgress' in raw) {
+        malformed(`food[${i}] carries handling state, but model ${config.simulationVersion} eats instantaneously`);
+      }
+      return item;
+    }
+    const holderId = raw['holderId'];
+    const progress = raw['handlingProgress'];
+    if (!(holderId === null || isInt(holderId))) malformed(`food[${i}].holderId must be an organism id or null`);
+    if (!isInt(progress)) malformed(`food[${i}].handlingProgress must be an integer`);
+    const p = progress as number;
+    if (holderId === null) {
+      // A free item has no progress at all: there is no partial-progress
+      // carry-over after a release, a dislodgement or a holder's death.
+      if (p !== 0) malformed(`food[${i}] is unheld but records handlingProgress ${p}`);
+    } else {
+      const holder = holderId as number;
+      if (!livingOrganismIds.has(holder)) {
+        malformed(`food[${i}].holderId ${holder} is not a living organism in this world`);
+      }
+      const already = heldBy.get(holder);
+      if (already !== undefined) {
+        malformed(`organism ${holder} holds food ${already} and food[${i}]; an organism may hold at most one item`);
+      }
+      heldBy.set(holder, item.id);
+      if (p < 1 || p > maxProgress) {
+        malformed(`food[${i}].handlingProgress ${p} is outside the valid range 1..${maxProgress}`);
+      }
+    }
+    item.holderId = holderId as number | null;
+    item.handlingProgress = p;
+    return item;
   });
   const ascending = (xs: { id: number }[]) => xs.every((x, i) => i === 0 || xs[i - 1]!.id < x.id);
   if (!ascending(organisms)) malformed('organisms are not in strictly ascending id order');

@@ -1,4 +1,4 @@
-import { WorldState, FoodItem } from './types.js';
+import { WorldState, FoodItem, cloneFoodItem } from './types.js';
 import { SimulationConfig } from '../config/types.js';
 import { RngStream, RngStreams } from '../rng/rngStream.js';
 import { Xoshiro128State } from '../rng/xoshiro128starstar.js';
@@ -9,6 +9,7 @@ import { resolveMovement, movementEnergyCost } from '../biology/movement.js';
 import { resolveBodyOverlap } from '../biology/physicalBody.js';
 import { basalEnergyCost, applyEnergyDelta, evaluateDeath } from '../biology/energy.js';
 import { resolveFeeding } from './foodCompetition.js';
+import { resolveFoodHandling, releaseFoodOfDeadHolders } from './foodHandling.js';
 import { isReproductionEligible, applyParentReproductionCost } from '../biology/reproduction.js';
 import { createOffspring } from './offspring.js';
 import { regenerateFood } from './foodRegen.js';
@@ -71,8 +72,8 @@ export function senseContextFor(state: WorldState, config: SimulationConfig): Se
  *    9 Reproduction eligibility
  *   10 Reproduction intent resolution
  *
- * V2.3 (model 0A.5.0 only) inserts two position-only steps into Resolve, and
- * changes nothing else about the order:
+ * V2.3 (models 0A.5.0 and 0A.6.0) inserts two position-only steps into
+ * Resolve, and changes nothing else about the order:
  *
  *    4b Body overlap resolution        after movement, BEFORE feeding, so
  *                                      feeding uses post-collision positions
@@ -82,6 +83,22 @@ export function senseContextFor(state: WorldState, config: SimulationConfig): Se
  * Both are pure displacement: no energy, no damage, no event, no RNG, no
  * extra decision and no change to any organism's memory. Models 0A.1.0-0A.4.0
  * skip them entirely and behave exactly as they always have.
+ *
+ * V2.4 (model 0A.6.0 only) replaces the instantaneous phases 6-7 with
+ * multi-tick, contestable food handling, and adds one release step:
+ *
+ *    6-7 Food handling                 held items follow their holder, drops
+ *                                      (eat=false, or dislodged by the ACTIVE
+ *                                      4b contact set), progress, completion,
+ *                                      then acquisition of free items under
+ *                                      the unchanged competition semantics
+ *   16b Release of dead holders' food  an unfinished item is dropped at the
+ *                                      dead holder's final position, never
+ *                                      destroyed and never eaten
+ *
+ * Phase 8 is untouched: whoever's handling COMPLETED is credited exactly the
+ * ordinary food energy, so same-tick rescue and same-tick reproduction work as
+ * they always have. Models 0A.1.0-0A.5.0 keep instantaneous feeding exactly.
  *
  * Consequences that are specified, not incidental:
  *   - there is exactly ONE death check per tick (phase 16), after every
@@ -124,6 +141,12 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // replayable state after stepping forward from it.
   const workingOrganisms = state.organisms.map(cloneRuntimeState);
   const living = workingOrganisms.filter((o) => o.alive);
+
+  // A model with food handling MUTATES food items (their position follows a
+  // holder, and their holder/progress change), so resolution works on copies.
+  // Every other model never modifies a food item, so S_t's own array is used
+  // exactly as before.
+  const workingFood: readonly FoodItem[] = model.foodHandling ? state.food.map(cloneFoodItem) : state.food;
 
   // ---- Phases 2-3: Sense, Decide, buffer ActionIntent --------------------
   // Pure. No world/organism state is mutated here and no RNG is consumed.
@@ -177,20 +200,48 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // consequence is intended. It cannot influence this tick's sensing or
   // decisions: both are already complete and both read S_t, which is never
   // modified.
-  if (model.physicalBodies) resolveBodyOverlap(living, state.worldConfig, config);
+  // The ACTIVE resolution's contact set is what V2.4 treats as a genuine
+  // organism-organism body contest. The post-birth passive resolution (17b) is
+  // deliberately NOT used for it.
+  const activeContacts: ReadonlySet<number> = model.physicalBodies
+    ? new Set(resolveBodyOverlap(living, state.worldConfig, config).contacts)
+    : new Set<number>();
 
-  // ---- Phases 6-7: Feeding & food competition ---------------------------
-  // Deterministic and RNG-free: nearest eligible eater wins each food item,
-  // exact-distance ties broken by ascending organism ID, food processed in
-  // ascending food ID order, at most one food item per organism per tick.
-  const feeding = resolveFeeding(living, intents, state.food, config.food.feedingRange);
-  const remainingFood: FoodItem[] = state.food.filter((f) => !feeding.consumedFoodIds.has(f.id));
+  // ---- Phases 6-7: Feeding / food handling ------------------------------
+  // Deterministic and RNG-free in both models.
+  //
+  //   0A.1.0-0A.5.0  instantaneous feeding: nearest eligible eater wins each
+  //                  food item, exact-distance ties by ascending organism ID,
+  //                  food in ascending food ID order, one item per organism
+  //                  per tick, energy credited in phase 8 below.
+  //   0A.6.0         contestable handling (world/foodHandling.ts): held items
+  //                  follow their holder's resolved position, holders that did
+  //                  not request eat or that met another body drop their item
+  //                  (progress reset, item free but NOT reacquirable this
+  //                  tick), surviving handlers advance one step, an item that
+  //                  reaches handling.ticksRequired is consumed, and free
+  //                  items are then acquired under the SAME competition
+  //                  semantics. Only completion feeds anyone.
+  const consumedFoodIds = new Set<number>();
+  const fedOrganismIds = new Set<number>();
+  if (model.foodHandling) {
+    const handled = resolveFoodHandling(living, intents, workingFood, activeContacts, config);
+    for (const id of handled.consumedFoodIds) consumedFoodIds.add(id);
+    for (const id of handled.completedOrganismIds) fedOrganismIds.add(id);
+  } else {
+    const feeding = resolveFeeding(living, intents, workingFood, config.food.feedingRange);
+    for (const id of feeding.consumedFoodIds) consumedFoodIds.add(id);
+    for (const id of feeding.consumptions.keys()) fedOrganismIds.add(id);
+  }
+  const remainingFood: FoodItem[] = workingFood.filter((f) => !consumedFoodIds.has(f.id));
 
   // ---- Phase 8: Energy gain ---------------------------------------------
   // This is what makes feeding rescue possible: an organism taken below zero
-  // by phase 5 is credited here, before death is ever evaluated.
+  // by phase 5 is credited here, before death is ever evaluated. Under food
+  // handling the credit is identical in size and timing; only the condition
+  // for earning it changed, from "won an item" to "finished handling one".
   for (const o of living) {
-    if (feeding.consumptions.has(o.id)) {
+    if (fedOrganismIds.has(o.id)) {
       applyEnergyDelta(o, config.energy.foodEnergyValue, config.energy.energyCapacity);
     }
   }
@@ -235,6 +286,13 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
     }
   }
 
+  // ---- Phase 16b (V2.4, model 0A.6.0 only): dead holders drop their food --
+  // An organism that dies mid-handling releases its item at its FINAL position
+  // with progress reset. The item is never destroyed and no food energy is
+  // granted: dying is not a way to eat, and a death does not remove food from
+  // the ecology.
+  if (model.foodHandling) releaseFoodOfDeadHolders(remainingFood, workingOrganisms);
+
   // ---- Phase 17: Births/removals become active --------------------------
   // Children join world state now but were not part of S_t, so they did not
   // sense, decide or act this tick. Dead organisms leave the active set.
@@ -260,7 +318,8 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
     canonical,
     config.food,
     remainingFood,
-    state.nextFoodId
+    state.nextFoodId,
+    model.foodHandling
   );
   const allFood = [...remainingFood, ...regen.newFood].sort((a, b) => a.id - b.id);
 

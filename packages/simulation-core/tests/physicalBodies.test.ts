@@ -93,13 +93,15 @@ function runTo(world: WorldState, c: SimulationConfig, tick: number): WorldState
 
 describe('model identity: which models have physical bodies', () => {
   it('(1–5) 0A.1.0–0A.4.0 are non-solid; 0A.5.0 is recurrent AND physical', () => {
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0']);
     const expected = {
       '0A.1.0': { inputs: 6, recurrent: false, physicalBodies: false },
       '0A.2.0': { inputs: 6, recurrent: false, physicalBodies: false },
       '0A.3.0': { inputs: 10, recurrent: false, physicalBodies: false },
       '0A.4.0': { inputs: 10, recurrent: true, physicalBodies: false },
       '0A.5.0': { inputs: 10, recurrent: true, physicalBodies: true },
+      // V2.4 appended 0A.6.0: the same controller and bodies, plus food handling.
+      '0A.6.0': { inputs: 10, recurrent: true, physicalBodies: true },
     } as const;
     for (const [version, want] of Object.entries(expected)) {
       const m = simulationModel(version);
@@ -218,7 +220,8 @@ describe('overlap definition and displacement', () => {
     const organisms = pair(1, 1, 100, 100, 100 + rs + 1, 100);
     const before = organisms.map((o) => ({ x: o.x, y: o.y }));
     const result = resolveBodyOverlap(organisms, WORLD, c);
-    expect(result).toEqual({ passes: 0, initialOverlaps: 0, residualOverlaps: 0 });
+    // V2.4 added the derived `contacts` report; nothing else about the result changed.
+    expect(result).toEqual({ passes: 0, initialOverlaps: 0, residualOverlaps: 0, contacts: [] });
     expect(organisms.map((o) => ({ x: o.x, y: o.y }))).toEqual(before);
   });
 

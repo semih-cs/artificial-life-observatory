@@ -232,6 +232,29 @@ export interface PhysicalBodyConfig {
   separationPasses: number;
 }
 
+/**
+ * V2.4 contestable food handling (model 0A.6.0 only). Every number here is
+ * configuration — no biological constant of this slice lives anywhere else
+ * (§24.41).
+ *
+ * This section is present on a model with food handling and ABSENT on every
+ * other model, exactly as `body` and the recurrent weights are. That keeps the
+ * configuration — and therefore the `configHash` — of 0A.1.0-0A.5.0
+ * byte-identical to what it was before V2.4.
+ */
+export interface FoodHandlingConfig {
+  /**
+   * [BASELINE] `handlingTicksRequired` — the number of CONSECUTIVE successful
+   * handling ticks needed to consume one food item. Acquisition is the first
+   * of them (progress 1), so with the default 5 an item is consumed on the
+   * fifth tick of uninterrupted handling. Must be an integer >= 1.
+   *
+   * Not a tuning knob reached for by seed shopping: it is part of the model's
+   * definition, and changing it is a different model.
+   */
+  ticksRequired: number;
+}
+
 export interface SimulationConfig {
   /**
    * The model identity (see `model/simulationModel.ts`): 0A.1.0, 0A.2.0 or
@@ -250,11 +273,17 @@ export interface SimulationConfig {
   mutation: MutationConfig;
   reproduction: ReproductionConfig;
   /**
-   * Present if and only if the model has physical bodies (0A.5.0). Its
+   * Present if and only if the model has physical bodies (0A.5.0, 0A.6.0). Its
    * absence on 0A.1.0-0A.4.0 is what keeps their configurations, and their
    * configHashes, exactly as they were.
    */
   body?: PhysicalBodyConfig;
+  /**
+   * Present if and only if the model has contestable food handling (0A.6.0).
+   * Its absence on 0A.1.0-0A.5.0 is what keeps their configurations, and their
+   * configHashes, exactly as they were.
+   */
+  handling?: FoodHandlingConfig;
 }
 
 /**
@@ -349,6 +378,25 @@ export function validateConfig(config: SimulationConfig): void {
       }
       if (!Number.isInteger(body.separationPasses) || body.separationPasses < 1) {
         problems.push(`body.separationPasses (${body.separationPasses}) must be an integer >= 1.`);
+      }
+    }
+
+    // One model, one handling contract: a food-handling model must carry
+    // `handling` and every other model must not, so a historical configuration
+    // can never acquire multi-tick eating and a 0A.6.0 configuration can never
+    // lose it.
+    const handles = simulationModel(config.simulationVersion).foodHandling;
+    const handling = config.handling;
+    if (handles && handling === undefined) {
+      problems.push(`model ${config.simulationVersion} has contestable food handling and requires a handling configuration.`);
+    } else if (!handles && handling !== undefined) {
+      problems.push(
+        `model ${config.simulationVersion} eats instantaneously, so it must not carry a handling configuration ` +
+          '(historical feeding semantics are never changed).'
+      );
+    } else if (handles && handling !== undefined) {
+      if (!Number.isInteger(handling.ticksRequired) || handling.ticksRequired < 1) {
+        problems.push(`handling.ticksRequired (${handling.ticksRequired}) must be an integer >= 1.`);
       }
     }
   }

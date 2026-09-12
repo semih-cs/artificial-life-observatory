@@ -1,10 +1,11 @@
-import { PhysicalBodyConfig, SimulationConfig } from './types.js';
+import { FoodHandlingConfig, PhysicalBodyConfig, SimulationConfig } from './types.js';
 import {
   SINGLE_FOUNDER_MODEL_VERSION,
   MULTI_FOUNDER_MODEL_VERSION,
   ORGANISM_SENSING_MODEL_VERSION,
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
+  FOOD_HANDLING_MODEL_VERSION,
 } from '../model/simulationModel.js';
 
 /**
@@ -22,6 +23,10 @@ import {
  *   radius and deterministic displacement on overlap) and adds the `body`
  *   configuration section; the controller, ecology and every other configured
  *   value are 0A.4.0's.
+ *   0A.5.0 vs 0A.6.0: 0A.6.0 makes eating a multi-tick, contestable process
+ *   (held food travels with its handler and physical contact dislodges it) and
+ *   adds the `handling` configuration section; the controller, bodies, ecology
+ *   and every other configured value are 0A.5.0's.
  *
  * Each changes the canonical trajectory, so they are different models and must
  * never share a regression reference or be mixed in one analysis.
@@ -32,6 +37,7 @@ export {
   ORGANISM_SENSING_MODEL_VERSION,
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
+  FOOD_HANDLING_MODEL_VERSION,
 };
 
 /**
@@ -72,6 +78,31 @@ export const RECURRENT_MEMORY_GOLDEN_HASH = '436a377506063609';
  * hashes above are unchanged by V2.3 and must never be replaced by it.
  */
 export const PHYSICAL_BODIES_GOLDEN_HASH = '1006a56393e19cd9';
+
+/**
+ * The V2.4 contestable-food-handling model's deterministic regression
+ * reference: `foodHandlingModelConfig()`, seed 20260910, 10,000 ticks,
+ * confirmed on linux-arm64 (the canonical development platform; see
+ * PROJECT_STATUS.md, known gap 13). Evidence of trajectory stability for
+ * 0A.6.0 only — not that contestable food is biologically better in any
+ * sense. The five historical hashes above are unchanged by V2.4 and must never
+ * be replaced by it.
+ */
+export const FOOD_HANDLING_GOLDEN_HASH = '3e5b9671f5750712';
+
+/**
+ * The V2.4 handling contract (model 0A.6.0 only).
+ *
+ * `ticksRequired` is `handlingTicksRequired` from the amendment: five
+ * CONSECUTIVE successful handling ticks consume one food item, acquisition
+ * being the first of them. It is part of the model's definition, not a knob to
+ * tune a trajectory with.
+ */
+export const HANDLING_TICKS_REQUIRED = 5;
+
+export const DEFAULT_FOOD_HANDLING_CONFIG: FoodHandlingConfig = {
+  ticksRequired: HANDLING_TICKS_REQUIRED, // [BASELINE] consecutive handling ticks per food item
+};
 
 /**
  * The V2.3 body contract (model 0A.5.0 only).
@@ -292,10 +323,26 @@ export function physicalBodiesModelConfig(): SimulationConfig {
 }
 
 /**
+ * The V2.4 contestable-food-handling model `0A.6.0`: the `0A.5.0`
+ * configuration (itself the frozen v1 defaults plus physical bodies) with the
+ * model identity changed and the `handling` section added. Nothing else
+ * differs — food energy value, feeding range, regeneration, the food cap,
+ * fertility, metabolism, movement, reproduction, mutation, morphology bounds,
+ * vision, offspring offset, lifespan and the collision settings are all
+ * 0A.5.0's, untouched.
+ */
+export function foodHandlingModelConfig(): SimulationConfig {
+  const config = physicalBodiesModelConfig();
+  config.simulationVersion = FOOD_HANDLING_MODEL_VERSION;
+  config.handling = { ...DEFAULT_FOOD_HANDLING_CONFIG };
+  return config;
+}
+
+/**
  * The configuration of a supported model by version: 0A.1.0 →
  * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
  * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`,
- * 0A.5.0 → `physicalBodiesModelConfig()`.
+ * 0A.5.0 → `physicalBodiesModelConfig()`, 0A.6.0 → `foodHandlingModelConfig()`.
  * Always a fresh copy. Throws for any other version.
  */
 export function modelConfig(simulationVersion: string): SimulationConfig {
@@ -305,6 +352,7 @@ export function modelConfig(simulationVersion: string): SimulationConfig {
     case ORGANISM_SENSING_MODEL_VERSION: return organismSensingModelConfig();
     case RECURRENT_MEMORY_MODEL_VERSION: return recurrentMemoryModelConfig();
     case PHYSICAL_BODIES_MODEL_VERSION: return physicalBodiesModelConfig();
+    case FOOD_HANDLING_MODEL_VERSION: return foodHandlingModelConfig();
     default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
   }
 }
