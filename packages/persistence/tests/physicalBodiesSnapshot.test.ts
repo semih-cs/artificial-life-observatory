@@ -57,7 +57,7 @@ function resealed(s: WorldSnapshot | unknown, mutate: (o: any) => void): any {
 
 describe('0A.5.0 keeps snapshot format v2 — no format v3 for physical bodies', () => {
   it('the model list and format mapping grew by one entry and nothing else', () => {
-    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.7.0', '0A.6.0', '0A.5.0', '0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
+    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.8.0', '0A.7.0', '0A.6.0', '0A.5.0', '0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
     // 0A.5.0 itself still needs no new format: V2.3 reused v2 unchanged. V2.4
     // added v3, and it belongs to 0A.6.0 alone.
     expect(SUPPORTED_SNAPSHOT_FORMAT_VERSIONS).toEqual([1, 2, 3, 4]);

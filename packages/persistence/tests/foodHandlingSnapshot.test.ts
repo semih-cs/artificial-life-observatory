@@ -69,7 +69,7 @@ function worldWithProgress(c: ReturnType<typeof v6>, progress: number, limit = 4
 
 describe('format v3 is the 0A.6.0 format, and v1 / v2 are untouched', () => {
   it('(49, 50) the model -> format mapping gained one entry and nothing else moved', () => {
-    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.7.0', '0A.6.0', '0A.5.0', '0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
+    expect(SUPPORTED_SIMULATION_VERSIONS).toEqual(['0A.8.0', '0A.7.0', '0A.6.0', '0A.5.0', '0A.4.0', '0A.3.0', '0A.2.0', '0A.1.0']);
     expect(SUPPORTED_SNAPSHOT_FORMAT_VERSIONS).toEqual([1, 2, 3, 4]);
     expect(FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION).toBe(3);
     expect(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0'].map(snapshotFormatVersionFor))

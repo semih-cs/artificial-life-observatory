@@ -5,10 +5,14 @@
  *   - format v1: the feed-forward models 0A.1.0, 0A.2.0, 0A.3.0 — exactly the
  *     historical format; every existing v1 file reads, re-serialises and
  *     resumes as before.
- *   - format v3: the contestable-food-handling model 0A.6.0. Its canonical
- *     state additionally carries, per FOOD item, `holderId` and
+ *   - format v3: the contestable-food-handling models 0A.6.0 and 0A.8.0. Their
+ *     canonical state additionally carries, per FOOD item, `holderId` and
  *     `handlingProgress` — future-affecting state that decides who is about
- *     to be fed.
+ *     to be fed. 0A.8.0 (V2.6) differs from 0A.6.0 only in the sigma its
+ *     recurrent weights were DRAWN from, which is an initialization rule and
+ *     not stored state, so its future-affecting shape is 0A.6.0's exactly and
+ *     it reuses v3 rather than inventing a v5. The format number describes the
+ *     serialized state shape, never the chronological order of models.
  *   - format v4: the lifetime-plasticity model 0A.7.0. It adds the learned
  *     final-readout offsets and eligibility traces for every organism.
  *   - format v2: the recurrent models 0A.4.0 and 0A.5.0. Their canonical state additionally
@@ -70,6 +74,7 @@ import {
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
   LIFETIME_PLASTICITY_MODEL_VERSION,
+  REGULATED_RECURRENT_INIT_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
   simulationModel,
 } from '@alo/simulation-core';
@@ -82,7 +87,7 @@ export const SNAPSHOT_FORMAT_ID = 'alo-canonical-world-snapshot' as const;
 export const SNAPSHOT_FORMAT_VERSION = 1;
 /** Format v2: the recurrent models 0A.4.0 and 0A.5.0 — v1 plus per-organism memory and recurrent weights. */
 export const RECURRENT_SNAPSHOT_FORMAT_VERSION = 2;
-/** Format v3: the contestable-food-handling model 0A.6.0 — v2 plus per-food holder and handling progress. */
+/** Format v3: the contestable-food-handling models 0A.6.0 and 0A.8.0 — v2 plus per-food holder and handling progress. */
 export const FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION = 3;
 /** Format v4: 0A.7.0 — v3 plus per-organism learned offsets and eligibility traces. */
 export const LIFETIME_PLASTICITY_SNAPSHOT_FORMAT_VERSION = 4;
@@ -104,19 +109,22 @@ export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [
  * format v3, and lifetime plasticity adds format v4.
  */
 export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
-  LIFETIME_PLASTICITY_MODEL_VERSION, FOOD_HANDLING_MODEL_VERSION, PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+  REGULATED_RECURRENT_INIT_MODEL_VERSION, LIFETIME_PLASTICITY_MODEL_VERSION, FOOD_HANDLING_MODEL_VERSION, PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
 ];
 
 /**
  * The one format a supported model is stored in: 4 for lifetime plasticity,
- * 3 for food handling without plasticity, 2 for the other recurrent models,
- * 1 for feed-forward models. Each model
+ * 3 for food handling without plasticity (0A.6.0 AND the newer 0A.8.0),
+ * 2 for the other recurrent models, 1 for feed-forward models. Each model
  * has exactly ONE format, and the format is checked against the model before
  * anything in a snapshot is trusted — so a 0A.5.0 world can never be stored
  * or relabelled as v3, and a 0A.6.0 world can never be stored or relabelled as
  * v2 (which would silently drop who is handling what).
  */
 export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 | 3 | 4 {
+  // Capability-driven, never chronological: 0A.8.0 is newer than 0A.7.0 but
+  // stores strictly less (no plastic state), so it maps to v3 alongside
+  // 0A.6.0 while 0A.7.0 keeps v4.
   const model = simulationModel(simulationVersion);
   if (model.lifetimePlasticity) return 4;
   if (model.foodHandling) return 3;
@@ -246,8 +254,8 @@ function detach<T>(value: T): T {
 /**
  * Capture a world and the configuration it runs under. Reads only; the world
  * and config are never modified, and no RNG is touched. The format follows
- * the model: v4 for 0A.7.0, v3 for 0A.6.0, v2 for 0A.4.0 and 0A.5.0, and v1
- * for the feed-forward models.
+ * the model: v4 for 0A.7.0, v3 for 0A.6.0 and 0A.8.0, v2 for 0A.4.0 and
+ * 0A.5.0, and v1 for the feed-forward models.
  */
 export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshot {
   if (world.simulationVersion !== config.simulationVersion) {

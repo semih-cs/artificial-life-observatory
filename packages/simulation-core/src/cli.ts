@@ -8,8 +8,8 @@
  *   npm run simulate -- --seed 123 --ticks 10000
  *   npm run simulate -- --seed 123 --ticks 10000 --model 0A.3.0
  *
- * --model selects a supported model by its simulationVersion (0A.1.0, 0A.2.0,
- * 0A.3.0) through `modelConfig`. Without it the run uses
+ * --model selects a supported model by its simulationVersion (0A.1.0 through
+ * 0A.8.0) through `modelConfig`. Without it the run uses
  * DEFAULT_SIMULATION_CONFIG, the frozen v1 model 0A.2.0, exactly as before.
  */
 import { DEFAULT_SIMULATION_CONFIG, cloneConfig, modelConfig } from './config/defaults.js';

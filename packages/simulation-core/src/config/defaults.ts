@@ -7,6 +7,8 @@ import {
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
   LIFETIME_PLASTICITY_MODEL_VERSION,
+  REGULATED_RECURRENT_INIT_MODEL_VERSION,
+  regulatedRecurrentInitSigma,
 } from '../model/simulationModel.js';
 
 /**
@@ -31,6 +33,13 @@ import {
  *   0A.6.0 vs 0A.7.0: 0A.7.0 adds deterministic, lifetime-only plasticity to
  *   the recurrent controller's final readout and a fixed `plasticity` section;
  *   inherited genomes and all world mechanics remain 0A.6.0's.
+ *   0A.6.0 vs 0A.8.0: 0A.8.0 is 0A.6.0 with the recurrent hidden->hidden block
+ *   DRAWN from `neural.recurrentInitSigma` (= initSigma / sqrt(hiddenSize))
+ *   instead of `initSigma`. Nothing else differs: same inputs, same outputs,
+ *   same 188 parameters, same runtime recurrent equation, same bodies, same
+ *   five-tick handling, same ecology, same mutation, and NO lifetime
+ *   plasticity. 0A.8.0 is deliberately a sibling of 0A.6.0, not a successor of
+ *   0A.7.0 — one variable is isolated.
  *
  * Each changes the canonical trajectory, so they are different models and must
  * never share a regression reference or be mixed in one analysis.
@@ -43,6 +52,8 @@ export {
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
   LIFETIME_PLASTICITY_MODEL_VERSION,
+  REGULATED_RECURRENT_INIT_MODEL_VERSION,
+  regulatedRecurrentInitSigma,
 };
 
 /**
@@ -97,6 +108,16 @@ export const FOOD_HANDLING_GOLDEN_HASH = '3e5b9671f5750712';
 
 /** V2.5 canonical regression: seed 20260910, 10,000 ticks, linux-arm64. */
 export const LIFETIME_PLASTICITY_GOLDEN_HASH = '04d0b7c5917ca0c0';
+
+/**
+ * The V2.6 regulated-recurrent-initialization model's deterministic regression
+ * reference: `regulatedRecurrentInitModelConfig()`, seed 20260910, 10,000
+ * ticks, confirmed on linux-arm64 (the canonical development platform; see
+ * PROJECT_STATUS.md, known gap 13). Evidence of trajectory stability for
+ * `0A.8.0` only. The seven historical hashes above are unchanged by V2.6 and
+ * must never be replaced by it.
+ */
+export const REGULATED_RECURRENT_INIT_GOLDEN_HASH = '0806b096bf4d0061';
 
 export const PLASTICITY_LEARNING_RATE = 0.01;
 export const PLASTICITY_ELIGIBILITY_DECAY = 0.90;
@@ -362,11 +383,31 @@ export function lifetimePlasticityModelConfig(): SimulationConfig {
 }
 
 /**
+ * The V2.6 regulated-recurrent-initialization model `0A.8.0`: the `0A.6.0`
+ * configuration exactly — solid bodies, five-tick contestable handling, the
+ * frozen v1 ecology, mutation and bootstrap fixtures — with the model identity
+ * changed and `neural.recurrentInitSigma` added. It does NOT build on
+ * `0A.7.0`: lifetime plasticity is deliberately off, so the only thing that
+ * differs from `0A.6.0` is the recurrent block's initial draw scale.
+ *
+ * The sigma is computed from the two existing configured values by the locked
+ * fan-in rule, never typed in as a literal, and `validateConfig` re-derives and
+ * checks it.
+ */
+export function regulatedRecurrentInitModelConfig(): SimulationConfig {
+  const config = foodHandlingModelConfig();
+  config.simulationVersion = REGULATED_RECURRENT_INIT_MODEL_VERSION;
+  config.neural.recurrentInitSigma = regulatedRecurrentInitSigma(config.neural.initSigma, config.neural.hiddenLayerSize);
+  return config;
+}
+
+/**
  * The configuration of a supported model by version: 0A.1.0 →
  * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
  * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`,
  * 0A.5.0 → `physicalBodiesModelConfig()`, 0A.6.0 → `foodHandlingModelConfig()`,
- * 0A.7.0 → `lifetimePlasticityModelConfig()`.
+ * 0A.7.0 → `lifetimePlasticityModelConfig()`, 0A.8.0 →
+ * `regulatedRecurrentInitModelConfig()`.
  * Always a fresh copy. Throws for any other version.
  */
 export function modelConfig(simulationVersion: string): SimulationConfig {
@@ -378,6 +419,7 @@ export function modelConfig(simulationVersion: string): SimulationConfig {
     case PHYSICAL_BODIES_MODEL_VERSION: return physicalBodiesModelConfig();
     case FOOD_HANDLING_MODEL_VERSION: return foodHandlingModelConfig();
     case LIFETIME_PLASTICITY_MODEL_VERSION: return lifetimePlasticityModelConfig();
+    case REGULATED_RECURRENT_INIT_MODEL_VERSION: return regulatedRecurrentInitModelConfig();
     default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
   }
 }

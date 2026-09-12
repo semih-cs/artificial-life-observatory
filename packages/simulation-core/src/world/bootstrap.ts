@@ -88,10 +88,16 @@ export function generateFounderProfiles(rng: RngStream, config: SimulationConfig
   // 0A.2.0 (unchanged draws), 10 for 0A.3.0 and 0A.4.0 (drawn natively at
   // full size), plus the appended recurrent block for 0A.4.0.
   const model = simulationModel(config.simulationVersion);
+  // V2.6 (0A.8.0 only): the recurrent block is drawn from the fan-in-corrected
+  // `recurrentInitSigma` instead of the shared `initSigma`. `validateConfig`
+  // has already established that the value is present exactly on a
+  // regulated-initialization model and equals `initSigma / sqrt(hiddenSize)`.
+  // Every historical model passes `undefined` and keeps its original draw.
+  const recurrentSigma = model.regulatedRecurrentInit ? config.neural.recurrentInitSigma : undefined;
   const founders: FounderProfile[] = [];
   for (let group = 0; group < effectiveFounderGroupCount(config); group++) {
     founders.push(
-      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap, model.neuralInputSize, model.recurrent)
+      generateFounderProfile(rng, config.neural.hiddenLayerSize, config.neural, config.bootstrap, model.neuralInputSize, model.recurrent, recurrentSigma)
     );
   }
   return founders;
@@ -173,6 +179,13 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
       config.bootstrap.morphBootstrapSigma,
       config.bootstrap.geneBounds
     );
+    // Bootstrap perturbation is UNCHANGED for every model and every block,
+    // recurrent included: it uses `neuralBootstrapSigma` (0.05), which is a
+    // separate standing-variation sigma and was never `initSigma`. V2.6 does
+    // not touch it — at the corrected scale it adds ~1.6% to the recurrent
+    // block's standing deviation (sqrt(0.2828^2 + 0.05^2) = 0.2872 against a
+    // drawn 0.2828), so it cannot undo the correction, and re-scaling it would
+    // be an invented second parameter rather than the precommitted fan-in rule.
     const neural = perturbNeuralForBootstrap(
       founder.genome.neural,
       boot,

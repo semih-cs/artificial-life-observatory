@@ -45,7 +45,7 @@ describe('V2.5 snapshot format v4', () => {
   it('maps exactly v1/v2/v3/v4 and stores complete learned runtime state', () => {
     expect(SUPPORTED_SNAPSHOT_FORMAT_VERSIONS).toEqual([1, 2, 3, 4]);
     expect(LIFETIME_PLASTICITY_SNAPSHOT_FORMAT_VERSION).toBe(4);
-    expect(['0A.1.0','0A.2.0','0A.3.0','0A.4.0','0A.5.0','0A.6.0','0A.7.0'].map(snapshotFormatVersionFor)).toEqual([1,1,1,2,2,3,4]);
+    expect(['0A.1.0','0A.2.0','0A.3.0','0A.4.0','0A.5.0','0A.6.0','0A.7.0','0A.8.0'].map(snapshotFormatVersionFor)).toEqual([1,1,1,2,2,3,4,3]);
     const c = config(); const w = runTo(bootstrapWorld(c), c, 20);
     const snapshot = createSnapshot(w, c);
     expect(snapshot.snapshotFormatVersion).toBe(4);

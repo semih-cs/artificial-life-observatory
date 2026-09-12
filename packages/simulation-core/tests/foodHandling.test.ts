@@ -109,7 +109,7 @@ function runTo(world: WorldState, c: SimulationConfig, tick: number): WorldState
 
 describe('model identity: which models handle food', () => {
   it('(1–6) 0A.1.0–0A.5.0 eat instantaneously; only 0A.6.0 handles food', () => {
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0', '0A.8.0']);
     const expected = {
       '0A.1.0': { inputs: 6, recurrent: false, physicalBodies: false, foodHandling: false },
       '0A.2.0': { inputs: 6, recurrent: false, physicalBodies: false, foodHandling: false },

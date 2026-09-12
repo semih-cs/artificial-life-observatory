@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-12 (V2.5 done: lifetime plasticity, model `0A.7.0`; earlier models frozen)
+**Last updated:** 2026-09-12 (V2.6 done as a model: regulated recurrent initialization, model `0A.8.0`; its precommitted hypothesis test FAILED — see below; earlier models frozen)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -23,6 +23,7 @@
 | **V2.3** — physical bodies | **DONE** (below): new model `simulationVersion 0A.5.0` — the `0A.4.0` controller exactly (10 → 8 recurrent → 4, 188 parameters, 8 memory values) plus SOLID BODIES. Radius `2.0 + 2.2 × size` world units from the inherited size gene; overlap is strict `centreDistance < rA + rB`; separation along the line of centres weighted `shareA = sizeB/(sizeA+sizeB)` so the larger body moves less. Displacement only — no damage, attack, predation, energy transfer, event, new input/output/action or persistent physics state. Feeding uses post-collision positions. Golden hash `1006a56393e19cd9` (canonical seed extinct at tick 2,551, 2 births — reported honestly, no seed shopping). Snapshot format stays v2, observer protocol stays v1, `0A.1.0`–`0A.4.0` unchanged |
 | **V2.4** — contestable food handling | **DONE** (below): new model `simulationVersion 0A.6.0` — the `0A.5.0` world exactly (10 → 8 recurrent → 4, 188 parameters, solid bodies) plus MULTI-TICK CONTESTABLE EATING. `handling.ticksRequired` = 5 consecutive handling ticks per item, driven entirely by the existing `eat` output (acquire / continue / release); the item travels with its holder and still counts in the food cap; genuine organism-organism body contact from the ACTIVE resolution dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; only completion grants the ordinary food energy. No steal/defend/attack/share rule, no new input or output, no damage, no transfer. Golden hash `3e5b9671f5750712` (canonical seed: 0 births, extinct at tick 2,854 — reported honestly, no seed shopping, no tuning). New **snapshot format v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
 | **V2.5** — lifetime plasticity | **DONE** (below): new model `simulationVersion 0A.7.0` — all `0A.6.0` capabilities plus deterministic reward-modulated adaptation of the final action readout. The 188 inherited parameters remain immutable; 36 runtime offsets and 36 eligibility traces start at zero and are not inherited. Reinforcement is actual capped food energy credited minus actual movement energy spent, divided by capacity. Learning rate 0.01, decay 0.90. Golden hash `04d0b7c5917ca0c0` (canonical seed: 0 births, extinct tick 2,444). Snapshot format **v4**; observer protocol v1 unchanged; `0A.1.0`–`0A.6.0` unchanged |
+| **V2.6** — regulated recurrent initialization | **DONE AS A MODEL; PRECOMMITTED HYPOTHESIS TEST FAILED** (below): new model `simulationVersion 0A.8.0` — the `0A.6.0` world exactly (10 → 8 recurrent → 4, 188 parameters, solid bodies, 5-tick contestable handling, NO lifetime plasticity) with ONE difference: the recurrent hidden→hidden block is DRAWN from `neural.recurrentInitSigma = initSigma / sqrt(hiddenLayerSize)` = `0.282842712474619` instead of the shared `initSigma` (0.8). Initialization only — no runtime gain, leak, time constant, gate, gene, sensor, action or founder-screen change; mutation semantics, the runtime Elman equation and the whole bootstrap RNG schedule are unchanged. Golden hash `0806b096bf4d0061` (canonical seed: 5 births, max generation 3, extinct at tick 2,884 — reported honestly, no seed shopping, no tuning). **Snapshot format v3 REUSED** (`0A.8.0`'s stored shape is `0A.6.0`'s); observer protocol v1 unchanged; `0A.1.0`–`0A.7.0` unchanged. Mechanism confirmed by read-only diagnostics; 3 of 4 precommitted demographic thresholds missed; **nothing was tuned afterwards** |
 | **Phase 0D** — Observatory / visualisation | **COMPLETE / FROZEN FOR V1** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. The final polish adds an organism quick-jump, the first-run card, `npm run demo:new` / `demo:resume` with DEMO seed `31415926`, and a help hint. **V1 COMPLETE.** Further work is v2 unless it is a genuine v1 bug |
 
 **Frozen v1 biological model:**
@@ -94,6 +95,20 @@ This is a **product freeze, not a research baseline qualification**.
 | inheritance | genome only; memory, offsets and eligibility reset to zero |
 | snapshot / observer | v4 / v1 |
 | golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `04d0b7c5917ca0c0` |
+
+**V2.6 model (new, separately versioned):**
+
+| Setting | Value |
+|---|---|
+| `simulationVersion` | `0A.8.0` (`regulatedRecurrentInitModelConfig()`, `--model 0A.8.0`) |
+| controller | 10 → 8 recurrent → 4; 188 inherited parameters; runtime equation identical to `0A.6.0` |
+| recurrent init | `neural.recurrentInitSigma = initSigma / sqrt(hiddenLayerSize)` = `0.8 / sqrt(8)` = `0.282842712474619`; LOCKED and re-derived by `validateConfig()` |
+| other blocks | input→hidden, hidden biases, hidden→output, output biases still drawn from `initSigma` (0.8) |
+| lifetime plasticity | **off** (V2.5 machinery intact and unchanged for `0A.7.0`) |
+| mutation | unchanged; `recurrentInitSigma` is never a mutation or bootstrap-perturbation sigma |
+| snapshot / observer | **v3 (reused)** / v1 |
+| golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `0806b096bf4d0061` |
+| checkpoints | tick 500 `7b9fa5616b128d94`; tick 1,000 `eb32428de387d31d`; tick 2,000 `1d627932555249d7` |
 
 **DEMO seed (presentation only): `31415926`** — used by `npm run demo:new`
 (`worlds/demo`, 10 ticks/s, observer on 8787). Chosen from a 40,000-tick
@@ -3052,6 +3067,148 @@ organisms 0.1165 → 0.1240 ms/tick (+0.0075 ms, 6.5%); 100 organisms 0.7438 →
 0.7797 (+0.0359 ms, 4.8%); 250 organisms 3.3857 → 3.5274 (+0.1417 ms, 4.2%).
 Plain loops only; no ML library, GPU, worker or spatial optimization.
 
+## V2.6 — regulated recurrent initialization (model `0A.8.0`) — DONE as a model; HYPOTHESIS FAILED
+
+Contract: `docs/V2.6 Amendment - Regulated Recurrent Initialization (0A.8.0).md`.
+
+**Headline.** The substrate fix works mechanically and improves demographics
+substantially, and it still **failed 3 of its 4 precommitted falsification
+targets**. Both facts are recorded. No parameter was tuned after the results
+were seen, and none should be until the owner decides.
+
+**The one change.** `0A.8.0` is `0A.6.0` with the recurrent hidden→hidden block
+DRAWN from `neural.recurrentInitSigma = initSigma / sqrt(hiddenLayerSize)`
+(`0.8 / sqrt(8)` = `0.282842712474619`) instead of the shared `initSigma`
+(0.8). The four historical blocks still use `initSigma`. Registry flag
+`regulatedRecurrentInit` is true only for `0A.8.0`; `validateConfig()` requires
+`neural.recurrentInitSigma` exactly on that model, refuses it everywhere else
+(so every historical `configHash` is byte-identical), and re-derives the value
+from the locked rule, refusing `0.1`, `0.15` or anything else.
+
+**Diagnosis addressed.** Not generic chaos: excessive recurrent drive → tanh
+saturation → reduced sensory conductance → large state-generated output offsets
+→ loss of sensory authority once the recurrent state settles.
+
+**Initialization only.** No runtime recurrent gain, no leak/time constant/λ (a
+follow-up experiment showed leaky recurrence was harmful here), no gate,
+LSTM/GRU or structural bound, no new gene/input/output/action, and no
+founder-screen change (no temporal screen, spin rejection, saturation gate or
+wall-avoidance test — a circling controller is still a valid founder). The
+runtime Elman update is unchanged in summation order, activation placement and
+timing. Mutation is unchanged and `recurrentInitSigma` is never a mutation
+sigma. Bootstrap perturbation still uses `neuralBootstrapSigma` (0.05) for
+every block including the recurrent one: it was never `initSigma`, so the V2.6
+brief's conditional did not fire, and measured it adds only +1.6% to the
+recurrent standing deviation (0.2828 → 0.2872) rather than undoing the fix.
+
+**RNG protection.** `gaussian()` consumes two draws whatever its sigma, and the
+founder screen runs from a zero hidden state where recurrent weights contribute
+nothing — so at the same seed `0A.8.0` accepts founders at the SAME attempt
+indices as `0A.6.0`, each founder's four historical blocks are byte-identical,
+and bootstrap positions, headings, fertility and food are identical. Only the
+recurrent block's scale differs, which makes this a controlled comparison.
+
+**Plasticity isolation.** `lifetimePlasticity` is false for `0A.8.0`: no
+offsets, no eligibility traces, no learning update, no V2.5 runtime state in
+snapshots or canonical state. The V2.5 implementation is untouched and
+`0A.7.0` is unchanged.
+
+**Persistence.** `0A.8.0` reuses **snapshot format v3**: its future-affecting
+state shape is `0A.6.0`'s exactly, and a format number describes stored shape,
+not chronological model order. Mapping is v1 → `0A.1.0`–`0A.3.0`; v2 →
+`0A.4.0`, `0A.5.0`; v3 → `0A.6.0`, `0A.8.0`; v4 → `0A.7.0`. Cross-model
+relabelling is refused in both directions (a `0A.8.0` snapshot renamed to
+`0A.6.0` fails because its stored config carries `recurrentInitSigma`, which
+`0A.6.0` must not have). Observer protocol stays v1.
+
+**Canonical linux-arm64 verification.** linux-arm64, Node 22.23.2 (the
+canonical runtime), seed 20260910, 10,000 ticks. All seven historical hashes
+matched before and after the change: `6a6576bd49e86b27`, `b95a0b4ef7dd8449`,
+`e54d0c11249b7849`, `436a377506063609`, `1006a56393e19cd9`, `3e5b9671f5750712`,
+`04d0b7c5917ca0c0`. New `0A.8.0`: tick 500 `7b9fa5616b128d94`; tick 1,000
+`eb32428de387d31d`; tick 2,000 `1d627932555249d7`; tick 10,000
+`0806b096bf4d0061`; 5 births, max generation 3, extinct at tick 2,884.
+
+**Controller diagnostics (read-only; measure, never gate).** Coverage seeds 5,
+8, 12, 13, settled 300 ticks, averaged over living organisms:
+
+| Measurement | `0A.6.0` | `0A.7.0` | `0A.8.0` |
+|---|---|---|---|
+| mean \|h\| | 0.791 | 0.785 | 0.650 |
+| fraction \|h\| > 0.95 | 0.439 | 0.438 | 0.220 |
+| mean tanh derivative | 0.299 | 0.309 | 0.485 |
+| mean \|recurrent pre-activation\| | 1.588 | 1.544 | 0.482 |
+| mean \|sensory pre-activation\| | 0.877 | 0.864 | 0.889 |
+| recurrent / sensory ratio | 2.64 | 2.39 | 0.75 |
+| sensory authority (settled ÷ zero memory) | 0.545 | 0.541 | 1.052 |
+| mean \|turn\| | 0.622 | 0.619 | 0.337 |
+| wall-near fraction | 0.310 | 0.290 | 0.340 |
+| food in range, eat not requested | 0.020 | 0.030 | 0.000 |
+
+The causal chain is confirmed end to end. This is mechanism evidence, not
+evidence of intelligence.
+
+**Precommitted evaluation — FAILED.** Seeds, tick counts and thresholds were
+fixed in `results/v2.6/PRECOMMITMENT.md` before any run. The prior diagnostic's
+17 seeds are not reproducible from this repository (no note or script records
+them) and the Phase 0B pilot/validation sets are reserved, so the precommitted
+substitute is the first N of the natural counting order: seeds 1–17 at 5,000
+ticks, seeds 1–7 at 12,000 ticks.
+
+| Metric (17 seeds, 5,000 ticks) | Result | Target | Verdict |
+|---|---|---|---|
+| median births | 16 | ≥ 15 | PASS |
+| extinctions | 8 / 17 | ≤ 7 / 17 | **FAIL** |
+| max generation | 7 | ≥ 8 | **FAIL** |
+| total births | 661 | — | — |
+| mean final population | 13.12 | — | — |
+| seeds with ≥ 20 births | 8 / 17 | — | — |
+
+| Metric (7 seeds, 12,000 ticks) | Result | Target | Verdict |
+|---|---|---|---|
+| seeds reaching generation ≥ 10 | 2 / 7 | ≥ 4 / 7 | **FAIL** |
+
+(12,000-tick secondary data: median births 45, total 968, 3/7 extinct, mean
+final population 26.6, max generation 13.)
+
+**Descriptive comparison, same 17 seeds, 5,000 ticks:**
+
+| Metric | `0A.6.0` | `0A.7.0` | `0A.8.0` |
+|---|---|---|---|
+| median births | 4 | 1 | 16 |
+| total births | 169 | 154 | 661 |
+| extinct | 12 / 17 | 15 / 17 | 8 / 17 |
+| mean final population | 3.94 | 3.47 | 13.12 |
+| max generation | 6 | 6 | 7 |
+| seeds with ≥ 20 births | 2 / 17 | 2 / 17 | 8 / 17 |
+
+`0A.8.0` is ahead of both predecessors on every descriptive metric and still
+misses the absolute thresholds. The decision about what follows is the owner's.
+
+**Live verification.** A real `0A.8.0` world (coverage seed 8, `worlds/`,
+gitignored — NOT canonical) was created, run to tick 600, then stopped and
+resumed four times across separate processes with `--observe 8791` and
+`--ticks-per-second 20`. Verified: store identity `0A.8.0` / configHash
+`52e617dc91e31732`; snapshot format **v3**; organisms carry `hiddenState` (8)
+and `recurrentHiddenWeights` (64) and NO plastic keys; food carries
+`holderId`/`handlingProgress`; the stored config carries `recurrentInitSigma`
+and the world state does not; reproduction and deaths occur (population 25 →
+33 → 41, generation depths 0/1/2 present, 19 of 38 organisms had parents);
+observer frames arrive with `observerProtocolVersion` 1 and leak no
+`hiddenState`, recurrent weights, initialization metadata, handling state,
+offsets or eligibility; the frozen Observatory protocol validator accepts a
+captured real frame unchanged (committed as a fixture). The restarted world's
+tick-1,400 stored hash `99da0eb183e6d7e4` equals an uninterrupted 1,400-tick
+run. A browser Observatory check was not possible in this environment (no
+browser can reach a locally started server here); the frontend is covered by
+its vitest suite plus the new real-frame fixture test.
+
+**Performance.** Paired medians, same environment, 300 ticks after a 100-tick
+warm-up: 25 organisms `0A.6.0` 0.1524 → `0A.8.0` 0.1447 ms/tick; 100 organisms
+1.0733 → 0.9582; 250 organisms 4.1911 → 4.3656. Within run-to-run noise in both
+directions — the runtime neural equation is unchanged, so no recurrent overhead
+exists by construction.
+
 ## V2 backlog (deferred)
 
 Richer senses — **started** (V2.1 above). Memory / recurrent neural state —
@@ -3063,6 +3220,27 @@ remote observers; mobile polish; richer ecosystem and environmental
 complexity. Any of these is a new phase with its own spec.
 
 ## NEXT EXACT STEP
+
+**Owner decision required — do not proceed unilaterally.** V2.6 is implemented,
+tested, documented and committed, and its precommitted hypothesis test FAILED
+(median births passed; extinctions 8/17 vs ≤ 7, max generation 7 vs ≥ 8, and
+generation ≥ 10 in 2/7 vs ≥ 4/7 all failed). The mechanism is confirmed and
+`0A.8.0` is far ahead of `0A.6.0`/`0A.7.0` descriptively. The next step is the
+owner's call between, for example: accepting `0A.8.0` as-is and moving to a
+different V2 slice; re-running the evaluation against the original 17-seed
+diagnostic set if it can be recovered; or opening a separate, specified
+follow-up (which would be a NEW model version, never an edit of
+`0A.1.0`–`0A.8.0`).
+
+**An agent must NOT**, in response to these results: retune
+`recurrentInitSigma` (try `0.1`, `0.15` or a sweep), weaken or rebalance
+`handling.ticksRequired`, adjust ecology/energy/mutation, add a founder
+viability gate, add a recurrent gain, leak or λ, or pick different seeds. Those
+are the explicit non-goals of V2.6.
+
+---
+
+### Previous step (V2.5, superseded)
 
 **None pending — V2.5 is complete.** The next task, if any, is either a genuine
 bug fix (focused failing test, smallest correction, rerun the affected package

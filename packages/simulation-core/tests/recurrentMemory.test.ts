@@ -84,7 +84,7 @@ const input = (k: number) => Array.from({ length: I }, (_, i) => Math.cos(k + i 
 describe('model identity and layout', () => {
   it('(1–4) 0A.1.0 / 0A.2.0 / 0A.3.0 stay feed-forward (6/6/10 → 8 → 4); 0A.4.0 is 10 → 8 recurrent → 4', () => {
     // V2.3 appended 0A.5.0 (recurrent like 0A.4.0, plus physical bodies).
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0', '0A.8.0']);
     const expected = { '0A.1.0': [6, false], '0A.2.0': [6, false], '0A.3.0': [10, false], '0A.4.0': [10, true], '0A.5.0': [10, true], '0A.6.0': [10, true], '0A.7.0': [10, true] } as const;
     for (const [version, [inputs, recurrent]] of Object.entries(expected)) {
       expect(simulationModel(version).neuralInputSize).toBe(inputs);

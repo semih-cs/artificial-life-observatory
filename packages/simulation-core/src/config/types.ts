@@ -1,4 +1,4 @@
-import { isSupportedSimulationVersion, simulationModel, SUPPORTED_MODEL_VERSIONS } from '../model/simulationModel.js';
+import { isSupportedSimulationVersion, regulatedRecurrentInitSigma, simulationModel, SUPPORTED_MODEL_VERSIONS } from '../model/simulationModel.js';
 
 /**
  * Phase 0A configuration surface.
@@ -28,6 +28,28 @@ export interface NeuralConfig {
   hiddenLayerSize: number;
   /** [BASELINE] founder weight/bias draw sigma (§13.76 step 1). */
   initSigma: number;
+  /**
+   * V2.6 [LOCKED rule] — the sigma the RECURRENT hidden->hidden block is drawn
+   * from at founder generation, present if and only if the model has
+   * `regulatedRecurrentInit` (currently `0A.8.0` alone). Its value is fixed by
+   * the fan-in rule
+   *
+   *     recurrentInitSigma = initSigma / sqrt(hiddenLayerSize)
+   *
+   * and `validateConfig` requires exactly that, so it can never become a
+   * tuning knob reached for after seeing a trajectory.
+   *
+   * INITIALIZATION ONLY. It is not a runtime gain, not a leak or time
+   * constant, and NEVER a mutation sigma: once drawn, recurrent weights are
+   * ordinary genetic parameters mutated with `mutation.neuralMutationSigma`
+   * like every other neural parameter. It is also not the bootstrap
+   * perturbation sigma, which stays `neuralBootstrapSigma` for every block.
+   *
+   * Its ABSENCE on `0A.1.0`-`0A.7.0` is what keeps their configurations — and
+   * therefore their `configHash`es — byte-identical to what they were before
+   * V2.6, exactly as `body`, `handling` and `plasticity` are absent elsewhere.
+   */
+  recurrentInitSigma?: number;
   /** [BASELINE] weights/biases in [-2, +2] (§11.30). Out-of-range values are clamped, not rejected. */
   neuralParamBounds: { min: number; max: number };
   /** [OPEN — EMPIRICAL] bootstrap perturbation sigma for neural params (§13.76). */
@@ -418,6 +440,36 @@ export function validateConfig(config: SimulationConfig): void {
     } else if (learns && plasticity !== undefined) {
       if (plasticity.learningRate !== 0.01) problems.push('plasticity.learningRate must be exactly 0.01 for model 0A.7.0.');
       if (plasticity.eligibilityDecay !== 0.90) problems.push('plasticity.eligibilityDecay must be exactly 0.90 for model 0A.7.0.');
+    }
+
+    // V2.6: one model, one recurrent-initialization contract. A model with
+    // regulated recurrent initialization must carry `neural.recurrentInitSigma`
+    // and every other model must NOT, so a historical model can never acquire
+    // the correction (its recurrent block keeps its original `initSigma` draw)
+    // and `0A.8.0` can never lose it. The value is not a free parameter: it is
+    // pinned to the precommitted fan-in rule.
+    const regulated = simulationModel(config.simulationVersion).regulatedRecurrentInit;
+    const recurrentInitSigma = config.neural.recurrentInitSigma;
+    if (regulated && recurrentInitSigma === undefined) {
+      problems.push(
+        `model ${config.simulationVersion} has regulated recurrent initialization and requires neural.recurrentInitSigma.`
+      );
+    } else if (!regulated && recurrentInitSigma !== undefined) {
+      problems.push(
+        `model ${config.simulationVersion} draws its recurrent block from neural.initSigma, so it must not carry ` +
+          'neural.recurrentInitSigma (historical recurrent initialization is never corrected).'
+      );
+    } else if (regulated && recurrentInitSigma !== undefined) {
+      const expected = regulatedRecurrentInitSigma(config.neural.initSigma, config.neural.hiddenLayerSize);
+      if (!Number.isFinite(recurrentInitSigma) || recurrentInitSigma <= 0) {
+        problems.push(`neural.recurrentInitSigma (${recurrentInitSigma}) must be a positive finite number.`);
+      } else if (recurrentInitSigma !== expected) {
+        problems.push(
+          `neural.recurrentInitSigma (${recurrentInitSigma}) must be exactly ` +
+            `neural.initSigma / sqrt(neural.hiddenLayerSize) = ${expected}; it is a precommitted fan-in correction, ` +
+            'not a value to tune against a trajectory.'
+        );
+      }
     }
   }
 

@@ -47,6 +47,17 @@ movement energy spent. The 188-parameter genome remains immutable and is the
 only inherited controller state. Snapshot format is v4; observer protocol is
 still v1. See *V2.5 — lifetime plasticity* below.
 
+**V2.6 corrects recurrent initialization.** Model `0A.8.0` is `0A.6.0`
+exactly — ten inputs, eight recurrent hidden units, four outputs, 188
+parameters, solid bodies, five-tick contestable handling, and NO lifetime
+plasticity — with one difference: the recurrent hidden→hidden block is *drawn*
+from `neural.recurrentInitSigma = initSigma / sqrt(hiddenSize)` instead of the
+shared `initSigma`. Initialization only: the runtime recurrent equation, the
+mutation settings and the genome are untouched, and no gain, leak or gene is
+added. Snapshot format is v3 (its stored shape is `0A.6.0`'s); observer
+protocol is still v1. **Its precommitted falsification test failed** — see
+*V2.6 — regulated recurrent initialization* below.
+
 Five workspace packages:
 
 | Package | Phase | Purpose |
@@ -162,6 +173,7 @@ it is not a DEMO seed and not evidence of anything.
 | **V2.3 — physical bodies** | **done.** New model `simulationVersion 0A.5.0`: the `0A.4.0` controller exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters) plus solid bodies. An organism occupies a circle of radius `2.0 + 2.2 × size` world units; two living organisms overlap when their centre distance is strictly less than the sum of their radii, and are separated along the line of centres with the larger body moving less. Displacement only — no damage, attack, predation, energy transfer, event or new state. Feeding uses post-collision positions, so a shove can take an organism out of reach of food. Golden hash `1006a56393e19cd9`. Snapshot format stays v2, observer protocol stays v1, and `0A.1.0`–`0A.4.0` are unchanged |
 | **V2.4 — contestable food handling** | **done.** New model `simulationVersion 0A.6.0`: the `0A.5.0` world exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters, same solid bodies) plus multi-tick, contestable eating. An item is acquired by the existing `eat` output under the unchanged nearest-wins competition, travels with its holder, advances one step per consecutive handling tick and is consumed at 5; `eat = false` releases it; genuine organism-organism body contact dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; held items count towards the food cap. No steal/defend/attack/share rule, no new input or output. Golden hash `3e5b9671f5750712`. New snapshot format **v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
 | **V2.5 — lifetime plasticity** | **done.** New model `simulationVersion 0A.7.0`: all `0A.6.0` capabilities plus 36 non-inherited runtime offsets on hidden→output weights and output biases, with 36 eligibility traces. Learning rate `0.01`, decay `0.90`; reinforcement is actual capped food credit minus actual movement cost, normalized by energy capacity. Genome stays immutable at 188 parameters. Golden hash `04d0b7c5917ca0c0`. Snapshot format **v4**; observer protocol stays v1; `0A.1.0`–`0A.6.0` unchanged |
+| **V2.6 — regulated recurrent initialization** | **done as a model; hypothesis FAILED its precommitted test.** New model `simulationVersion 0A.8.0`: `0A.6.0` exactly, with the recurrent block drawn from `initSigma / sqrt(hiddenSize)` = `0.282842712474619` instead of `initSigma`. Lifetime plasticity is off (V2.5 machinery stays intact for `0A.7.0`). No gain, leak, time constant, gene, sensor, action or founder-screen change; mutation and the runtime recurrent equation are unchanged; no RNG draw is added or moved. Golden hash `0806b096bf4d0061`. Snapshot format **v3 reused**; observer protocol stays v1; `0A.1.0`–`0A.7.0` unchanged. Diagnostics confirm the mechanism (saturation 0.44 → 0.22, recurrent/sensory drive 2.64 → 0.75, sensory authority 0.55 → 1.05) and demographics improve sharply (median births 4 → 16, extinctions 12/17 → 8/17), but 3 of 4 precommitted thresholds were missed and nothing was tuned afterwards |
 | **Phase 0D — Observatory UI** | **complete, frozen for v1.** Slices 1–4 plus the final polish (organism quick-jump, first-run card, demo scripts, help hint). `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). **v1 is complete**; further work is v2 unless it is a genuine v1 bug |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -445,6 +457,8 @@ Normative contract: `docs/V2.4 Amendment - Contestable Food Handling (0A.6.0).md
 | `0A.4.0` | 10 → 8 recurrent → 4 | non-solid | instant | v2 | `436a377506063609` |
 | `0A.5.0` | 10 → 8 recurrent → 4 | solid | instant | v2 | `1006a56393e19cd9` |
 | `0A.6.0` | 10 → 8 recurrent → 4 | solid | **5-tick, contestable** | **v3** | `3e5b9671f5750712` |
+| `0A.7.0` | 10 → 8 recurrent → 4, plastic readout | solid | 5-tick, contestable | **v4** | `04d0b7c5917ca0c0` |
+| `0A.8.0` | 10 → 8 recurrent → 4, fan-in recurrent init | solid | 5-tick, contestable | v3 | `0806b096bf4d0061` |
 
 **No new action.** There is no grab, release, steal, hold, defend, carry or
 share output, and no handling, possession or touching input. The existing `eat`
@@ -555,6 +569,89 @@ Run it with:
 ```bash
 npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.7.0
 npm run world -- --dir worlds/v2.5 --new --seed 8 --model 0A.7.0 --observe 8787
+```
+
+---
+
+## V2.6 — regulated recurrent initialization (model `0A.8.0`)
+
+Normative contract:
+`docs/V2.6 Amendment - Regulated Recurrent Initialization (0A.8.0).md`.
+
+`0A.8.0` is `0A.6.0` with **one** difference, and it is a difference in how
+founder weights are *drawn*, not in how the network *runs*:
+
+```
+0A.4.0 – 0A.7.0    recurrent block ~ Gaussian(0, neural.initSigma)             = 0.8
+0A.8.0             recurrent block ~ Gaussian(0, neural.recurrentInitSigma)    = 0.8 / sqrt(8)
+                                                                               = 0.282842712474619
+```
+
+The four historical blocks (input→hidden, hidden biases, hidden→output, output
+biases) still use `initSigma`.
+
+**Why.** The input→hidden block receives an external sensory vector once per
+tick; the recurrent block feeds the network's own hidden activity back into
+itself every tick. One shared sigma therefore makes recurrent drive
+disproportionately large, which pushes hidden units into tanh saturation,
+lowers their derivative, and costs the controller its sensory authority once
+the recurrent state settles. The diagnosis is saturation and loss of sensory
+authority, **not** generic chaos. `initSigma / sqrt(hiddenSize)` is the fan-in
+variance correction that follows from the architecture — it is precommitted,
+and `validateConfig()` re-derives and enforces it, so it cannot be retuned
+against a trajectory.
+
+**Initialization only.** No runtime recurrent gain; no leak, time constant or
+λ (fixed, per-unit or evolvable — a follow-up experiment showed leaky
+recurrence was harmful here); no LSTM, GRU, gate or attention; no new gene,
+input, output or action; no founder-screening change (a controller that
+circles is still a valid founder — V2.6 adds no behavioural gate). The runtime
+update stays `h_t = tanh(W_in x_t + W_rec h_(t−1) + b)`, unchanged in
+summation order, activation placement and timing.
+
+**Mutation is untouched.** Once drawn, recurrent weights are ordinary genetic
+parameters: same enable flags, same `neuralMutationRate` 0.05, same
+`neuralMutationSigma` 0.05, same bounds, same block order.
+`recurrentInitSigma` is **never** a mutation sigma, and bootstrap perturbation
+still uses `neuralBootstrapSigma` for every block.
+
+**No RNG change.** `gaussian()` consumes two draws whatever its sigma, and the
+founder screen runs from a zero hidden state where recurrent weights contribute
+nothing — so `0A.8.0` accepts founders at the same attempt indices as `0A.6.0`,
+its founders' four historical blocks are byte-identical, and bootstrap
+placement, headings, fertility and food are identical. Only the recurrent
+block's scale differs, which makes this a controlled comparison.
+
+**Lifetime plasticity is off** for `0A.8.0`; the V2.5 machinery stays intact
+and `0A.7.0` is unchanged. Snapshot format is **v3** — `0A.8.0`'s stored shape
+is `0A.6.0`'s exactly, and format numbers describe shape, not chronology.
+Observer protocol stays v1.
+
+**Measured mechanism** (read-only diagnostics, coverage seeds 5/8/12/13,
+settled 300 ticks; never used to gate anything):
+
+| | `0A.6.0` | `0A.7.0` | `0A.8.0` |
+|---|---|---|---|
+| hidden units with \|h\| > 0.95 | 0.44 | 0.44 | **0.22** |
+| mean tanh derivative | 0.30 | 0.31 | **0.49** |
+| recurrent / sensory drive | 2.64 | 2.39 | **0.75** |
+| sensory authority (settled ÷ zero memory) | 0.55 | 0.54 | **1.05** |
+| mean \|turn\| | 0.62 | 0.62 | **0.34** |
+
+**Precommitted evaluation: FAILED.** Seeds and thresholds were fixed before
+any run (`results/v2.6/PRECOMMITMENT.md`). At 5,000 ticks over seeds 1–17:
+median births 16 (target ≥ 15 — **pass**), extinctions 8/17 (target ≤ 7 —
+**fail**), max generation 7 (target ≥ 8 — **fail**); at 12,000 ticks over seeds
+1–7, 2/7 seeds reached generation ≥ 10 (target ≥ 4/7 — **fail**). On the same
+17 seeds `0A.8.0` is nonetheless far ahead of both predecessors (median births
+4 → 16, extinctions 12/17 → 8/17, mean final population 3.9 → 13.1). Both
+statements are reported; **nothing was tuned after seeing them**.
+
+Run it with:
+
+```bash
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.8.0
+npm run world -- --dir worlds/v2.6 --new --seed 8 --model 0A.8.0 --observe 8787
 ```
 
 ---
@@ -806,9 +903,11 @@ resumes to exactly `b95a0b4ef7dd8449` at 10,000.
 feed-forward models `0A.1.0`, `0A.2.0`, `0A.3.0` — is one JSON document with
 these fields. **Format v2** belongs to recurrent `0A.4.0`/`0A.5.0` and adds
 `hiddenState` plus `recurrentHiddenWeights`; **format v3** belongs to `0A.6.0`
-and adds food holder/progress; **format v4** belongs to `0A.7.0` and adds the
-four plastic offset/eligibility arrays. Each model has exactly one format and
-nothing is migrated:
+**and `0A.8.0`** and adds food holder/progress; **format v4** belongs to
+`0A.7.0` and adds the four plastic offset/eligibility arrays. The format number
+describes the stored SHAPE, not the chronological order of models — `0A.8.0` is
+newer than `0A.7.0` but stores strictly less, so it reuses v3. Each model has
+exactly one format and nothing is migrated:
 
 - `format`, `snapshotFormatVersion: 1`, `simulationVersion`, `tick`;
 - `config` — the complete `SimulationConfig` including `rootSeed` — and
@@ -1682,10 +1781,12 @@ Every field in `config/types.ts` carries its classification and spec citation.
 
 Three sections are **model-specific and present only on models that have
 them**, so an older model's configuration — and its `configHash` — can never
-drift: `body` exists on `0A.5.0`–`0A.7.0`, `handling` on `0A.6.0`–`0A.7.0`,
-and `plasticity` (`learningRate`, `eligibilityDecay`) only on `0A.7.0`.
-`validateConfig()` refuses each on any other model and refuses its absence on
-the model that needs it.
+drift: `body` exists on `0A.5.0`–`0A.8.0`, `handling` on `0A.6.0`–`0A.8.0`,
+`plasticity` (`learningRate`, `eligibilityDecay`) only on `0A.7.0`, and
+`neural.recurrentInitSigma` only on `0A.8.0`. `validateConfig()` refuses each on
+any other model and refuses its absence on the model that needs it; it also
+re-derives `recurrentInitSigma` from `initSigma / sqrt(hiddenLayerSize)` and
+refuses any other value, so it cannot become a tuning knob.
 
 To change configuration, clone and override — never edit `defaults.ts` for a
 one-off experiment:
@@ -1729,6 +1830,7 @@ npm run test:watch --workspace=packages/simulation-core
 | `recurrentMemory.test.ts` | V2.2: feed-forward vs recurrent layouts by model, 64 / 188 parameters, zero memory for founders and newborns (never inherited), inherited and mutated recurrent weights, immutable genome, memory in the canonical hash, same input + different memory / history → different outputs, exact Elman formula, zero-memory = feed-forward, once-per-acting-tick update from S_t, purity and order independence, founder probes from fresh zero memory, historical mutation schedules, evaluator separation, the `0A.4.0` golden hash |
 | `physicalBodies.test.ts` | V2.3: model gating, body-radius contract, deterministic size-weighted overlap resolution, wall clamping, active/post-birth lifecycle placement, historical isolation, and the `0A.5.0` golden hash |
 | `foodHandling.test.ts` | V2.4: acquisition, continuation, release, completion, contact dislodgement, holder death, held-food cap accounting, lifecycle ordering, historical isolation, and the `0A.6.0` golden hash |
+| `regulatedRecurrentInit.test.ts` | V2.6: model identity and the full flag matrix, `0A.8.0` composition (10 / 8 recurrent / 4 / 188, solid, handling, non-plastic), absence of all plastic runtime state, the locked `initSigma / sqrt(hiddenSize)` rule and its validation refusals, the recurrent-only draw override with byte-identical historical blocks, unchanged bootstrap perturbation, identical RNG schedule and founder acceptance against `0A.6.0`, unchanged mutation semantics (and that `recurrentInitSigma` is never a mutation sigma), no new genome parameter, unchanged founder screen, the unchanged runtime recurrent equation, untouched historical configs and canonical records, all seven historical golden hashes, the `0A.8.0` golden with checkpoints, live memory/newborn-zero-memory behaviour, and interrupted-equals-continuous execution |
 | `lifetimePlasticity.test.ts` | V2.5: model/config gating, zero runtime state, learning formulas, positive/negative/delayed updates, effective bounds, genome immutability, non-Lamarckian inheritance, RNG isolation, lifecycle timing, excluded reward terms, order independence, and the `0A.7.0` golden hash |
 
 `packages/experiment-harness/tests`:
@@ -1752,6 +1854,7 @@ npm run test:watch --workspace=packages/simulation-core
 | `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449`; fallback → quarantine → resume → save → recover selects 10,000 at `b95a0b4ef7dd8449` |
 | `physicalBodiesSnapshot.test.ts` | V2.3: format-v2 reuse, body config, no collision metadata, exact resume/golden/separate-process recovery, and model-store isolation |
 | `foodHandlingSnapshot.test.ts` | V2.4: format v3 with complete per-food handling state, strict validation and no relabelling, exact resume at handling boundaries, golden and separate-process recovery |
+| `regulatedRecurrentInitSnapshot.test.ts` | V2.6: `0A.8.0` reuses snapshot format **v3** while `0A.6.0` stays v3 and `0A.7.0` stays v4, complete memory/handling state with no plastic fields, `recurrentInitSigma` in the stored config but never in world state, refusal of plastic state on a `0A.8.0` record, cross-model relabelling refused in both directions, and exact save/serialize/load/restore/resume including at every handling progress |
 | `lifetimePlasticitySnapshot.test.ts` | V2.5: format v4 with complete offsets/traces, dimensions/finiteness/effective-bound validation, historical-state refusal, no relabelling, and exact learned-state resume |
 
 `packages/world-runner/tests`:
@@ -1766,6 +1869,7 @@ npm run test:watch --workspace=packages/simulation-core
 | `organismSensingModel.test.ts` | V2.1: a `0A.3.0` world through create / restart and through the CLI's `--model` (refused on recovery), and observer purity for `0A.3.0` with the frame shape exactly protocol v1 |
 | `physicalBodiesModel.test.ts` | V2.3: `0A.5.0` create/recover/CLI continuity with format v2, plus unchanged observer-v1 purity |
 | `foodHandlingModel.test.ts` | V2.4: `0A.6.0` create/recover/CLI continuity with held food in format v3, plus unchanged observer-v1 purity |
+| `regulatedRecurrentInitModel.test.ts` | V2.6: `0A.8.0` format-v3 create/recover/direct equivalence, a four-restart run equal to the uninterrupted run, and observer-v1 purity with no recurrent or initialization leakage |
 | `lifetimePlasticityModel.test.ts` | V2.5: `0A.7.0` format-v4 create/recover/direct equivalence and observer-v1 purity with no learned-state leakage |
 | `goldenObserver.test.ts`, `goldenPaced.test.ts`, `goldenPacedObserver.test.ts` | seed 20260910 to 10,000 = `b95a0b4ef7dd8449` with observer + client, paced, and paced + observer + client |
 
@@ -1826,7 +1930,7 @@ are never pooled with these.
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
 | **0C**  | **complete for v1** — persistence, snapshots, recovery, the canonical continuous world: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
 | **0D**  | **complete / frozen for v1** — live view, evolution visibility, inherited morphology, compact ancestry and final polish over read-only observer protocol v1 |
-| **V2**  | **started through V2.5** — separately versioned models: `0A.3.0` organism sensing, `0A.4.0` recurrent memory, `0A.5.0` physical bodies, `0A.6.0` contestable food handling, and `0A.7.0` lifetime plasticity. Every earlier model remains frozen |
+| **V2**  | **started through V2.6** — separately versioned models: `0A.3.0` organism sensing, `0A.4.0` recurrent memory, `0A.5.0` physical bodies, `0A.6.0` contestable food handling, `0A.7.0` lifetime plasticity, and `0A.8.0` regulated recurrent initialization. Every earlier model remains frozen |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 

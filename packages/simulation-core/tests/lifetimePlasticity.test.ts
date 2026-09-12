@@ -42,14 +42,17 @@ function organism(id = 1): OrganismRuntimeState {
 const raw = { forward: 0.75, turn: -0.25, eat: 0.8, reproduce: 0.2 };
 
 describe('V2.5 model identity and runtime layout', () => {
-  it('keeps 0A.1.0-0A.6.0 non-plastic and enables plasticity only for 0A.7.0', () => {
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0']);
-    for (const version of SUPPORTED_MODEL_VERSIONS.slice(0, -1)) {
+  it('keeps every other model non-plastic and enables plasticity only for 0A.7.0', () => {
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0', '0A.8.0']);
+    // V2.6 appended 0A.8.0, which is deliberately NON-plastic: plasticity is
+    // true for 0A.7.0 and for nothing else, whatever the version order.
+    for (const version of SUPPORTED_MODEL_VERSIONS.filter((v) => v !== '0A.7.0')) {
       expect(simulationModel(version).lifetimePlasticity).toBe(false);
       expect(modelConfig(version).plasticity).toBeUndefined();
     }
     const model = simulationModel('0A.7.0');
     expect(model).toMatchObject({ neuralInputSize: 10, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: true });
+    expect(simulationModel('0A.8.0')).toMatchObject({ neuralInputSize: 10, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: false });
     expect(lifetimePlasticityModelConfig().plasticity).toEqual({ learningRate: 0.01, eligibilityDecay: 0.90 });
     expect(PLASTICITY_LEARNING_RATE).toBe(0.01);
     expect(PLASTICITY_ELIGIBILITY_DECAY).toBe(0.90);

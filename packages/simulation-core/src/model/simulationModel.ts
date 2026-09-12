@@ -15,6 +15,9 @@
  *   0A.5.0  V2.3 — physical bodies: the 0A.4.0       10 -> 8 (recurrent) -> 4
  *           controller exactly, plus solid organism
  *           bodies that displace one another
+ *   0A.8.0  V2.6 — regulated recurrent initialization:   10 -> 8 (recurrent) -> 4
+ *           0A.6.0 exactly, except that the recurrent
+ *           block is drawn from initSigma/sqrt(hidden)
  *   0A.6.0  V2.4 — contestable food handling: the      10 -> 8 (recurrent) -> 4
  *           0A.5.0 world, plus food that takes
  *           several consecutive ticks to eat, travels
@@ -98,6 +101,46 @@ export const FOOD_HANDLING_MODEL_VERSION = '0A.6.0';
 /** V2.5: 0A.6.0 plus deterministic, non-inherited lifetime readout plasticity. */
 export const LIFETIME_PLASTICITY_MODEL_VERSION = '0A.7.0';
 
+/**
+ * V2.6 model: `0A.6.0` + REGULATED RECURRENT INITIALIZATION.
+ *
+ * Structurally this is `0A.6.0` exactly — ten inputs, eight recurrent hidden
+ * units, four outputs, 188 inherited neural parameters, solid bodies,
+ * contestable five-tick food handling, NO lifetime plasticity — and the
+ * runtime recurrent equation is byte-for-byte the same Elman update. The one
+ * difference is the sigma the recurrent hidden->hidden block is DRAWN from at
+ * founder generation:
+ *
+ *     recurrentInitSigma = neural.initSigma / sqrt(hiddenLayerSize)
+ *
+ * a fan-in variance correction, precommitted from the architecture rather than
+ * chosen from any trajectory. The input->hidden block receives an external
+ * sensory vector once per tick; the recurrent block feeds the network's own
+ * hidden activity back into itself every tick, so drawing both from one sigma
+ * makes recurrent drive disproportionately large, pushes hidden units into
+ * tanh saturation and costs the controller its sensory authority once the
+ * recurrent state settles.
+ *
+ * It is INITIALIZATION ONLY. There is no runtime recurrent gain, no leak, no
+ * time constant, no gate and no new gene: after they are drawn, the recurrent
+ * weights are ordinary genetic parameters, mutated at birth with the unchanged
+ * neural mutation rate, sigma and bounds. `recurrentInitSigma` is never a
+ * mutation sigma.
+ *
+ * Historical models are NOT corrected: 0A.4.0-0A.7.0 keep drawing their
+ * recurrent block from `initSigma`, exactly as they always have.
+ */
+export const REGULATED_RECURRENT_INIT_MODEL_VERSION = '0A.8.0';
+
+/**
+ * The [LOCKED] V2.6 fan-in rule. A pure function of two existing configured
+ * values, so it can never be quietly retuned: `recurrentInitSigma` is
+ * validated against exactly this.
+ */
+export function regulatedRecurrentInitSigma(initSigma: number, hiddenSize: number): number {
+  return initSigma / Math.sqrt(hiddenSize);
+}
+
 /** §11.58 six-input vector: food (3), boundary (2), own energy (1). Models 0A.1.0 and 0A.2.0. */
 export const V1_NEURAL_INPUT_SIZE = 6;
 
@@ -141,16 +184,26 @@ export interface SimulationModel {
   readonly foodHandling: boolean;
   /** True only when hidden->output weights and output biases have runtime learned offsets. */
   readonly lifetimePlasticity: boolean;
+  /**
+   * True only for `0A.8.0` (V2.6): the recurrent hidden->hidden block is DRAWN
+   * from `neural.recurrentInitSigma` (= `initSigma / sqrt(hiddenSize)`)
+   * instead of the shared `neural.initSigma`, and the configuration must carry
+   * that value. Initialization only — it changes no runtime equation, adds no
+   * gene and is never a mutation sigma. False for every historical model,
+   * whose recurrent block keeps its original `initSigma` draw.
+   */
+  readonly regulatedRecurrentInit: boolean;
 }
 
 const MODELS: readonly SimulationModel[] = Object.freeze([
-  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: false, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: FOOD_HANDLING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: false }),
-  Object.freeze({ simulationVersion: LIFETIME_PLASTICITY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: true }),
+  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: FOOD_HANDLING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: false, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: LIFETIME_PLASTICITY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: true, regulatedRecurrentInit: false }),
+  Object.freeze({ simulationVersion: REGULATED_RECURRENT_INIT_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: false, regulatedRecurrentInit: true }),
 ]);
 
 /** Every simulation version this core can bootstrap, step and validate, oldest first. */

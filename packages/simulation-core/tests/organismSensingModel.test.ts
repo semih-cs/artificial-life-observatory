@@ -54,7 +54,7 @@ function fixtureGenome(inputSize: number, hidden = 8): NeuralGenome {
 describe('model registry — neural dimensions by simulationVersion', () => {
   it('(15) 0A.1.0 and 0A.2.0 remain six-input models: 6 → 8 → 4', () => {
     for (const version of [SINGLE_FOUNDER_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION]) {
-      expect(simulationModel(version)).toEqual({ simulationVersion: version, neuralInputSize: 6, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false });
+      expect(simulationModel(version)).toEqual({ simulationVersion: version, neuralInputSize: 6, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false });
       const c = modelConfig(version);
       c.rootSeed = SEED;
       const w = bootstrapWorld(c);
@@ -72,9 +72,9 @@ describe('model registry — neural dimensions by simulationVersion', () => {
 
   it('(16) 0A.3.0 is a ten-input model: 10 → 8 → 4', () => {
     expect(ORGANISM_SENSING_MODEL_VERSION).toBe('0A.3.0');
-    expect(simulationModel('0A.3.0')).toEqual({ simulationVersion: '0A.3.0', neuralInputSize: 10, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false });
+    expect(simulationModel('0A.3.0')).toEqual({ simulationVersion: '0A.3.0', neuralInputSize: 10, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false, regulatedRecurrentInit: false });
     expect(ORGANISM_SENSING_NEURAL_INPUT_SIZE).toBe(10);
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0', '0A.8.0']);
     const c = v3();
     const w = bootstrapWorld(c);
     expect(w.simulationVersion).toBe('0A.3.0');

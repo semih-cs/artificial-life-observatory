@@ -24,7 +24,15 @@ import { V1_NEURAL_INPUT_SIZE, ORGANISM_SENSING_NEURAL_INPUT_SIZE } from '../mod
  *
  * Recurrent model (0A.4.0): `recurrent = true` (default false) appends the
  * hiddenSize x hiddenSize recurrent block — drawn last, from the same
- * `initSigma`, checked and clamped to the same `neuralParamBounds`. The
+ * `initSigma`, checked and clamped to the same `neuralParamBounds`.
+ *
+ * V2.6 (0A.8.0 only): `recurrentSigma` overrides the sigma of that appended
+ * block alone. Everything else about the draw is unchanged — the same four
+ * historical blocks in the same order from the same `initSigma`, the recurrent
+ * block still last, the same bounds, and exactly the same NUMBER and ORDER of
+ * RNG draws (`gaussian` consumes two draws per value whatever its sigma). Only
+ * the numeric scale of the recurrent block differs. Omitting it reproduces the
+ * historical recurrent draw exactly, so 0A.4.0-0A.7.0 are untouched. The
  * viability screen evaluates EVERY probe from a fresh all-zero hidden state,
  * independently: no memory is carried from one probe to the next, so probe
  * order is never a temporal sequence, and with zero memory the recurrent
@@ -42,23 +50,26 @@ export function drawNeuralGenome(
   hiddenSize: number,
   sigma: number,
   inputSize: number = NEURAL_INPUT_SIZE,
-  recurrent = false
+  recurrent = false,
+  recurrentSigma?: number
 ): NeuralGenome {
   // Fixed parameter order (§13.76 step 1): input->hidden weights, hidden
   // biases, hidden->output weights, output biases — then, for a recurrent
   // model only, the appended recurrent hidden->hidden block.
-  const draw = (n: number): number[] => {
+  const drawFrom = (n: number, s: number): number[] => {
     const out: number[] = new Array(n);
-    for (let i = 0; i < n; i++) out[i] = rng.gaussian(0, sigma);
+    for (let i = 0; i < n; i++) out[i] = rng.gaussian(0, s);
     return out;
   };
+  const draw = (n: number): number[] => drawFrom(n, sigma);
   const genome: { -readonly [K in keyof NeuralGenome]: NeuralGenome[K] } = {
     inputHiddenWeights: draw(hiddenSize * inputSize),
     hiddenBiases: draw(hiddenSize),
     hiddenOutputWeights: draw(NEURAL_OUTPUT_SIZE * hiddenSize),
     outputBiases: draw(NEURAL_OUTPUT_SIZE),
   };
-  if (recurrent) genome.recurrentHiddenWeights = draw(hiddenSize * hiddenSize);
+  // V2.6: the recurrent block's sigma, and nothing else, may be overridden.
+  if (recurrent) genome.recurrentHiddenWeights = drawFrom(hiddenSize * hiddenSize, recurrentSigma ?? sigma);
   return genome;
 }
 
@@ -308,13 +319,14 @@ export function generateFounderNeuralGenome(
   neuralConfig: NeuralConfig,
   bootstrapConfig: BootstrapConfig,
   inputSize: number = NEURAL_INPUT_SIZE,
-  recurrent = false
+  recurrent = false,
+  recurrentSigma?: number
 ): FounderGenerationResult {
   let lastViability: ViabilityResult | null = null;
   let rejectedNonFinite = 0;
 
   for (let attempt = 1; attempt <= bootstrapConfig.maxFounderAttempts; attempt++) {
-    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma, inputSize, recurrent);
+    const raw = drawNeuralGenome(rng, hiddenSize, neuralConfig.initSigma, inputSize, recurrent, recurrentSigma);
 
     const validity = mechanicalValidityCheck(raw, hiddenSize, neuralConfig.neuralParamBounds, inputSize, recurrent);
     if (!validity.valid || validity.genome === null) {
@@ -364,9 +376,10 @@ export function generateFounderProfile(
   neuralConfig: NeuralConfig,
   bootstrapConfig: BootstrapConfig,
   inputSize: number = NEURAL_INPUT_SIZE,
-  recurrent = false
+  recurrent = false,
+  recurrentSigma?: number
 ): FounderProfile {
-  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig, inputSize, recurrent);
+  const { neural, attempts } = generateFounderNeuralGenome(rng, hiddenSize, neuralConfig, bootstrapConfig, inputSize, recurrent, recurrentSigma);
   const morphology = founderMorphology(bootstrapConfig.geneBounds);
   return { genome: { morphology, neural }, attempts };
 }
