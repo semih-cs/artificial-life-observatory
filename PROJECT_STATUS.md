@@ -170,10 +170,12 @@ is `31415926`.
 ## Git state
 
 Branch: `main` (tracking `origin/main`). `git log -1` is authoritative. The
-most recent work is the V2.4 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
+most recent implementation is the V2.5 checkpoint; tag `v1.0.0` = `5ea6ee4` is the
 frozen v1 release and is not moved:
 
 ```text
+3e4cc11 V2.5: lifetime plasticity — model 0A.7.0, snapshot format v4
+5bbb05f PROJECT_STATUS: record the V2.4 commit hash
 5d63787 V2.4: contestable food handling — model 0A.6.0 (5-tick eating, held food, contact dislodges)
 62b16fb PROJECT_STATUS: record the V2.3 commit hash
 031a301 V2.3: physical bodies — model 0A.5.0 (solid bodies, size-weighted displacement)
