@@ -3,7 +3,7 @@ import { RngStream } from '../rng/rngStream.js';
 import { SimulationConfig } from '../config/types.js';
 import { mutateGenome } from '../biology/mutation.js';
 import { WorldConfigSnapshot } from './types.js';
-import { zeroHiddenState } from '../organism/types.js';
+import { zeroHiddenState, initializePlasticityState } from '../organism/types.js';
 import { simulationModel } from '../model/simulationModel.js';
 
 /**
@@ -68,7 +68,9 @@ export function createOffspring(
     deathCause: null,
     deathTick: null,
   };
-  if (simulationModel(config.simulationVersion).recurrent) child.hiddenState = zeroHiddenState(config.neural.hiddenLayerSize);
+  const model = simulationModel(config.simulationVersion);
+  if (model.recurrent) child.hiddenState = zeroHiddenState(config.neural.hiddenLayerSize);
+  if (model.lifetimePlasticity) Object.assign(child, initializePlasticityState(config.neural.hiddenLayerSize, 4));
   return child;
 }
 

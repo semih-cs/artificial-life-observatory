@@ -10,7 +10,7 @@
  *   --new                 create a fresh world. Requires --seed. Refused if --dir already holds a world.
  *   --seed <uint32>       root seed for --new (default canonical config otherwise). Not accepted on recovery:
  *                         the stored world's config is used.
- *   --model <version>     model for --new: 0A.1.0, 0A.2.0 or 0A.3.0 (default 0A.2.0, the frozen v1 model).
+ *   --model <version>     model for --new: any registered model 0A.1.0-0A.7.0 (default 0A.2.0, frozen v1).
  *                         Not accepted on recovery: a recovered world always keeps its stored model.
  *   --save-every <ticks>  snapshot cadence in simulation ticks (default 1000)
  *   --keep <n>            snapshots retained (default 5)

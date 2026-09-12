@@ -83,6 +83,14 @@ amended by**:
   adds future-affecting per-food state (`holderId`, `handlingProgress`) and so
   has its own snapshot format v3; observer protocol stays v1. It changes none
   of `0A.1.0`–`0A.5.0`, which keep instantaneous feeding.
+- `docs/V2.5 Amendment - Lifetime Plasticity (0A.7.0).md` — V2.5 adds a NEW
+  model, `0A.7.0`: the `0A.6.0` world plus deterministic, reward-modulated
+  lifetime plasticity of the final action readout only. The inherited genome
+  remains 188 immutable parameters; 36 runtime offsets and 36 eligibility
+  traces start at zero and are never inherited. Reinforcement is actual capped
+  food energy credited minus actual movement energy spent, normalized by
+  energy capacity. Snapshot format v4; observer protocol stays v1. It changes
+  none of `0A.1.0`–`0A.6.0`.
 - `docs/V2.3 Amendment - Physical Bodies (0A.5.0).md` — V2.3 adds a NEW
   model, `0A.5.0`: the `0A.4.0` model exactly (same ten inputs, same
   recurrence, same four outputs, same 188 parameters) plus SOLID BODIES — a
@@ -361,10 +369,10 @@ Frontend rules that hold from now on:
 Do not add UI concerns to `simulation-core` or `experiment-harness`.
 
 
-### V2 — started (V2.1 organism sensing; V2.2 recurrent memory; V2.3 physical bodies; V2.4 contestable food handling)
+### V2 — started (V2.1 sensing; V2.2 memory; V2.3 bodies; V2.4 handling; V2.5 lifetime plasticity)
 
 V2 is the next product phase. It changes biology only through NEW, versioned
-models; every earlier model (`0A.1.0`–`0A.5.0` as of V2.4) stays frozen
+models; every earlier model (`0A.1.0`–`0A.6.0` as of V2.5) stays frozen
 historical ground truth and is never redefined, re-hashed or silently
 upgraded.
 
@@ -497,6 +505,30 @@ from now on:
 - **No ecology tuning.** `handling.ticksRequired` is part of the model, not a
   knob to make a trajectory survive. Extinction is a legitimate result.
 
+**V2.5 — model `0A.7.0` (done).** Lifetime plasticity. Contract:
+`docs/V2.5 Amendment - Lifetime Plasticity (0A.7.0).md`. Rules that hold:
+
+- **Genome and learning are separate.** The inherited 10 → 8 recurrent → 4
+  genome remains exactly 188 immutable parameters. Only runtime offsets on 32
+  hidden→output weights and 4 output biases learn; input weights, hidden
+  biases and recurrent weights never change during life.
+- **Three-factor local rule.** Eligibility is `0.90 × old + hidden × centered
+  output` (bias traces omit `hidden`). The update is `0.01 × reinforcement ×
+  eligibility`, clamped through the existing effective neural bounds. No RNG,
+  backpropagation, optimizer, labels or world gradient.
+- **Metabolic reinforcement only.** `clamp((actual capped food credit - actual
+  movement expenditure) / energyCapacity, -1, 1)`. Basal metabolism,
+  reproduction cost, sight, acquisition, holding, progress, collision,
+  survival and offspring are excluded. Delayed food credit works only through
+  eligibility traces.
+- **Non-Lamarckian lifecycle.** Founders and newborns start with zero memory,
+  offsets and traces. Children inherit/mutate only the genetic genome. Founder
+  screening stays memoryless and does not simulate learning. Genetic and
+  mutation RNG schedules are unchanged.
+- **Canonical runtime state.** Learned offsets and traces are future-affecting,
+  included in canonical hashes and stored in snapshot format v4. Formats
+  v1/v2/v3 are unchanged. Observer protocol v1 exposes no plastic internals.
+
 ---
 
 ## 5. Phase 0A invariants that must be preserved
@@ -515,15 +547,18 @@ Do not change these casually.
 - Disabled mutation channels still consume their fixed RNG draw schedule so paired experiments retain RNG isolation.
 - Phase 0A neural topology is fixed and feedforward.
 - Topology is fixed per model: 6 → 8 → 4 for `0A.1.0` and `0A.2.0`, 10 → 8 → 4 for `0A.3.0`, 10 → 8 recurrent → 4 for `0A.4.0`, `0A.5.0` and `0A.6.0`; the four outputs (forward, turn, eat, reproduce) are the same in every model.
-- Organisms are non-solid in `0A.1.0`–`0A.4.0` and solid in `0A.5.0` and `0A.6.0`. A physical body is a circle of radius `body.radiusBase + body.radiusPerSize * morphology.size`; overlap is strict (`centreDistance < radiusA + radiusB`) and is resolved by displacement alone, weighted so the larger body moves less. Never make a historical model solid.
+- Organisms are non-solid in `0A.1.0`–`0A.4.0` and solid in `0A.5.0`–`0A.7.0`. A physical body is a circle of radius `body.radiusBase + body.radiusPerSize * morphology.size`; overlap is strict (`centreDistance < radiusA + radiusB`) and is resolved by displacement alone, weighted so the larger body moves less. Never make a historical model solid.
 - Sensing (every model) is a pure read of the pre-decision snapshot S_t; in `0A.3.0` it includes the nearest visible other living organism and nothing else about other organisms.
-- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The recurrent models `0A.4.0` (V2.2), `0A.5.0` (V2.3) and `0A.6.0` (V2.4) have an Elman hidden state whose weights are genome and whose memory is runtime state.
-- No learning, plasticity, backpropagation, reinforcement learning or stochastic policy in ANY model: genomes are fixed for life.
+- No RNN or memory in the feed-forward models `0A.1.0`–`0A.3.0`. The recurrent models `0A.4.0`–`0A.7.0` have an Elman hidden state whose weights are genome and whose memory is runtime state.
+- Genomes are fixed for life in every model. `0A.1.0`–`0A.6.0` have no
+  lifetime learning; `0A.7.0` alone has non-inherited runtime readout offsets
+  updated by its locked local plasticity rule. No backpropagation, optimizer,
+  externally supplied reward or stochastic policy exists.
 - Neural evaluation is deterministic, pure and RNG-free.
 - Decision logic returns `ActionIntent`; it does not directly mutate shared world state.
 - Canonical lifecycle follows **Sense → Decide → Resolve**. Physical collision belongs entirely to Resolve: it never reaches the sensory vector already used for the tick, never causes a second neural evaluation, and never advances recurrent memory again.
 - Newborns do not act in their birth tick.
-- Food is single-consumption. In `0A.1.0`–`0A.5.0` consumption is instantaneous; in `0A.6.0` it takes `handling.ticksRequired` (5) consecutive handling ticks, during which the item is held, travels with its handler, still counts in the food cap, and can be dislodged by genuine organism-organism body contact. Only completion grants energy. Never make a historical model handle food.
+- Food is single-consumption. In `0A.1.0`–`0A.5.0` consumption is instantaneous; in `0A.6.0` and `0A.7.0` it takes `handling.ticksRequired` (5) consecutive handling ticks, during which the item is held, travels with its handler, still counts in the food cap, and can be dislodged by genuine organism-organism body contact. Only completion grants energy. Never make a historical model handle food.
 - Same-tick food conflict is resolved by distance, then deterministic organism ID for exact ties.
 - Feeding occurs before the single death-resolution pass and may rescue an organism in the same tick. In `0A.5.0` it reads POST-collision positions, so a displacement can move an organism into or out of feeding range; there is no food-defence rule.
 - Death mechanisms in Phase 0A are energy depletion and maximum age.

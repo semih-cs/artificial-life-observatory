@@ -15,6 +15,7 @@ export * from './world/foodHandling.js';
 export * from './world/offspring.js';
 export * from './world/foodRegen.js';
 export * from './neural/network.js';
+export * from './neural/plasticity.js';
 export * from './perception/sense.js';
 export * from './actions/types.js';
 export * from './actions/decide.js';

@@ -1,5 +1,5 @@
 import { OrganismRuntimeState } from '../organism/types.js';
-import { evaluateNetwork, evaluateRecurrentNetwork, RawNetworkOutputs } from '../neural/network.js';
+import { evaluateNetwork, evaluateRecurrentNetwork, evaluatePlasticRecurrentNetwork, RawNetworkOutputs } from '../neural/network.js';
 import { senseOrganism, SenseContext } from '../perception/sense.js';
 import { NeuralConfig } from '../config/types.js';
 import { ActionIntent } from './types.js';
@@ -37,6 +37,33 @@ export interface RecurrentDecision {
   intent: ActionIntent;
   /** h_t: the organism's memory after this decision. Returned, never written — the caller applies it only after every organism has decided. */
   hiddenState: number[];
+  rawOutputs?: RawNetworkOutputs;
+  hiddenActivation?: number[];
+}
+
+
+/** V2.5 decision using runtime offsets on the recurrent controller's final readout. */
+export function decidePlasticRecurrentAction(
+  organism: OrganismRuntimeState,
+  ctx: SenseContext,
+  neuralConfig: NeuralConfig,
+  hiddenSize: number,
+  inputSize: number
+): RecurrentDecision {
+  if (organism.hiddenState === undefined || organism.hiddenOutputWeightOffsets === undefined || organism.outputBiasOffsets === undefined) {
+    throw new Error(`decidePlasticRecurrentAction: organism ${organism.id} lacks plastic recurrent runtime state`);
+  }
+  const input = senseOrganism(organism, ctx);
+  const result = evaluatePlasticRecurrentNetwork(
+    organism.genome.neural, input, organism.hiddenState,
+    organism.hiddenOutputWeightOffsets, organism.outputBiasOffsets, hiddenSize, inputSize
+  );
+  return {
+    intent: intentFromOutputs(organism, result.outputs, neuralConfig),
+    hiddenState: result.hiddenState,
+    rawOutputs: result.outputs,
+    hiddenActivation: result.hiddenActivation,
+  };
 }
 
 /**

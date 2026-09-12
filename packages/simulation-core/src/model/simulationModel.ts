@@ -95,6 +95,9 @@ export const PHYSICAL_BODIES_MODEL_VERSION = '0A.5.0';
  */
 export const FOOD_HANDLING_MODEL_VERSION = '0A.6.0';
 
+/** V2.5: 0A.6.0 plus deterministic, non-inherited lifetime readout plasticity. */
+export const LIFETIME_PLASTICITY_MODEL_VERSION = '0A.7.0';
+
 /** §11.58 six-input vector: food (3), boundary (2), own energy (1). Models 0A.1.0 and 0A.2.0. */
 export const V1_NEURAL_INPUT_SIZE = 6;
 
@@ -136,15 +139,18 @@ export interface SimulationModel {
    * its energy in the same tick.
    */
   readonly foodHandling: boolean;
+  /** True only when hidden->output weights and output biases have runtime learned offsets. */
+  readonly lifetimePlasticity: boolean;
 }
 
 const MODELS: readonly SimulationModel[] = Object.freeze([
-  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false }),
-  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false }),
-  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false }),
-  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false, foodHandling: false }),
-  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: false }),
-  Object.freeze({ simulationVersion: FOOD_HANDLING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true }),
+  Object.freeze({ simulationVersion: SINGLE_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: MULTI_FOUNDER_MODEL_VERSION, neuralInputSize: V1_NEURAL_INPUT_SIZE, organismSensing: false, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: ORGANISM_SENSING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: false, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: RECURRENT_MEMORY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: false, foodHandling: false, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: PHYSICAL_BODIES_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: false, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: FOOD_HANDLING_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: false }),
+  Object.freeze({ simulationVersion: LIFETIME_PLASTICITY_MODEL_VERSION, neuralInputSize: ORGANISM_SENSING_NEURAL_INPUT_SIZE, organismSensing: true, recurrent: true, physicalBodies: true, foodHandling: true, lifetimePlasticity: true }),
 ]);
 
 /** Every simulation version this core can bootstrap, step and validate, oldest first. */

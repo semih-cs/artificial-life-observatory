@@ -3,7 +3,7 @@ import { createRngStreams, RngStream, RngStreams, exportRngStreamsState } from '
 import { generateFounderProfile, FounderProfile } from '../genome/founder.js';
 import { perturbMorphologyForBootstrap, perturbNeuralForBootstrap } from '../biology/mutation.js';
 import { Genome } from '../genome/types.js';
-import { OrganismRuntimeState, zeroHiddenState } from '../organism/types.js';
+import { OrganismRuntimeState, zeroHiddenState, initializePlasticityState } from '../organism/types.js';
 import { WorldState, FoodItem, WorldConfigSnapshot } from './types.js';
 import { generateFertilityField, fertilityAt, FertilityField } from './fertility.js';
 import { simulationModel } from '../model/simulationModel.js';
@@ -204,6 +204,7 @@ export function bootstrapWorld(config: SimulationConfig): WorldState {
     };
     // Recurrent model: runtime memory starts empty (all zeros). No RNG draw.
     if (recurrent) organism.hiddenState = zeroHiddenState(config.neural.hiddenLayerSize);
+    if (worldModel.lifetimePlasticity) Object.assign(organism, initializePlasticityState(config.neural.hiddenLayerSize, 4));
     organisms.push(organism);
   }
 

@@ -25,7 +25,7 @@ import { simulationModel } from '../model/simulationModel.js';
  * a snapshot must restore (§19.4), not observational telemetry — even though
  * they do not themselves feed the tick equations.
  *
- * Food-handling model 0A.6.0 (V2.4): each FOOD record additionally carries
+ * Food-handling models 0A.6.0 and later (V2.4+): each FOOD record additionally carries
  * `holderId` (the handling organism's id, or null) and `handlingProgress`.
  * Both are future-affecting — a world where an item is one tick from being
  * eaten is not the world where it was just picked up — so two worlds that
@@ -35,7 +35,7 @@ import { simulationModel } from '../model/simulationModel.js';
  * world whose food does not match its model is refused rather than
  * canonicalized.
  *
- * Recurrent model 0A.4.0 (V2.2): each organism record additionally carries
+ * Recurrent models 0A.4.0 and later (V2.2+): each organism record additionally carries
  * `genome.neural.recurrentHiddenWeights` (appended after `outputBiases`) and
  * the runtime memory `hiddenState` (appended after `genome`) — both
  * future-affecting, so two worlds that differ only in memory hash
@@ -43,11 +43,18 @@ import { simulationModel } from '../model/simulationModel.js';
  * canonical string and hash are exactly the historical ones. The model
  * decides; a world whose organisms do not match their model's layout is
  * refused rather than canonicalized.
+ *
+ * Lifetime-plasticity model 0A.7.0 (V2.5): each organism record also carries
+ * its 36 final-readout offsets and 36 eligibility traces after `hiddenState`.
+ * They are runtime phenotype state, never genome, but they affect future
+ * decisions and therefore belong to canonical identity. Historical records
+ * emit no empty stand-ins.
  */
 export function canonicalizeWorldState(world: WorldState): unknown {
   const model = simulationModel(world.simulationVersion);
   const recurrent = model.recurrent;
   const foodHandling = model.foodHandling;
+  const plastic = model.lifetimePlasticity;
   const organisms = [...world.organisms]
     .sort((a, b) => a.id - b.id)
     .map((o) => {
@@ -56,6 +63,10 @@ export function canonicalizeWorldState(world: WorldState): unknown {
         throw new Error(
           `canonicalizeWorldState: organism ${o.id} does not match the ${recurrent ? 'recurrent' : 'feed-forward'} layout of model ${world.simulationVersion}`
         );
+      }
+      const plasticFields = [o.hiddenOutputWeightOffsets, o.outputBiasOffsets, o.hiddenOutputEligibilityTraces, o.outputBiasEligibilityTraces];
+      if (plastic !== plasticFields.every((v) => v !== undefined) || (!plastic && plasticFields.some((v) => v !== undefined))) {
+        throw new Error(`canonicalizeWorldState: organism ${o.id} does not match the ${plastic ? 'plastic' : 'non-plastic'} layout of model ${world.simulationVersion}`);
       }
       const record = {
         id: o.id,
@@ -88,7 +99,16 @@ export function canonicalizeWorldState(world: WorldState): unknown {
           },
         },
       };
-      return recurrent ? { ...record, hiddenState: [...o.hiddenState!] } : record;
+      return recurrent ? {
+        ...record,
+        hiddenState: [...o.hiddenState!],
+        ...(plastic ? {
+          hiddenOutputWeightOffsets: [...o.hiddenOutputWeightOffsets!],
+          outputBiasOffsets: [...o.outputBiasOffsets!],
+          hiddenOutputEligibilityTraces: [...o.hiddenOutputEligibilityTraces!],
+          outputBiasEligibilityTraces: [...o.outputBiasEligibilityTraces!],
+        } : {}),
+      } : record;
     });
 
   const food = [...world.food]

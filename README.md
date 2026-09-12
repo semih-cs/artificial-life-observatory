@@ -39,6 +39,14 @@ attack, carry or share action — the existing `eat` output does all of it, and
 an interrupted item simply becomes free again for anyone. `0A.1.0`–`0A.5.0`
 keep eating in a single tick. See *V2.4 — contestable food handling* below.
 
+**V2.5 adds lifetime plasticity.** Model `0A.7.0` keeps the `0A.6.0`
+controller and world, but gives each organism 36 runtime offsets on its final
+action readout and 36 eligibility traces. A deterministic local rule reinforces
+recent neural activity from actual capped food energy gained minus actual
+movement energy spent. The 188-parameter genome remains immutable and is the
+only inherited controller state. Snapshot format is v4; observer protocol is
+still v1. See *V2.5 — lifetime plasticity* below.
+
 Five workspace packages:
 
 | Package | Phase | Purpose |
@@ -153,6 +161,7 @@ it is not a DEMO seed and not evidence of anything.
 | **V2.2 — recurrent memory** | **done.** New model `simulationVersion 0A.4.0` (10 → 8 recurrent → 4): the `0A.3.0` model with an Elman hidden layer, h_t = tanh(W_in x_t + W_rec h_(t−1) + b). +64 inherited recurrent weights (188 parameters); runtime memory starts at zero and is never inherited; no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0` (memory is future-affecting state); format v1 unchanged for the older models; observer protocol v1 unchanged; no new UI |
 | **V2.3 — physical bodies** | **done.** New model `simulationVersion 0A.5.0`: the `0A.4.0` controller exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters) plus solid bodies. An organism occupies a circle of radius `2.0 + 2.2 × size` world units; two living organisms overlap when their centre distance is strictly less than the sum of their radii, and are separated along the line of centres with the larger body moving less. Displacement only — no damage, attack, predation, energy transfer, event or new state. Feeding uses post-collision positions, so a shove can take an organism out of reach of food. Golden hash `1006a56393e19cd9`. Snapshot format stays v2, observer protocol stays v1, and `0A.1.0`–`0A.4.0` are unchanged |
 | **V2.4 — contestable food handling** | **done.** New model `simulationVersion 0A.6.0`: the `0A.5.0` world exactly (same 10 inputs, same recurrence, same 4 outputs, same 188 parameters, same solid bodies) plus multi-tick, contestable eating. An item is acquired by the existing `eat` output under the unchanged nearest-wins competition, travels with its holder, advances one step per consecutive handling tick and is consumed at 5; `eat = false` releases it; genuine organism-organism body contact dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; held items count towards the food cap. No steal/defend/attack/share rule, no new input or output. Golden hash `3e5b9671f5750712`. New snapshot format **v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
+| **V2.5 — lifetime plasticity** | **done.** New model `simulationVersion 0A.7.0`: all `0A.6.0` capabilities plus 36 non-inherited runtime offsets on hidden→output weights and output biases, with 36 eligibility traces. Learning rate `0.01`, decay `0.90`; reinforcement is actual capped food credit minus actual movement cost, normalized by energy capacity. Genome stays immutable at 188 parameters. Golden hash `04d0b7c5917ca0c0`. Snapshot format **v4**; observer protocol stays v1; `0A.1.0`–`0A.6.0` unchanged |
 | **Phase 0D — Observatory UI** | **complete, frozen for v1.** Slices 1–4 plus the final polish (organism quick-jump, first-run card, demo scripts, help hint). `packages/observatory` renders the live world from the read-only observer stream (protocol v1): organisms with lineage colours, heading and energy, food, births and deaths, camera, selection and an organism inspector (slice 1); an evolution panel with living lineages, a birth/death event feed and session-only population/generation trends (slice 2); inherited morphology in the inspector — the five protocol genes next to the parent's with exact deltas, a Δ count on births, parent navigation (slice 3); a compact ancestry strip walking the observed parent chain back to the founder with a Δ badge per hop (slice 4). **v1 is complete**; further work is v2 unless it is a genuine v1 bug |
 
 **The simulation works.** Organisms move, sense, eat, spend energy, reproduce,
@@ -376,12 +385,12 @@ Resolve-only, inserted twice into the §20.72 order:
 
 ```
  4   Movement resolution
- 4b  body overlap resolution          ← 0A.5.0 only
+ 4b  body overlap resolution          ← 0A.5.0 and later
  5   Movement energy expenditure
  6-7 Feeding and food competition     ← uses post-collision positions
  ...
 17   Births/removals become active
-17b  body overlap resolution          ← 0A.5.0 only, newborns included
+17b  body overlap resolution          ← 0A.5.0 and later, newborns included
 ```
 
 So **being shoved can move an organism into or out of feeding range**, and it
@@ -512,6 +521,41 @@ acquisitions, 675 completions, 4,426 voluntary releases, 1,537 dislodgements by
 body contact, 6 drops on death, and food carried 10,863 world units in total.
 Nothing here is a claim about stealing, defending, hoarding, cooperation,
 pursuit or strategy.
+
+---
+
+## V2.5 — lifetime plasticity (model `0A.7.0`)
+
+Normative contract: `docs/V2.5 Amendment - Lifetime Plasticity (0A.7.0).md`.
+
+`0A.7.0` adds a generic learning capability without programming a strategy.
+The 10 → 8 recurrent → 4 genetic controller remains exactly 188 immutable,
+inherited parameters. Runtime phenotype state adds 32 hidden→output offsets,
+4 output-bias offsets, and one eligibility trace for each. Founders and
+newborns start all 72 values at zero; children inherit only the normally
+mutated genetic baseline.
+
+Eligibility uses the actual hidden activation and centered raw output:
+`E ← 0.90E + hidden × centeredOutput` (bias traces omit `hidden`). After
+movement and feeding, offsets change by `0.01 × reinforcement × E`, with
+`reinforcement = clamp((actual capped food credit − actual movement cost) /
+energyCapacity, −1, 1)`. Basal metabolism, reproduction cost, sight,
+acquisition, holding, handling progress and collision are not rewards. The
+five-tick feeding delay is bridged only by eligibility.
+
+Learned state affects the future and is therefore canonical and stored in
+snapshot format v4; v1/v2/v3 remain tied to the historical models. Observer
+protocol v1 and the Observatory are unchanged and expose no learning internals.
+The linux-arm64 canonical hash at seed 20260910 / tick 10,000 is
+`04d0b7c5917ca0c0` (extinct at tick 2,444, zero births). This fingerprints one
+trajectory; it is not evidence that organisms are smarter.
+
+Run it with:
+
+```bash
+npm run simulate -- --seed 20260910 --ticks 10000 --model 0A.7.0
+npm run world -- --dir worlds/v2.5 --new --seed 8 --model 0A.7.0 --observe 8787
+```
 
 ---
 
@@ -760,10 +804,11 @@ resumes to exactly `b95a0b4ef7dd8449` at 10,000.
 
 **Snapshot format v1** (`packages/persistence/src/snapshot.ts`) — used by the
 feed-forward models `0A.1.0`, `0A.2.0`, `0A.3.0` — is one JSON document with
-these fields (V2.2's **format v2**, for the recurrent `0A.4.0`, is the same
-document with `snapshotFormatVersion: 2` and, in `state`, every organism's
-`hiddenState` and `genome.neural.recurrentHiddenWeights`; each model has
-exactly one format):
+these fields. **Format v2** belongs to recurrent `0A.4.0`/`0A.5.0` and adds
+`hiddenState` plus `recurrentHiddenWeights`; **format v3** belongs to `0A.6.0`
+and adds food holder/progress; **format v4** belongs to `0A.7.0` and adds the
+four plastic offset/eligibility arrays. Each model has exactly one format and
+nothing is migrated:
 
 - `format`, `snapshotFormatVersion: 1`, `simulationVersion`, `tick`;
 - `config` — the complete `SimulationConfig` including `rootSeed` — and
@@ -1459,9 +1504,9 @@ happened and is recorded in `PROJECT_STATUS.md`.
 | `genome/`        | `types.ts` — heritable `MorphologyGenome` / `NeuralGenome`. `founder.ts` — founder draw, mechanical validity, the five-check viability screen. |
 | `organism/`      | `types.ts` — `OrganismRuntimeState`, structurally separate from the genome, plus lineage and death metadata. |
 | `world/`         | `types.ts` (`WorldState`), `fertility.ts` (static seeded field), `bootstrap.ts` (world initialization), `stepWorld.ts` (the canonical tick), `foodCompetition.ts`, `foodRegen.ts`, `offspring.ts`, `runner.ts` (headless N-tick execution). |
-| `model/`         | `simulationModel.ts` — the model registry: what each `simulationVersion` means (6 or 10 inputs, organism sensing, recurrent or feed-forward). |
+| `model/`         | `simulationModel.ts` — the model registry: inputs, recurrence, bodies, food handling and lifetime plasticity by version. |
 | `perception/`    | `sense.ts` — the §11.58 six-input vector, plus (model `0A.3.0`) the four nearest-visible-organism inputs; a pure function of the world snapshot + organism + phenotype. |
-| `neural/`        | `network.ts` — fixed feedforward evaluation, and (model `0A.4.0`) the Elman recurrent evaluation. Pure, RNG-free, mutates nothing. |
+| `neural/`        | `network.ts` — feed-forward/recurrent evaluation; `plasticity.ts` — V2.5 eligibility and bounded runtime readout updates. Deterministic and RNG-free. |
 | `actions/`       | `types.ts` (`ActionIntent`), `decide.ts` (sense → evaluate → intent).                                        |
 | `biology/`       | `movement.ts`, `energy.ts`, `reproduction.ts`, `mutation.ts` — the resolution rules.                         |
 | `telemetry/`     | `types.ts` — read-only per-tick metrics.                                                                     |
@@ -1496,16 +1541,19 @@ population before the next begins.
 ```
  1  Snapshot                    S_t; all sensing reads only this
  2  Sense                       §11.58 six-input vector per living organism (0A.3.0: ten)
- 3  Decide                      neural evaluation -> buffered ActionIntent (0A.4.0: + buffered new memory, applied after all decide)
+ 3  Decide                      neural evaluation -> buffered ActionIntent and memory
+                                0A.7.0: eligibility advances from the activity that chose it
  4  Movement resolution         turn, then forward, clamped to world bounds
- 4b Body overlap resolution     0A.5.0 only: overlapping bodies pushed apart, larger moves less
+ 4b Body overlap resolution     0A.5.0+: overlapping bodies pushed apart, larger moves less
  5  Movement energy expenditure basal metabolism + movementCost(ACTUAL velocity)
  6  Feeding                     candidate (organism, food) pairs
  7  Food competition            nearest wins; exact ties by ascending organism ID
                                 0A.6.0: instead, food handling — held items follow
                                 their holder, drops (eat=false / body contact),
                                 progress, completion, then acquisition
- 8  Energy gain                 foodEnergy credited (0A.6.0: on COMPLETION only)
+ 8  Energy gain                 foodEnergy credited (0A.6.0+: on COMPLETION only)
+ 8b Lifetime plasticity         0A.7.0 only: actual capped food credit minus
+                                actual movement cost reinforces eligibility
  9  Reproduction eligibility    alive AND mature AND energy>=threshold AND requested
 10  Reproduction resolution     every eligible parent reproduces
 11  Parent reproduction cost    parent.energy -= reproductionCost
@@ -1514,9 +1562,9 @@ population before the next begins.
 14  Neural mutation             if the neural channel is enabled
 15  Offspring placement         polar offset from parent, then independent heading
 16  Death resolution            energy <= 0 OR age >= maxAge, one combined pass
-16b Dead holders drop food      0A.6.0 only: at the final position, progress 0, no energy
+16b Dead holders drop food      0A.6.0+: at the final position, progress 0, no energy
 17  Births/removals applied     children join world state, dead leave
-17b Body overlap resolution     0A.5.0 only: the same rule again, newborns included
+17b Body overlap resolution     0A.5.0+: the same rule again, newborns included
 18  Food regeneration           fertility-weighted, capped at worldFoodCapacity
 19  Telemetry                   read-only
 20  Advance tick
@@ -1611,9 +1659,11 @@ from the specification:
 
 - **`[LOCKED]`** — a simulation/research semantic invariant. Not a knob. The
   tick order, the sensory schema of each model (six inputs for `0A.1.0` /
-  `0A.2.0`, ten for `0A.3.0`–`0A.6.0`), the `0A.5.0` overlap definition and
+  `0A.2.0`, ten for `0A.3.0`–`0A.7.0`), the `0A.5.0` overlap definition and
   larger-moves-less displacement rule, the `0A.6.0` handling contract (five
-  consecutive ticks, contact dislodges, no same-tick reacquisition),
+  consecutive ticks, contact dislodges, no same-tick reacquisition), the
+  `0A.7.0` plasticity rule (`learningRate 0.01`, eligibility decay `0.90`,
+  controllable metabolic reinforcement only),
   sense/decide/resolve separation, the
   `reproductionCost > birthEnergy` relationship, "mutation OFF means exact
   inheritance", the two-stream RNG structure, and per-channel RNG isolation
@@ -1630,10 +1680,10 @@ Every field in `config/types.ts` carries its classification and spec citation.
 `validateConfig()` enforces the structural invariants (including
 `reproductionCost > birthEnergy`) and is called by `bootstrapWorld()`.
 
-Two sections are **model-specific and present only on the model that has
+Three sections are **model-specific and present only on models that have
 them**, so an older model's configuration — and its `configHash` — can never
-drift: `body` (`radiusBase`, `radiusPerSize`, `separationPasses`) exists only on
-`0A.5.0` and `0A.6.0`, and `handling` (`ticksRequired`) only on `0A.6.0`.
+drift: `body` exists on `0A.5.0`–`0A.7.0`, `handling` on `0A.6.0`–`0A.7.0`,
+and `plasticity` (`learningRate`, `eligibilityDecay`) only on `0A.7.0`.
 `validateConfig()` refuses each on any other model and refuses its absence on
 the model that needs it.
 
@@ -1677,6 +1727,9 @@ npm run test:watch --workspace=packages/simulation-core
 | `organismSensing.test.ts` | V2.1: self never selected, dead excluded, range and cone boundaries (inclusive), nearest wins, id tie-break, zero distance, `[0,0,0,0]` default, exact distance / angle / relative-size normalisation, unchanged first six inputs, no RNG, order independence |
 | `organismSensingModel.test.ts` | V2.1: 6 / 6 / 10 input dimensions by model, model-specific validation and refusals, native 10-input founders, viability independent of organism inputs, unchanged mutation, the `0A.3.0` golden hash |
 | `recurrentMemory.test.ts` | V2.2: feed-forward vs recurrent layouts by model, 64 / 188 parameters, zero memory for founders and newborns (never inherited), inherited and mutated recurrent weights, immutable genome, memory in the canonical hash, same input + different memory / history → different outputs, exact Elman formula, zero-memory = feed-forward, once-per-acting-tick update from S_t, purity and order independence, founder probes from fresh zero memory, historical mutation schedules, evaluator separation, the `0A.4.0` golden hash |
+| `physicalBodies.test.ts` | V2.3: model gating, body-radius contract, deterministic size-weighted overlap resolution, wall clamping, active/post-birth lifecycle placement, historical isolation, and the `0A.5.0` golden hash |
+| `foodHandling.test.ts` | V2.4: acquisition, continuation, release, completion, contact dislodgement, holder death, held-food cap accounting, lifecycle ordering, historical isolation, and the `0A.6.0` golden hash |
+| `lifetimePlasticity.test.ts` | V2.5: model/config gating, zero runtime state, learning formulas, positive/negative/delayed updates, effective bounds, genome immutability, non-Lamarckian inheritance, RNG isolation, lifecycle timing, excluded reward terms, order independence, and the `0A.7.0` golden hash |
 
 `packages/experiment-harness/tests`:
 
@@ -1697,6 +1750,9 @@ npm run test:watch --workspace=packages/simulation-core
 | `recurrentSnapshot.test.ts` | V2.2: a V2.1-written `0A.3.0` snapshot loads byte-exactly as feed-forward and continues as V2.1 did; formats tied to models; `0A.4.0` format v2 stores memory bit-exactly; missing / wrong-length / non-finite memory refused; no relabelling in either direction; exact resume at 500 / 1,000 / 1,500 / 2,000, golden resume, separate process; store recovery |
 | `modelCompatibility.test.ts` | V2.1: snapshots written by tag `v1.0.0` (0A.2.0, 0A.1.0) load byte-exactly and continue exactly as v1 did; `0A.3.0` exact resume (in process and across processes) to its golden hash; per-model neural-dimension validation; no conversion between models |
 | `storeRecovery.test.ts`  | golden seed: corrupt newest 1 or 3 snapshots → recover → resume == uninterrupted, ending at `b95a0b4ef7dd8449`; fallback → quarantine → resume → save → recover selects 10,000 at `b95a0b4ef7dd8449` |
+| `physicalBodiesSnapshot.test.ts` | V2.3: format-v2 reuse, body config, no collision metadata, exact resume/golden/separate-process recovery, and model-store isolation |
+| `foodHandlingSnapshot.test.ts` | V2.4: format v3 with complete per-food handling state, strict validation and no relabelling, exact resume at handling boundaries, golden and separate-process recovery |
+| `lifetimePlasticitySnapshot.test.ts` | V2.5: format v4 with complete offsets/traces, dimensions/finiteness/effective-bound validation, historical-state refusal, no relabelling, and exact learned-state resume |
 
 `packages/world-runner/tests`:
 
@@ -1708,6 +1764,9 @@ npm run test:watch --workspace=packages/simulation-core
 | `observerStream.test.ts` | frame on connect, ≤ 10 fps, 426 / 400 for non-WebSocket requests, read-only (commands, binary, ping, unmasked, oversized), two clients, stalled clients (bounded buffering, simulation unaffected), disconnect/reconnect, short pacing checks |
 | `recurrentMemoryModel.test.ts` | V2.2: a `0A.4.0` world through create / stop / recover (format v2, memory restored) and the CLI's `--model`; observer purity with frames exactly protocol v1 and no memory or weights |
 | `organismSensingModel.test.ts` | V2.1: a `0A.3.0` world through create / restart and through the CLI's `--model` (refused on recovery), and observer purity for `0A.3.0` with the frame shape exactly protocol v1 |
+| `physicalBodiesModel.test.ts` | V2.3: `0A.5.0` create/recover/CLI continuity with format v2, plus unchanged observer-v1 purity |
+| `foodHandlingModel.test.ts` | V2.4: `0A.6.0` create/recover/CLI continuity with held food in format v3, plus unchanged observer-v1 purity |
+| `lifetimePlasticityModel.test.ts` | V2.5: `0A.7.0` format-v4 create/recover/direct equivalence and observer-v1 purity with no learned-state leakage |
 | `goldenObserver.test.ts`, `goldenPaced.test.ts`, `goldenPacedObserver.test.ts` | seed 20260910 to 10,000 = `b95a0b4ef7dd8449` with observer + client, paced, and paced + observer + client |
 
 `packages/observatory/tests` (vitest, Node environment, no browser):
@@ -1766,19 +1825,19 @@ are never pooled with these.
 | **0A**  | headless deterministic biological simulation core — complete and frozen (`0A.2.0` for v1) |
 | **0B**  | experiment harness — engineering complete; research calibration exploratory, closed for v1 |
 | **0C**  | **complete for v1** — persistence, snapshots, recovery, the canonical continuous world: slice 1, deterministic save/load/resume (snapshot format v1); slice 2, the snapshot store (retention 5, world identity, fallback recovery); slice 3, quarantine of corrupt snapshots; the persistent world runner (`packages/world-runner`); the read-only observer bridge (WebSocket frames, pacing) |
-| **0D**  | **active** — the Observatory UI (`packages/observatory`). Slice 1 done: the live world view (organisms, lineage colours, heading, energy, food, births/deaths, camera, selection, inspector) over the read-only observer stream (protocol v1). Slice 2 done: evolution visibility (living lineage panel, birth/death feed, session-only trends). Slice 3 done: inherited morphology (parent → child gene deltas, birth Δ counts). Slice 4 done: compact ancestry strip. Final polish done (quick-jump, first-run card, demo scripts). **Frozen for v1** |
-| **V2**  | **started** — V2.1 done: the separately versioned model `0A.3.0` (nearest-visible-organism sensing, 10 → 8 → 4) and the Observatory's selected-organism vision cone. V2.2 done: model `0A.4.0` (Elman recurrent memory, 10 → 8 ↺ → 4) with snapshot format v2. `0A.1.0` / `0A.2.0` / `0A.3.0` frozen |
+| **0D**  | **complete / frozen for v1** — live view, evolution visibility, inherited morphology, compact ancestry and final polish over read-only observer protocol v1 |
+| **V2**  | **started through V2.5** — separately versioned models: `0A.3.0` organism sensing, `0A.4.0` recurrent memory, `0A.5.0` physical bodies, `0A.6.0` contestable food handling, and `0A.7.0` lifetime plasticity. Every earlier model remains frozen |
 
 Phase 0A is complete. **Do not put Phase 0B work inside `simulation-core`.**
 
-Specifically, none of the following belongs in this package: React, PixiJS or
+Specifically, none of the following belongs in the frozen Phase 0A model: React, PixiJS or
 any rendering; WebSocket or any transport; PostgreSQL or any database; cloud
 deployment; snapshot persistence; experiment dashboards or runners; species
-detection or emergence analytics; recurrent networks, lifetime learning or
-plasticity; signaling, predation, health/damage models; sexual reproduction or
+detection or emergence analytics; signaling, predation, health/damage models; sexual reproduction or
 crossover; procedural morphology rendering. (Sensing other organisms entered
 the core in V2.1 as the separately versioned model `0A.3.0`; the v1 models
-have none.)
+have none. Recurrence and lifetime plasticity entered only as the separately
+versioned V2.2 and V2.5 models.)
 
 The Phase 0B harness is a *consumer* of `simulation-core`, in its own package.
 Networking, persistence and visualization are consumers too — never

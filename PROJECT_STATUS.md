@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Artificial Life Observatory
 
-**Last updated:** 2026-09-12 (V2.4 done: contestable food handling, model `0A.6.0`; V2.3 physical bodies `0A.5.0`; V2.2 recurrent memory `0A.4.0`; V2.1 organism sensing `0A.3.0`; v1 frozen)
+**Last updated:** 2026-09-12 (V2.5 done: lifetime plasticity, model `0A.7.0`; earlier models frozen)
 **Purpose:** live handoff state for continuation across chat/model/usage limits.
 
 > Read `AGENTS.md` first.
@@ -22,6 +22,7 @@
 | **V2.2** — recurrent memory | **DONE** (below): new model `simulationVersion 0A.4.0`, 10 → 8 recurrent → 4 — the `0A.3.0` model with an Elman hidden layer (+64 inherited recurrent weights, 188 parameters), runtime memory (8 values, zero at birth, never inherited), no lifetime learning. Golden hash `436a377506063609`. New snapshot format v2 for `0A.4.0`; format v1 unchanged; observer protocol v1 unchanged; no new UI |
 | **V2.3** — physical bodies | **DONE** (below): new model `simulationVersion 0A.5.0` — the `0A.4.0` controller exactly (10 → 8 recurrent → 4, 188 parameters, 8 memory values) plus SOLID BODIES. Radius `2.0 + 2.2 × size` world units from the inherited size gene; overlap is strict `centreDistance < rA + rB`; separation along the line of centres weighted `shareA = sizeB/(sizeA+sizeB)` so the larger body moves less. Displacement only — no damage, attack, predation, energy transfer, event, new input/output/action or persistent physics state. Feeding uses post-collision positions. Golden hash `1006a56393e19cd9` (canonical seed extinct at tick 2,551, 2 births — reported honestly, no seed shopping). Snapshot format stays v2, observer protocol stays v1, `0A.1.0`–`0A.4.0` unchanged |
 | **V2.4** — contestable food handling | **DONE** (below): new model `simulationVersion 0A.6.0` — the `0A.5.0` world exactly (10 → 8 recurrent → 4, 188 parameters, solid bodies) plus MULTI-TICK CONTESTABLE EATING. `handling.ticksRequired` = 5 consecutive handling ticks per item, driven entirely by the existing `eat` output (acquire / continue / release); the item travels with its holder and still counts in the food cap; genuine organism-organism body contact from the ACTIVE resolution dislodges it; a dropped item cannot be reacquired until the next tick; progress resets on release, dislodgement and death; only completion grants the ordinary food energy. No steal/defend/attack/share rule, no new input or output, no damage, no transfer. Golden hash `3e5b9671f5750712` (canonical seed: 0 births, extinct at tick 2,854 — reported honestly, no seed shopping, no tuning). New **snapshot format v3**; observer protocol stays v1; `0A.1.0`–`0A.5.0` unchanged |
+| **V2.5** — lifetime plasticity | **DONE** (below): new model `simulationVersion 0A.7.0` — all `0A.6.0` capabilities plus deterministic reward-modulated adaptation of the final action readout. The 188 inherited parameters remain immutable; 36 runtime offsets and 36 eligibility traces start at zero and are not inherited. Reinforcement is actual capped food energy credited minus actual movement energy spent, divided by capacity. Learning rate 0.01, decay 0.90. Golden hash `04d0b7c5917ca0c0` (canonical seed: 0 births, extinct tick 2,444). Snapshot format **v4**; observer protocol v1 unchanged; `0A.1.0`–`0A.6.0` unchanged |
 | **Phase 0D** — Observatory / visualisation | **COMPLETE / FROZEN FOR V1** (below): `packages/observatory`, the Observatory frontend (React + TypeScript + Vite + PixiJS). Slice 1 renders the live world from the read-only observer stream: lineage-coloured organisms with readable heading and an energy ring, food, birth/death effects, interpolated motion, camera, selection with lineage emphasis, an organism inspector, HUD and connection states. Slice 2 makes evolution visible: a living-lineage panel, a birth/death/extinction event feed, session-only population/generation/lineage/food trends, a prominent max-generation stat, and a per-lineage living-count sparkline — all derived in the browser from received frames, bounded, non-persistent, non-scientific. Slice 3 makes inheritance visible: the inspector compares the five protocol morphology genes with the parent's (exact deltas, change marks, tiny bars) from a bounded session cache, distinguishes alive / observed-dead / unavailable parents and founders, lets you select a living parent, marks births with a Δ count, and adds a *Morphology changes* stat. Slice 4 adds a compact ancestry strip: the observed parent chain walked backwards through that cache to the founder (or an honest boundary), a Δ badge per hop, alive ancestors selectable. The final polish adds an organism quick-jump, the first-run card, `npm run demo:new` / `demo:resume` with DEMO seed `31415926`, and a help hint. **V1 COMPLETE.** Further work is v2 unless it is a genuine v1 bug |
 
 **Frozen v1 biological model:**
@@ -81,6 +82,18 @@ This is a **product freeze, not a research baseline qualification**.
 | snapshot format | **v3** (per-food `holderId` and `handlingProgress`) |
 | observer protocol | v1 (unchanged) |
 | golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `3e5b9671f5750712` |
+
+**V2.5 model (new, separately versioned):**
+
+| Setting | Value |
+|---|---|
+| `simulationVersion` | `0A.7.0` (`lifetimePlasticityModelConfig()`, `--model 0A.7.0`) |
+| controller | 10 → 8 recurrent → 4; 188 immutable inherited parameters |
+| plastic runtime | 32 hidden→output offsets + 4 output-bias offsets; 36 matching eligibility traces |
+| rule | eligibility decay 0.90; update rate 0.01; reinforcement = `(actual capped food credit - actual movement cost) / energyCapacity`, clamped |
+| inheritance | genome only; memory, offsets and eligibility reset to zero |
+| snapshot / observer | v4 / v1 |
+| golden hash (seed 20260910, 10,000 ticks, linux-arm64) | `04d0b7c5917ca0c0` |
 
 **DEMO seed (presentation only): `31415926`** — used by `npm run demo:new`
 (`worlds/demo`, 10 ticks/s, observer on 8787). Chosen from a 40,000-tick
@@ -145,12 +158,12 @@ v1 is a functioning, observable artificial-life world. It is built in two steps:
   neural genome), watch births, deaths and mutations, follow lineages across
   generations, and view population, generation and lineage trends.
 
-No RL, learning, memory, predators, signalling, new actions or richer biology.
+For v1, no RL, learning, memory, predators, signalling, new actions or richer biology.
 The existing life is made persistent and visible first.
 
-A clearly labelled DEMO seed may later be chosen for the UI. It stays separate
+A clearly labelled DEMO seed was chosen for the v1 UI. It stays separate
 from the pilot and validation seeds, and it is never research evidence. None
-has been chosen yet.
+is `31415926`.
 
 ---
 
@@ -189,9 +202,41 @@ da79527 Phase 0A amendment: multi-founder initialization (0A.1.0 -> 0A.2.0)
 db294c2 Phase 0A: complete the headless deterministic simulation core
 ```
 
-The full history is in `git log`. The worktree is clean apart from generated
-artifacts, which are gitignored (`node_modules/`, `dist/`, `coverage/`,
-`results/`, `.DS_Store`, `*.log`).
+The full history is in `git log`. Before the V2.5 commit, the only unrelated
+working-tree item was the owner's untracked `Claude outputs/`; it was preserved
+untouched. Generated artifacts are gitignored (`node_modules/`, `dist/`,
+`coverage/`, `results/`, `.DS_Store`, `*.log`).
+
+---
+
+## Verification — V2.5 checkpoint (this session)
+
+Official `node:22.23.2-bookworm-slim` image, explicitly linux-arm64, with the
+repository mounted read-only and copied only into the disposable container:
+
+```text
+simulation-core tests:    313 / 313 passed   (+18: lifetimePlasticity)
+experiment-harness tests: 138 / 138 passed   (unchanged)
+persistence tests:        116 / 116 passed   (+5: lifetimePlasticitySnapshot)
+world-runner tests:        60 / 60  passed   (+2: lifetimePlasticityModel)
+observatory tests:         90 / 90  passed   (unchanged)
+workspace total:          717 / 717 passed
+workspace build:          PASS (`npm run build`)
+```
+
+The `0A.7.0` golden ran twice in-test with living checkpoints and ended at
+`04d0b7c5917ca0c0`; every historical model golden also passed in the same
+suite. Local macOS-arm64 focused V2.5 tests passed (17 core tests excluding the
+linux-pinned golden, 5 persistence, 2 runner), and all five packages built.
+The macOS canonical hash differs as recorded in Known gap 13; no semantic
+change was made to chase it.
+
+Live smoke check: a paced `0A.7.0` seed-8 world ran from tick 0 to 400 with
+observer protocol v1; the real Observatory showed `LIVE`, the correct model,
+seed and advancing world counters, with no browser warnings/errors. The store
+then recovered snapshot 400 and continued to 500 as `0A.7.0` with the same
+config hash, saving format-v4 state. Automated tests additionally compare the
+resumed canonical state directly with uninterrupted execution.
 
 ---
 
@@ -2946,22 +2991,81 @@ legitimate result. No claim is made about stealing, defending, hoarding,
 cooperation, pursuit, strategy or intelligence; only the mechanics above were
 measured. No DEMO seed was chosen for `0A.6.0`.
 
+## V2.5 — RESULT: DONE (lifetime plasticity, model `0A.7.0`)
+
+Contract: `docs/V2.5 Amendment - Lifetime Plasticity (0A.7.0).md`.
+
+**Implementation.** Registry flag `lifetimePlasticity` is true only for
+`0A.7.0`. The genetic controller stays 10 → 8 recurrent → 4 with 188
+parameters. Each organism adds 32 `hiddenOutputWeightOffsets`, 4
+`outputBiasOffsets`, and 36 matching eligibility traces as runtime phenotype
+state. `neural/plasticity.ts` implements deterministic centered-output
+eligibility (`0.90 × old + pre × post`) and bounded updates (`0.01 ×
+reinforcement × eligibility`). `stepWorld` buffers decision activity, records
+actual movement cost and actual capped food credit, then learns before
+reproduction. Basal metabolism and reproduction cost never enter the signal.
+
+**Inheritance and protection.** Founders/newborns start memory, offsets and
+traces at exact zero. Offspring inherit/mutate only the genome. Tests compare
+`0A.6.0`/`0A.7.0` founder genomes and RNG states, child mutation/RNG states,
+and repeated learning against an exact serialized genome. Historical models
+have no plastic keys or config.
+
+**Persistence and observer.** Format v4 belongs only to `0A.7.0`; v1/v2/v3
+mapping is unchanged. Exact dimensions, finiteness and effective neural bounds
+are validated, plastic state is forbidden historically, and format/model relabelling is rejected.
+Continuous and serialized/resumed learning trajectories match. Protocol v1 is
+unchanged and frames contain no plastic, eligibility, reward or neural state.
+
+**Canonical linux-arm64 verification.** Official Docker image
+`node:22.23.2-bookworm-slim`, explicitly `--platform linux/arm64`, repository
+mounted read-only. Historical 10,000-tick hashes all matched:
+`6a6576bd49e86b27`, `b95a0b4ef7dd8449`, `e54d0c11249b7849`,
+`436a377506063609`, `1006a56393e19cd9`, `3e5b9671f5750712`.
+New `0A.7.0`: tick 500 `3430a275c26406f2`; tick 1,000
+`9cf7240aa1ca863e`; tick 2,000 `cfeb892aecfbaf91`; tick 10,000
+`04d0b7c5917ca0c0`; zero births, extinct tick 2,444. The unrelated pre-existing
+Docker image briefly used before the owner's explicit environment constraint
+was discarded as evidence; none of its results are used here.
+
+**Controlled evidence.** Positive reinforcement 0.5 with eligibility 2 gives
+offset +0.01; negative gives -0.01. Five zero-reward eligibility steps leave
+offsets zero but retain trace 1.22853; delayed reward 0.25 then adds
+0.003071325. With the same genome/input, those ±0.01 histories produce forward
+outputs 0.7009695482 vs 0.6990286580. Tests also cover zero reward, bounds,
+capped credit, movement penalty, excluded basal/reproduction/collision/sight/
+acquisition terms, exactly-once lifecycle timing, order independence and
+genome immutability.
+
+**Descriptive coverage comparison (seed 8, 6,000 ticks; no tuning).** Both
+models survived. `0A.6.0`: population 46, births 118, acquisitions 6,649,
+completions 675. `0A.7.0`: population 47, births 103, acquisitions 5,043,
+completions 557, living-organism mean absolute offset 0.022569 and maximum
+0.236630. Combined release counts were 5,969 vs 4,483; this measurement does
+not separate voluntary release, dislodgement and death. One trajectory is not
+causal evidence and supports no intelligence claim.
+
+**Performance.** Paired medians in the same official environment: 25
+organisms 0.1165 → 0.1240 ms/tick (+0.0075 ms, 6.5%); 100 organisms 0.7438 →
+0.7797 (+0.0359 ms, 4.8%); 250 organisms 3.3857 → 3.5274 (+0.1417 ms, 4.2%).
+Plain loops only; no ML library, GPU, worker or spatial optimization.
+
 ## V2 backlog (deferred)
 
 Richer senses — **started** (V2.1 above). Memory / recurrent neural state —
 **started** (V2.2 above). Physical interaction — **started** (V2.3 above). Contestable resources —
 **started** (V2.4 above). Neural fingerprint / neural mutation visualisation;
-lifetime learning, plasticity and RL experiments;
+lifetime-learning extensions and RL experiments;
 richer morphology; full genealogy; persistent analytics; cloud / database /
 remote observers; mobile polish; richer ecosystem and environmental
 complexity. Any of these is a new phase with its own spec.
 
 ## NEXT EXACT STEP
 
-**None pending — V2.4 is complete.** The next task, if any, is either a genuine
+**None pending — V2.5 is complete.** The next task, if any, is either a genuine
 bug fix (focused failing test, smallest correction, rerun the affected package
 and all six golden hashes on arm64) or the next V2 slice under its own approved
-specification, as a new model version (never an edit of `0A.1.0`–`0A.6.0`).
+specification, as a new model version (never an edit of `0A.1.0`–`0A.7.0`).
 Open decisions for the owner, not for an agent: whether new product worlds
 should default to a V2 model, DEMO seeds for `0A.3.0`–`0A.6.0`, whether
 `0A.6.0`'s much harsher ecology should eventually be rebalanced (deliberately

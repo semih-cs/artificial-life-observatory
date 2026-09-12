@@ -93,7 +93,7 @@ function runTo(world: WorldState, c: SimulationConfig, tick: number): WorldState
 
 describe('model identity: which models have physical bodies', () => {
   it('(1–5) 0A.1.0–0A.4.0 are non-solid; 0A.5.0 is recurrent AND physical', () => {
-    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0']);
+    expect(SUPPORTED_MODEL_VERSIONS).toEqual(['0A.1.0', '0A.2.0', '0A.3.0', '0A.4.0', '0A.5.0', '0A.6.0', '0A.7.0']);
     const expected = {
       '0A.1.0': { inputs: 6, recurrent: false, physicalBodies: false },
       '0A.2.0': { inputs: 6, recurrent: false, physicalBodies: false },

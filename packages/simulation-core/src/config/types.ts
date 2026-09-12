@@ -199,7 +199,7 @@ export interface ReproductionConfig {
 }
 
 /**
- * V2.3 physical bodies (model 0A.5.0 only). Every number here is
+ * V2.3 physical bodies (models 0A.5.0 and later). Every number here is
  * configuration — no biological constant of this slice lives anywhere else
  * (§24.41).
  *
@@ -233,7 +233,7 @@ export interface PhysicalBodyConfig {
 }
 
 /**
- * V2.4 contestable food handling (model 0A.6.0 only). Every number here is
+ * V2.4 contestable food handling (models 0A.6.0 and later). Every number here is
  * configuration — no biological constant of this slice lives anywhere else
  * (§24.41).
  *
@@ -255,10 +255,17 @@ export interface FoodHandlingConfig {
   ticksRequired: number;
 }
 
+export interface PlasticityConfig {
+  /** Fixed V2.5 local learning step size. */
+  learningRate: number;
+  /** Fixed V2.5 eligibility carry-over. */
+  eligibilityDecay: number;
+}
+
 export interface SimulationConfig {
   /**
-   * The model identity (see `model/simulationModel.ts`): 0A.1.0, 0A.2.0 or
-   * 0A.3.0. It selects the sensory contract and neural input dimension.
+   * The model identity (see `model/simulationModel.ts`). It selects every
+   * versioned structural capability and the neural input dimension.
    */
   simulationVersion: string;
   rootSeed: number;
@@ -273,17 +280,19 @@ export interface SimulationConfig {
   mutation: MutationConfig;
   reproduction: ReproductionConfig;
   /**
-   * Present if and only if the model has physical bodies (0A.5.0, 0A.6.0). Its
+   * Present if and only if the model has physical bodies (0A.5.0 and later). Its
    * absence on 0A.1.0-0A.4.0 is what keeps their configurations, and their
    * configHashes, exactly as they were.
    */
   body?: PhysicalBodyConfig;
   /**
-   * Present if and only if the model has contestable food handling (0A.6.0).
+   * Present if and only if the model has contestable food handling (0A.6.0 and later).
    * Its absence on 0A.1.0-0A.5.0 is what keeps their configurations, and their
    * configHashes, exactly as they were.
    */
   handling?: FoodHandlingConfig;
+  /** Present if and only if the model has lifetime plasticity (0A.7.0). */
+  plasticity?: PlasticityConfig;
 }
 
 /**
@@ -398,6 +407,17 @@ export function validateConfig(config: SimulationConfig): void {
       if (!Number.isInteger(handling.ticksRequired) || handling.ticksRequired < 1) {
         problems.push(`handling.ticksRequired (${handling.ticksRequired}) must be an integer >= 1.`);
       }
+    }
+
+    const learns = simulationModel(config.simulationVersion).lifetimePlasticity;
+    const plasticity = config.plasticity;
+    if (learns && plasticity === undefined) {
+      problems.push(`model ${config.simulationVersion} has lifetime plasticity and requires a plasticity configuration.`);
+    } else if (!learns && plasticity !== undefined) {
+      problems.push(`model ${config.simulationVersion} is non-plastic, so it must not carry a plasticity configuration.`);
+    } else if (learns && plasticity !== undefined) {
+      if (plasticity.learningRate !== 0.01) problems.push('plasticity.learningRate must be exactly 0.01 for model 0A.7.0.');
+      if (plasticity.eligibilityDecay !== 0.90) problems.push('plasticity.eligibilityDecay must be exactly 0.90 for model 0A.7.0.');
     }
   }
 

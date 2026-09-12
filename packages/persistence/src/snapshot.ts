@@ -1,7 +1,7 @@
 /**
- * Canonical world snapshot — format v1 (Phase 0C slice 1) and format v2 (V2.2).
+ * Canonical world snapshots — formats v1 through v4.
  *
- * Two formats, one per controller kind, chosen by the snapshot's model:
+ * One format per model-state shape, chosen by the snapshot's model:
  *   - format v1: the feed-forward models 0A.1.0, 0A.2.0, 0A.3.0 — exactly the
  *     historical format; every existing v1 file reads, re-serialises and
  *     resumes as before.
@@ -9,6 +9,8 @@
  *     state additionally carries, per FOOD item, `holderId` and
  *     `handlingProgress` — future-affecting state that decides who is about
  *     to be fed.
+ *   - format v4: the lifetime-plasticity model 0A.7.0. It adds the learned
+ *     final-readout offsets and eligibility traces for every organism.
  *   - format v2: the recurrent models 0A.4.0 and 0A.5.0. Their canonical state additionally
  *     stores each organism's runtime memory `hiddenState` and its genome's
  *     `recurrentHiddenWeights`. Memory is future-affecting runtime state, so a
@@ -34,8 +36,8 @@
  *     contains both RNG stream states (§18.24, §19.12).
  *   - The complete SimulationConfig travels with the state (§19.14): the tick
  *     function is `stepWorld(state, config)`, so the state alone is ambiguous.
- *   - One format, several models. The stored record has the same shape for
- *     every supported model; what differs by model is the neural input
+ *   - Formats may serve several models when their stored shape is identical.
+ *     What also differs by model is the neural input
  *     dimension of every genome (6 for 0A.1.0 / 0A.2.0, 10 for 0A.3.0). The
  *     snapshot's own `simulationVersion` — which must agree with its config and
  *     state — selects that dimension through simulation-core's model registry,
@@ -67,6 +69,7 @@ import {
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
+  LIFETIME_PLASTICITY_MODEL_VERSION,
   NEURAL_OUTPUT_SIZE,
   simulationModel,
 } from '@alo/simulation-core';
@@ -81,9 +84,11 @@ export const SNAPSHOT_FORMAT_VERSION = 1;
 export const RECURRENT_SNAPSHOT_FORMAT_VERSION = 2;
 /** Format v3: the contestable-food-handling model 0A.6.0 — v2 plus per-food holder and handling progress. */
 export const FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION = 3;
+/** Format v4: 0A.7.0 — v3 plus per-organism learned offsets and eligibility traces. */
+export const LIFETIME_PLASTICITY_SNAPSHOT_FORMAT_VERSION = 4;
 /** Every format this loader reads. */
 export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [
-  SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION, FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION,
+  SNAPSHOT_FORMAT_VERSION, RECURRENT_SNAPSHOT_FORMAT_VERSION, FOOD_HANDLING_SNAPSHOT_FORMAT_VERSION, LIFETIME_PLASTICITY_SNAPSHOT_FORMAT_VERSION,
 ];
 
 /**
@@ -95,23 +100,25 @@ export const SUPPORTED_SNAPSHOT_FORMAT_VERSIONS: readonly number[] = [
  * change the stored shape (format v1); adding 0A.4.0 did (format v2). Adding
  * 0A.5.0 did NOT: physical bodies add no future-affecting per-organism state
  * beyond position, morphology and the existing memory, all of which format v2
- * already stores — so 0A.5.0 reuses format v2 unchanged, and no format v3
- * exists.
+ * already stores — so 0A.5.0 reuses format v2 unchanged. Food handling adds
+ * format v3, and lifetime plasticity adds format v4.
  */
 export const SUPPORTED_SIMULATION_VERSIONS: readonly string[] = [
-  FOOD_HANDLING_MODEL_VERSION, PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
+  LIFETIME_PLASTICITY_MODEL_VERSION, FOOD_HANDLING_MODEL_VERSION, PHYSICAL_BODIES_MODEL_VERSION, RECURRENT_MEMORY_MODEL_VERSION, ORGANISM_SENSING_MODEL_VERSION, MULTI_FOUNDER_MODEL_VERSION, SINGLE_FOUNDER_MODEL_VERSION,
 ];
 
 /**
- * The one format a supported model is stored in: 3 for a food-handling model,
- * 2 for the other recurrent models, 1 for the feed-forward ones. Each model
+ * The one format a supported model is stored in: 4 for lifetime plasticity,
+ * 3 for food handling without plasticity, 2 for the other recurrent models,
+ * 1 for feed-forward models. Each model
  * has exactly ONE format, and the format is checked against the model before
  * anything in a snapshot is trusted — so a 0A.5.0 world can never be stored
  * or relabelled as v3, and a 0A.6.0 world can never be stored or relabelled as
  * v2 (which would silently drop who is handling what).
  */
-export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 | 3 {
+export function snapshotFormatVersionFor(simulationVersion: string): 1 | 2 | 3 | 4 {
   const model = simulationModel(simulationVersion);
+  if (model.lifetimePlasticity) return 4;
   if (model.foodHandling) return 3;
   return model.recurrent ? 2 : 1;
 }
@@ -183,8 +190,22 @@ export interface WorldSnapshotV3 extends Omit<WorldSnapshotV1, 'snapshotFormatVe
   state: CanonicalWorldStateV3;
 }
 
+export interface CanonicalWorldStateV4 extends Omit<CanonicalWorldStateV3, 'organisms'> {
+  organisms: Array<CanonicalWorldStateV2['organisms'][number] & {
+    hiddenOutputWeightOffsets: number[];
+    outputBiasOffsets: number[];
+    hiddenOutputEligibilityTraces: number[];
+    outputBiasEligibilityTraces: number[];
+  }>;
+}
+
+export interface WorldSnapshotV4 extends Omit<WorldSnapshotV1, 'snapshotFormatVersion' | 'state'> {
+  snapshotFormatVersion: 4;
+  state: CanonicalWorldStateV4;
+}
+
 /** A snapshot of any format; `snapshotFormatVersion` discriminates. */
-export type WorldSnapshot = WorldSnapshotV1 | WorldSnapshotV2 | WorldSnapshotV3;
+export type WorldSnapshot = WorldSnapshotV1 | WorldSnapshotV2 | WorldSnapshotV3 | WorldSnapshotV4;
 
 export interface WorldSnapshotV1 {
   format: typeof SNAPSHOT_FORMAT_ID;
@@ -225,8 +246,8 @@ function detach<T>(value: T): T {
 /**
  * Capture a world and the configuration it runs under. Reads only; the world
  * and config are never modified, and no RNG is touched. The format follows
- * the model: v3 (with food handling) for 0A.6.0, v2 (with memory) for 0A.4.0
- * and 0A.5.0, v1 for the feed-forward models.
+ * the model: v4 for 0A.7.0, v3 for 0A.6.0, v2 for 0A.4.0 and 0A.5.0, and v1
+ * for the feed-forward models.
  */
 export function createSnapshot(world: WorldState, config: SimulationConfig): WorldSnapshot {
   if (world.simulationVersion !== config.simulationVersion) {
@@ -439,6 +460,8 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
     const m = g['morphology'] as Record<string, unknown>;
     for (const k of ['size', 'maxSpeed', 'visionRange', 'visionAngle', 'metabolism'] as const) if (!isNum(m[k])) malformed(`organism[${i}].genome.morphology.${k}`);
     const n = g['neural'] as Record<string, unknown>;
+    const hiddenOutputWeights = numArray(n['hiddenOutputWeights'], `organism[${i}] hiddenOutputWeights`, NEURAL_OUTPUT_SIZE * hidden);
+    const outputBiases = numArray(n['outputBiases'], `organism[${i}] outputBiases`, NEURAL_OUTPUT_SIZE);
     // Recurrent (format v2): memory and recurrent weights are required, with
     // the configured sizes and finite values. Feed-forward (format v1): they
     // must be absent — an old model never carries memory, and a recurrent
@@ -450,6 +473,32 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
       recurrentHiddenWeights = numArray(n['recurrentHiddenWeights'], `organism[${i}] recurrentHiddenWeights`, hidden * hidden);
     } else if ('hiddenState' in o || 'recurrentHiddenWeights' in n) {
       malformed(`organism[${i}] carries recurrent state, but model ${config.simulationVersion} is feed-forward`);
+    }
+    let hiddenOutputWeightOffsets: number[] | undefined;
+    let outputBiasOffsets: number[] | undefined;
+    let hiddenOutputEligibilityTraces: number[] | undefined;
+    let outputBiasEligibilityTraces: number[] | undefined;
+    const plasticKeys = ['hiddenOutputWeightOffsets', 'outputBiasOffsets', 'hiddenOutputEligibilityTraces', 'outputBiasEligibilityTraces'] as const;
+    if (model.lifetimePlasticity) {
+      hiddenOutputWeightOffsets = numArray(o['hiddenOutputWeightOffsets'], `organism[${i}] hiddenOutputWeightOffsets`, NEURAL_OUTPUT_SIZE * hidden);
+      outputBiasOffsets = numArray(o['outputBiasOffsets'], `organism[${i}] outputBiasOffsets`, NEURAL_OUTPUT_SIZE);
+      hiddenOutputEligibilityTraces = numArray(o['hiddenOutputEligibilityTraces'], `organism[${i}] hiddenOutputEligibilityTraces`, NEURAL_OUTPUT_SIZE * hidden);
+      outputBiasEligibilityTraces = numArray(o['outputBiasEligibilityTraces'], `organism[${i}] outputBiasEligibilityTraces`, NEURAL_OUTPUT_SIZE);
+      const { min, max } = config.neural.neuralParamBounds;
+      for (let j = 0; j < hiddenOutputWeights.length; j++) {
+        const effective = hiddenOutputWeights[j]! + hiddenOutputWeightOffsets[j]!;
+        if (effective < min || effective > max) {
+          malformed(`organism[${i}] effective hiddenOutputWeights[${j}] is outside neuralParamBounds [${min}, ${max}]`);
+        }
+      }
+      for (let j = 0; j < outputBiases.length; j++) {
+        const effective = outputBiases[j]! + outputBiasOffsets[j]!;
+        if (effective < min || effective > max) {
+          malformed(`organism[${i}] effective outputBiases[${j}] is outside neuralParamBounds [${min}, ${max}]`);
+        }
+      }
+    } else if (plasticKeys.some((key) => key in o)) {
+      malformed(`organism[${i}] carries plastic state, but model ${config.simulationVersion} is non-plastic`);
     }
     const organism: OrganismRuntimeState = {
       id: o['id'] as number,
@@ -476,13 +525,19 @@ function buildWorld(state: Record<string, unknown>, config: SimulationConfig, bo
         neural: {
           inputHiddenWeights: numArray(n['inputHiddenWeights'], `organism[${i}] inputHiddenWeights`, hidden * inputSize),
           hiddenBiases: numArray(n['hiddenBiases'], `organism[${i}] hiddenBiases`, hidden),
-          hiddenOutputWeights: numArray(n['hiddenOutputWeights'], `organism[${i}] hiddenOutputWeights`, NEURAL_OUTPUT_SIZE * hidden),
-          outputBiases: numArray(n['outputBiases'], `organism[${i}] outputBiases`, NEURAL_OUTPUT_SIZE),
+          hiddenOutputWeights,
+          outputBiases,
           ...(recurrentHiddenWeights !== undefined ? { recurrentHiddenWeights } : {}),
         },
       },
     };
     if (hiddenState !== undefined) organism.hiddenState = hiddenState;
+    if (hiddenOutputWeightOffsets !== undefined) {
+      organism.hiddenOutputWeightOffsets = hiddenOutputWeightOffsets;
+      organism.outputBiasOffsets = outputBiasOffsets!;
+      organism.hiddenOutputEligibilityTraces = hiddenOutputEligibilityTraces!;
+      organism.outputBiasEligibilityTraces = outputBiasEligibilityTraces!;
+    }
     return organism;
   });
   // Food handling (format v3, model 0A.6.0): every item carries `holderId`

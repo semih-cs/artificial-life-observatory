@@ -8,7 +8,7 @@ import { NeuralGenome, NEURAL_INPUT_SIZE, NEURAL_OUTPUT_SIZE } from '../genome/t
  *
  * Two controllers, chosen by the model registry: the feed-forward
  * `evaluateNetwork` (0A.1.0-0A.3.0) and the recurrent
- * `evaluateRecurrentNetwork` (0A.4.0). Each refuses the other's genomes.
+ * `evaluateRecurrentNetwork` (0A.4.0 and later). Each refuses the other's genomes.
  */
 
 export interface RawNetworkOutputs {
@@ -45,12 +45,34 @@ function checkDimensions(
 }
 
 /** Hidden -> output layer, shared by both controllers: identical arithmetic and activations. */
-function outputsFromHidden(genome: NeuralGenome, hidden: readonly number[], hiddenSize: number): RawNetworkOutputs {
+function outputsFromHidden(
+  genome: NeuralGenome,
+  hidden: readonly number[],
+  hiddenSize: number,
+  hiddenOutputWeightOffsets?: readonly number[],
+  outputBiasOffsets?: readonly number[]
+): RawNetworkOutputs {
+  if ((hiddenOutputWeightOffsets === undefined) !== (outputBiasOffsets === undefined)) {
+    throw new Error('outputsFromHidden: plastic weight and bias offsets must be supplied together');
+  }
+  if (hiddenOutputWeightOffsets !== undefined && hiddenOutputWeightOffsets.length !== NEURAL_OUTPUT_SIZE * hiddenSize) {
+    throw new Error(`outputsFromHidden: expected ${NEURAL_OUTPUT_SIZE * hiddenSize} hidden->output offsets, got ${hiddenOutputWeightOffsets.length}`);
+  }
+  if (outputBiasOffsets !== undefined && outputBiasOffsets.length !== NEURAL_OUTPUT_SIZE) {
+    throw new Error(`outputsFromHidden: expected ${NEURAL_OUTPUT_SIZE} output-bias offsets, got ${outputBiasOffsets.length}`);
+  }
+  if (hiddenOutputWeightOffsets !== undefined && !hiddenOutputWeightOffsets.every(Number.isFinite)) {
+    throw new Error('outputsFromHidden: hidden->output offsets must be finite');
+  }
+  if (outputBiasOffsets !== undefined && !outputBiasOffsets.every(Number.isFinite)) {
+    throw new Error('outputsFromHidden: output-bias offsets must be finite');
+  }
   const outputsRaw: number[] = new Array(NEURAL_OUTPUT_SIZE);
   for (let o = 0; o < NEURAL_OUTPUT_SIZE; o++) {
-    let sum = genome.outputBiases[o] ?? 0;
+    let sum = (genome.outputBiases[o] ?? 0) + (outputBiasOffsets?.[o] ?? 0);
     for (let h = 0; h < hiddenSize; h++) {
-      const w = genome.hiddenOutputWeights[o * hiddenSize + h] ?? 0;
+      const index = o * hiddenSize + h;
+      const w = (genome.hiddenOutputWeights[index] ?? 0) + (hiddenOutputWeightOffsets?.[index] ?? 0);
       sum += w * hidden[h]!;
     }
     outputsRaw[o] = sum;
@@ -110,8 +132,13 @@ export interface RecurrentNetworkResult {
   hiddenState: number[];
 }
 
+export interface PlasticRecurrentNetworkResult extends RecurrentNetworkResult {
+  /** The actual recurrent activation that produced `outputs`, used by the local eligibility rule. */
+  hiddenActivation: number[];
+}
+
 /**
- * The RECURRENT (Elman) controller of model 0A.4.0 (V2.2):
+ * The non-plastic RECURRENT (Elman) controller introduced by model 0A.4.0 (V2.2):
  *
  *     h_t = tanh(W_in x_t + W_rec h_(t-1) + b_hidden)
  *     outputs = the unchanged hidden -> output layer applied to h_t
@@ -162,6 +189,37 @@ export function evaluateRecurrentNetwork(
   }
 
   return { outputs: outputsFromHidden(genome, hidden, hiddenSize), hiddenState: hidden };
+}
+
+/** V2.5 recurrent evaluation with runtime offsets on the final readout only. Pure and RNG-free. */
+export function evaluatePlasticRecurrentNetwork(
+  genome: NeuralGenome,
+  input: readonly number[],
+  previousHidden: readonly number[],
+  hiddenOutputWeightOffsets: readonly number[],
+  outputBiasOffsets: readonly number[],
+  hiddenSize: number,
+  inputSize: number
+): PlasticRecurrentNetworkResult {
+  checkDimensions('evaluatePlasticRecurrentNetwork', genome, input, hiddenSize, inputSize);
+  const recurrent = genome.recurrentHiddenWeights;
+  if (recurrent === undefined) throw new Error('evaluatePlasticRecurrentNetwork: genome has no recurrent weights');
+  if (recurrent.length !== hiddenSize * hiddenSize) throw new Error('evaluatePlasticRecurrentNetwork: recurrent-weight dimension mismatch');
+  if (previousHidden.length !== hiddenSize || !previousHidden.every(Number.isFinite)) {
+    throw new Error('evaluatePlasticRecurrentNetwork: invalid previous hidden state');
+  }
+  const hidden = new Array<number>(hiddenSize);
+  for (let h = 0; h < hiddenSize; h++) {
+    let sum = genome.hiddenBiases[h] ?? 0;
+    for (let i = 0; i < inputSize; i++) sum += genome.inputHiddenWeights[h * inputSize + i]! * input[i]!;
+    for (let j = 0; j < hiddenSize; j++) sum += recurrent[h * hiddenSize + j]! * previousHidden[j]!;
+    hidden[h] = tanh(sum);
+  }
+  return {
+    outputs: outputsFromHidden(genome, hidden, hiddenSize, hiddenOutputWeightOffsets, outputBiasOffsets),
+    hiddenState: hidden,
+    hiddenActivation: [...hidden],
+  };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { FoodHandlingConfig, PhysicalBodyConfig, SimulationConfig } from './types.js';
+import { FoodHandlingConfig, PhysicalBodyConfig, PlasticityConfig, SimulationConfig } from './types.js';
 import {
   SINGLE_FOUNDER_MODEL_VERSION,
   MULTI_FOUNDER_MODEL_VERSION,
@@ -6,6 +6,7 @@ import {
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
+  LIFETIME_PLASTICITY_MODEL_VERSION,
 } from '../model/simulationModel.js';
 
 /**
@@ -27,6 +28,9 @@ import {
  *   (held food travels with its handler and physical contact dislodges it) and
  *   adds the `handling` configuration section; the controller, bodies, ecology
  *   and every other configured value are 0A.5.0's.
+ *   0A.6.0 vs 0A.7.0: 0A.7.0 adds deterministic, lifetime-only plasticity to
+ *   the recurrent controller's final readout and a fixed `plasticity` section;
+ *   inherited genomes and all world mechanics remain 0A.6.0's.
  *
  * Each changes the canonical trajectory, so they are different models and must
  * never share a regression reference or be mixed in one analysis.
@@ -38,6 +42,7 @@ export {
   RECURRENT_MEMORY_MODEL_VERSION,
   PHYSICAL_BODIES_MODEL_VERSION,
   FOOD_HANDLING_MODEL_VERSION,
+  LIFETIME_PLASTICITY_MODEL_VERSION,
 };
 
 /**
@@ -90,8 +95,18 @@ export const PHYSICAL_BODIES_GOLDEN_HASH = '1006a56393e19cd9';
  */
 export const FOOD_HANDLING_GOLDEN_HASH = '3e5b9671f5750712';
 
+/** V2.5 canonical regression: seed 20260910, 10,000 ticks, linux-arm64. */
+export const LIFETIME_PLASTICITY_GOLDEN_HASH = '04d0b7c5917ca0c0';
+
+export const PLASTICITY_LEARNING_RATE = 0.01;
+export const PLASTICITY_ELIGIBILITY_DECAY = 0.90;
+export const DEFAULT_PLASTICITY_CONFIG: PlasticityConfig = {
+  learningRate: PLASTICITY_LEARNING_RATE,
+  eligibilityDecay: PLASTICITY_ELIGIBILITY_DECAY,
+};
+
 /**
- * The V2.4 handling contract (model 0A.6.0 only).
+ * The V2.4 handling contract (models 0A.6.0 and later).
  *
  * `ticksRequired` is `handlingTicksRequired` from the amendment: five
  * CONSECUTIVE successful handling ticks consume one food item, acquisition
@@ -105,7 +120,7 @@ export const DEFAULT_FOOD_HANDLING_CONFIG: FoodHandlingConfig = {
 };
 
 /**
- * The V2.3 body contract (model 0A.5.0 only).
+ * The V2.3 body contract (models 0A.5.0 and later).
  *
  * `radiusBase` and `radiusPerSize` are transcribed from the body radius the
  * Observatory has drawn since Phase 0D slice 1 (`2.0 + 2.2 * size`), so the
@@ -338,11 +353,20 @@ export function foodHandlingModelConfig(): SimulationConfig {
   return config;
 }
 
+/** V2.5: the 0A.6.0 world plus runtime, non-inherited readout plasticity. */
+export function lifetimePlasticityModelConfig(): SimulationConfig {
+  const config = foodHandlingModelConfig();
+  config.simulationVersion = LIFETIME_PLASTICITY_MODEL_VERSION;
+  config.plasticity = { ...DEFAULT_PLASTICITY_CONFIG };
+  return config;
+}
+
 /**
  * The configuration of a supported model by version: 0A.1.0 →
  * `singleFounderModelConfig()`, 0A.2.0 → DEFAULT_SIMULATION_CONFIG, 0A.3.0 →
  * `organismSensingModelConfig()`, 0A.4.0 → `recurrentMemoryModelConfig()`,
- * 0A.5.0 → `physicalBodiesModelConfig()`, 0A.6.0 → `foodHandlingModelConfig()`.
+ * 0A.5.0 → `physicalBodiesModelConfig()`, 0A.6.0 → `foodHandlingModelConfig()`,
+ * 0A.7.0 → `lifetimePlasticityModelConfig()`.
  * Always a fresh copy. Throws for any other version.
  */
 export function modelConfig(simulationVersion: string): SimulationConfig {
@@ -353,6 +377,7 @@ export function modelConfig(simulationVersion: string): SimulationConfig {
     case RECURRENT_MEMORY_MODEL_VERSION: return recurrentMemoryModelConfig();
     case PHYSICAL_BODIES_MODEL_VERSION: return physicalBodiesModelConfig();
     case FOOD_HANDLING_MODEL_VERSION: return foodHandlingModelConfig();
+    case LIFETIME_PLASTICITY_MODEL_VERSION: return lifetimePlasticityModelConfig();
     default: throw new Error(`modelConfig: unknown simulationVersion ${JSON.stringify(simulationVersion)}`);
   }
 }

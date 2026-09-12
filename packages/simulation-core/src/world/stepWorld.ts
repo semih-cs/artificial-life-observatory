@@ -3,7 +3,7 @@ import { SimulationConfig } from '../config/types.js';
 import { RngStream, RngStreams } from '../rng/rngStream.js';
 import { Xoshiro128State } from '../rng/xoshiro128starstar.js';
 import { SenseContext } from '../perception/sense.js';
-import { decideAction, decideRecurrentAction } from '../actions/decide.js';
+import { decideAction, decideRecurrentAction, decidePlasticRecurrentAction } from '../actions/decide.js';
 import { ActionIntent } from '../actions/types.js';
 import { resolveMovement, movementEnergyCost } from '../biology/movement.js';
 import { resolveBodyOverlap } from '../biology/physicalBody.js';
@@ -16,6 +16,7 @@ import { regenerateFood } from './foodRegen.js';
 import { computeTickTelemetry, TickTelemetry } from '../telemetry/types.js';
 import { OrganismRuntimeState, cloneRuntimeState } from '../organism/types.js';
 import { simulationModel } from '../model/simulationModel.js';
+import { applyPlasticityUpdate, metabolicReinforcement, updateEligibilityTraces } from '../neural/plasticity.js';
 
 export interface StepResult {
   world: WorldState;
@@ -72,7 +73,7 @@ export function senseContextFor(state: WorldState, config: SimulationConfig): Se
  *    9 Reproduction eligibility
  *   10 Reproduction intent resolution
  *
- * V2.3 (models 0A.5.0 and 0A.6.0) inserts two position-only steps into
+ * V2.3 (models 0A.5.0 and later) inserts two position-only steps into
  * Resolve, and changes nothing else about the order:
  *
  *    4b Body overlap resolution        after movement, BEFORE feeding, so
@@ -84,7 +85,7 @@ export function senseContextFor(state: WorldState, config: SimulationConfig): Se
  * extra decision and no change to any organism's memory. Models 0A.1.0-0A.4.0
  * skip them entirely and behave exactly as they always have.
  *
- * V2.4 (model 0A.6.0 only) replaces the instantaneous phases 6-7 with
+ * V2.4 (models 0A.6.0 and later) replaces the instantaneous phases 6-7 with
  * multi-tick, contestable food handling, and adds one release step:
  *
  *    6-7 Food handling                 held items follow their holder, drops
@@ -163,9 +164,14 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   if (model.recurrent) {
     const nextHidden = new Map<number, number[]>();
     for (const o of living) {
-      const decision = decideRecurrentAction(o, senseCtx, config.neural, hiddenSize, model.neuralInputSize);
+      const decision = model.lifetimePlasticity
+        ? decidePlasticRecurrentAction(o, senseCtx, config.neural, hiddenSize, model.neuralInputSize)
+        : decideRecurrentAction(o, senseCtx, config.neural, hiddenSize, model.neuralInputSize);
       intents.set(o.id, decision.intent);
       nextHidden.set(o.id, decision.hiddenState);
+      if (model.lifetimePlasticity) {
+        updateEligibilityTraces(o, decision.hiddenActivation!, decision.rawOutputs!, config.plasticity!);
+      }
     }
     for (const o of living) o.hiddenState = nextHidden.get(o.id)!;
   } else {
@@ -180,17 +186,19 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // charged for distance never covered. Basal metabolism is a separate term.
   // Age advances here as part of the per-tick physiological update; phase 16
   // reads the advanced value.
+  const movementEnergySpent = new Map<number, number>();
   for (const o of living) {
     const intent = intents.get(o.id);
     if (!intent) continue;
     const actualVelocity = resolveMovement(o, intent, state.worldConfig);
     const moveCost = movementEnergyCost(actualVelocity, o.genome.morphology.size, config.energy.movementEnergyCoefficient);
+    movementEnergySpent.set(o.id, moveCost);
     const basalCost = basalEnergyCost(o.genome.morphology.metabolism, config.energy.baseMetabolicConstant);
     applyEnergyDelta(o, -(moveCost + basalCost), config.energy.energyCapacity);
     o.age += 1;
   }
 
-  // ---- Phase 4b (V2.3, model 0A.5.0 only): body overlap resolution -------
+  // ---- Phase 4b (V2.3, models 0A.5.0 and later): body overlap resolution -
   // Movement has just had its physical consequence. Bodies that ended the
   // movement step overlapping are pushed apart along the line joining their
   // centres, the larger body moving less (biology/physicalBody.ts). It is
@@ -214,7 +222,7 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   //                  food item, exact-distance ties by ascending organism ID,
   //                  food in ascending food ID order, one item per organism
   //                  per tick, energy credited in phase 8 below.
-  //   0A.6.0         contestable handling (world/foodHandling.ts): held items
+  //   0A.6.0+        contestable handling (world/foodHandling.ts): held items
   //                  follow their holder's resolved position, holders that did
   //                  not request eat or that met another body drop their item
   //                  (progress reset, item free but NOT reacquirable this
@@ -240,9 +248,28 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   // by phase 5 is credited here, before death is ever evaluated. Under food
   // handling the credit is identical in size and timing; only the condition
   // for earning it changed, from "won an item" to "finished handling one".
+  const foodEnergyCredited = new Map<number, number>();
   for (const o of living) {
     if (fedOrganismIds.has(o.id)) {
+      const before = o.energy;
       applyEnergyDelta(o, config.energy.foodEnergyValue, config.energy.energyCapacity);
+      foodEnergyCredited.set(o.id, o.energy - before);
+    }
+  }
+
+  // ---- Phase 8b (V2.5): reward-modulated lifetime readout plasticity ----
+  // Eligibility was advanced from the already-selected action in phase 3.
+  // Only actual controllable metabolic return teaches: capped food credit
+  // minus actual movement expenditure. Basal and reproduction costs are
+  // deliberately excluded. The update therefore affects future ticks only.
+  if (model.lifetimePlasticity) {
+    for (const o of living) {
+      const reinforcement = metabolicReinforcement(
+        foodEnergyCredited.get(o.id) ?? 0,
+        movementEnergySpent.get(o.id) ?? 0,
+        config.energy.energyCapacity
+      );
+      applyPlasticityUpdate(o, reinforcement, config.plasticity!, config.neural.neuralParamBounds);
     }
   }
 
@@ -286,7 +313,7 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
     }
   }
 
-  // ---- Phase 16b (V2.4, model 0A.6.0 only): dead holders drop their food --
+  // ---- Phase 16b (V2.4, models 0A.6.0 and later): dead holders drop food --
   // An organism that dies mid-handling releases its item at its FINAL position
   // with progress reset. The item is never destroyed and no food energy is
   // granted: dying is not a way to eat, and a death does not remove food from
@@ -299,7 +326,7 @@ export function stepWorld(state: WorldState, config: SimulationConfig): StepResu
   const survivors = workingOrganisms.filter((o) => o.alive);
   const allOrganisms = [...survivors, ...children].sort((a, b) => a.id - b.id);
 
-  // ---- Phase 17b (V2.3, model 0A.5.0 only): newborn body separation ------
+  // ---- Phase 17b (V2.3, models 0A.5.0 and later): newborn separation -----
   // Offspring placement is unchanged (the same polar offset, the same two
   // canonical draws), so a newborn can land inside its parent or a neighbour.
   // Rather than inventing a birth-time search, a reproduction failure or any
